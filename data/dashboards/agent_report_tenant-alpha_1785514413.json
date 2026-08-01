@@ -1,0 +1,166 @@
+{
+  "goal": "Improve health outcomes in region alpha",
+  "tenant_id": "tenant-alpha",
+  "domain": "health",
+  "datasets_analyzed": [
+    {
+      "table": "covid_19_data",
+      "row_count": 100,
+      "col_count": 8,
+      "anomaly_cols": [
+        {
+          "column": "Confirmed",
+          "mean": 24.92,
+          "std": 92.35,
+          "max": 549.0,
+          "sigma": 5.68
+        },
+        {
+          "column": "Deaths",
+          "mean": 0.75,
+          "std": 3.74,
+          "max": 24.0,
+          "sigma": 6.21
+        },
+        {
+          "column": "Recovered",
+          "mean": 1.26,
+          "std": 5.66,
+          "max": 31.0,
+          "sigma": 5.25
+        }
+      ]
+    },
+    {
+      "table": "global_health",
+      "row_count": 100,
+      "col_count": 29,
+      "anomaly_cols": [
+        {
+          "column": "Sanitary_Expense_Per_GDP",
+          "mean": 8.21,
+          "std": 3.21,
+          "max": 21.83,
+          "sigma": 4.24
+        },
+        {
+          "column": "CO2_Exposure_Percent",
+          "mean": 23.54,
+          "std": 16.99,
+          "max": 77.14,
+          "sigma": 3.15
+        },
+        {
+          "column": "Air_Pollution",
+          "mean": 23.54,
+          "std": 16.99,
+          "max": 77.14,
+          "sigma": 3.15
+        }
+      ]
+    },
+    {
+      "table": "health_kaggle_dataset",
+      "row_count": 100,
+      "col_count": 11,
+      "anomaly_cols": [
+        {
+          "column": "Number_of_Files",
+          "mean": 6358.82,
+          "std": 23085.87,
+          "max": 137430.0,
+          "sigma": 5.68
+        }
+      ]
+    }
+  ],
+  "anomalies_detected": [
+    {
+      "table": "covid_19_data",
+      "column": "Confirmed",
+      "sigma": 5.68
+    },
+    {
+      "table": "covid_19_data",
+      "column": "Deaths",
+      "sigma": 6.21
+    },
+    {
+      "table": "covid_19_data",
+      "column": "Recovered",
+      "sigma": 5.25
+    },
+    {
+      "table": "global_health",
+      "column": "Sanitary_Expense_Per_GDP",
+      "sigma": 4.24
+    },
+    {
+      "table": "global_health",
+      "column": "CO2_Exposure_Percent",
+      "sigma": 3.15
+    },
+    {
+      "table": "global_health",
+      "column": "Air_Pollution",
+      "sigma": 3.15
+    },
+    {
+      "table": "health_kaggle_dataset",
+      "column": "Number_of_Files",
+      "sigma": 5.68
+    }
+  ],
+  "actions_needed": 1,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "Scale Healthcare Access",
+      "description": "Expand clinic coverage to underserved regions flagged by current admission trends.",
+      "evidence": "Statistical evidence: Confirmed = 5.68\u03c3 deviation in covid_19_data.",
+      "formula": "AVG(Confirmed) / NULLIF(AVG(Recovered), 0)",
+      "action": "webhook/alert-health-coordinator",
+      "priority": "HIGH",
+      "dataset_links": [
+        "covid_19_data",
+        "global_health"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Accelerate Vaccination Campaigns",
+      "description": "Cross-correlate recovery rates with vaccination timing to identify optimal rollout windows.",
+      "evidence": "Statistical evidence: Deaths = 6.21\u03c3 deviation in covid_19_data.",
+      "formula": "AVG(Recovered) / NULLIF(AVG(Confirmed), 0) * 100",
+      "action": "webhook/create-indicator",
+      "priority": "MEDIUM",
+      "dataset_links": [
+        "covid_19_data",
+        "global_health"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Reallocate Supply Chain Budget",
+      "description": "Re-route medical supply logistics from low-mortality zones to high-anomaly provinces.",
+      "evidence": "Statistical evidence: Recovered = 5.25\u03c3 deviation in covid_19_data.",
+      "formula": "SUM(Deaths) / NULLIF(SUM(Confirmed), 0)",
+      "action": "webhook/budget-reallocation",
+      "priority": "CRITICAL",
+      "dataset_links": [
+        "covid_19_data",
+        "global_health"
+      ],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": 1021.0,
+    "global_count": 100,
+    "participating_datasets": 2
+  },
+  "generated_at": "2026-07-31T16:13:33.897544Z",
+  "engine_latency_ms": 737.8
+}

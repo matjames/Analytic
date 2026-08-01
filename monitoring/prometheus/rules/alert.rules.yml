@@ -1,0 +1,29 @@
+groups:
+  - name: statgate-alerts
+    rules:
+      - alert: HighDBPoolUsage
+        expr: (statgate_db_pool_in_use / statgate_db_pool_max) > 0.8
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High DB pool usage (>{{ $value | humanize }}%)"
+          description: "DB pool in-use is above 80% for more than 5 minutes. Investigate DB performance or increase pool size."
+
+      - alert: ABACDenialSpike
+        expr: sum(increase(statgate_abac_denials_total[5m])) by (action) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike in ABAC denials for action={{ $labels.action }}"
+          description: "ABAC denials for action={{ $labels.action }} increased by more than 10 in 5 minutes. Possible misconfiguration or attack."
+
+      - alert: NoMetricsFromAnalytics
+        expr: absent(up{job="statgate-analytics"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No metrics scraped from statgate-analytics"
+          description: "Prometheus is not scraping metrics from statgate-analytics. Ensure the service is up and /metrics is reachable."

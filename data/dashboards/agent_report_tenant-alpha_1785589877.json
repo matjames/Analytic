@@ -1,0 +1,55 @@
+{
+  "goal": "Improve tourism infrastructure",
+  "tenant_id": "tenant-alpha",
+  "domain": "general",
+  "dataset_discovery_error": "DB unavailable",
+  "datasets_analyzed": [],
+  "profile_errors": [],
+  "anomalies_detected": [],
+  "actions_needed": 1,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "Cross-Domain Anomaly Investigation",
+      "description": "3-sigma breach detected. Recommend immediate dataset review across related tables.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly or dataset reference available. This scenario uses a conservative domain-driven intervention.",
+      "formula": "STDDEV(value)",
+      "action": "webhook/alert-manager",
+      "priority": "HIGH",
+      "dataset_links": [],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Federated Benchmark Comparison",
+      "description": "Compare current tenant metrics against anonymized global averages from the federated model.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly or dataset reference available. This scenario uses a conservative domain-driven intervention.",
+      "formula": "AVG(value) / global_avg",
+      "action": "webhook/benchmark-request",
+      "priority": "MEDIUM",
+      "dataset_links": [],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Predictive Governance Alert",
+      "description": "Trend-extrapolation suggests metric will breach policy threshold within 14 days.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly or dataset reference available. This scenario uses a conservative domain-driven intervention.",
+      "formula": "value + (AVG(value) - LAG(AVG(value))) * 14",
+      "action": "webhook/create-alert",
+      "priority": "CRITICAL",
+      "dataset_links": [],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": null,
+    "global_count": 0,
+    "participating_datasets": 0
+  },
+  "generated_at": "2026-08-01T13:11:17.287501+00:00",
+  "engine_latency_ms": 0.0
+}

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StatGate – Analytical Orchestration Hub</title>
+  <meta name="description" content="StatGate: Production Data Fabric. Live metrics, schema-aware dashboards, and analytical orchestration across 40+ datasets.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand-link">
+      <img src="{{ analytics_logo_url }}" alt="StatGate logo" class="brand-logo">
+      <div class="brand-title">StatGate <span class="brand-badge">Analytics & Decision Support</span></div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-item active">Home</a>
+      <a href="/datasets" class="nav-item">Dataset Catalog</a>
+      <a href="/notebook" class="nav-item">Notebook</a>
+      <a href="/semantic" class="nav-item">Semantic Registry</a>
+      <div class="app-launcher-wrapper">
+        <button type="button" class="nav-item launcher-toggle" onclick="toggleAppLauncher()">Apps ▾</button>
+        <div id="appLauncherMenu" class="app-launcher-menu" style="display:none;">
+          <div class="launcher-title">All applications</div>
+          <div class="launcher-grid">
+            <a href="/" class="launcher-card">
+              <span class="launcher-icon">🏠</span>
+              <span>Analytics Home</span>
+            </a>
+            <a href="/datasets" class="launcher-card">
+              <span class="launcher-icon">🗂️</span>
+              <span>Dataset Catalog</span>
+            </a>
+            <a href="/notebook" class="launcher-card">
+              <span class="launcher-icon">📓</span>
+              <span>Notebook Studio</span>
+            </a>
+            <a href="/semantic" class="launcher-card">
+              <span class="launcher-icon">🧠</span>
+              <span>Semantic Registry</span>
+            </a>
+            <a href="/abac" class="launcher-card">
+              <span class="launcher-icon">🔐</span>
+              <span>ABAC Security</span>
+            </a>
+            <a href="/executive" class="launcher-card">
+              <span class="launcher-icon">🏛️</span>
+              <span>Executive Centre</span>
+            </a>
+            <a href="{{ registry_ui_url }}" class="launcher-card" target="_blank" rel="noopener">
+              <span class="launcher-icon">🌐</span>
+              <span>Open Registry</span>
+            </a>
+          </div>
+        </div>
+      </div>
+      <a href="/abac" class="nav-item">ABAC</a>
+      <a href="/executive" class="nav-item executive-link">Executive</a>
+    </nav>
+    <div class="header-actions">
+      <div class="tenant-selector">
+        <span style="color:rgba(255,255,255,.82)">Workspace:</span>
+        <select id="tenantSelect" class="tenant-select" onchange="onTenantChange()">
+          <option value="tenant-alpha">Ministry of Health (tenant-alpha)</option>
+          <option value="tenant-beta">Ministry of Education (tenant-beta)</option>
+        </select>
+      </div>
+      <div class="service-launcher" style="margin-left:16px;">
+        <button class="btn-secondary" id="serviceLauncherBtn" onclick="toggleServiceLauncher()">Services ▾</button>
+        <div id="serviceLauncherMenu" style="display:none;position:absolute;background:#0b0f17;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;right:16px;top:56px;z-index:60;min-width:260px;">
+          <div style="margin-bottom:8px;font-weight:700;color:#ddd;">Service Launcher</div>
+          <div id="serviceItems">Loading…</div>
+          <div style="margin-top:8px;text-align:right;"><button class="btn-primary" onclick="checkAllServices()">Check Status</button></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <section class="hero-panel">
+      <div>
+        <p class="eyebrow">StatGate Analytics Suite</p>
+        <h1>One home page for every analytics app developed so far.</h1>
+        <p>Use this launcher to jump into datasets, notebooks, semantic discovery, governance, security, and executive decision support.</p>
+      </div>
+      <div class="hero-badges">
+        <span class="hero-pill">6 apps</span>
+        <span class="hero-pill">Live catalog</span>
+        <span class="hero-pill">Secure access</span>
+      </div>
+    </section>
+
+    <section class="app-grid">
+      <a class="app-card app-card--primary" href="/">
+        <div class="app-card-icon">🏠</div>
+        <h3>Analytics Home</h3>
+        <p>Start from the operational dashboard and live analytics overview.</p>
+      </a>
+      <a class="app-card" href="/datasets">
+        <div class="app-card-icon">🗂️</div>
+        <h3>Dataset Catalog</h3>
+        <p>Browse and inspect available datasets and their metadata.</p>
+      </a>
+      <a class="app-card" href="/notebook">
+        <div class="app-card-icon">📓</div>
+        <h3>Notebook Studio</h3>
+        <p>Open the interactive environment for analysis and experimentation.</p>
+      </a>
+      <a class="app-card" href="/semantic">
+        <div class="app-card-icon">🧠</div>
+        <h3>Semantic Registry</h3>
+        <p>Discover semantic assets and query data using natural language.</p>
+      </a>
+      <a class="app-card" href="/abac">
+        <div class="app-card-icon">🔐</div>
+        <h3>ABAC Security</h3>
+        <p>Review policy-based access controls and tenant guardrails.</p>
+      </a>
+      <a class="app-card" href="/executive">
+        <div class="app-card-icon">🏛️</div>
+        <h3>Executive Centre</h3>
+        <p>Access minister-grade decision support and high-level insights.</p>
+      </a>
+    </section>
+
+    <section class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">Quick view</div>
+      </div>
+      <div class="grid-4" id="liveSummaryCards">
+        <div class="metric-card">
+          <div class="metric-title">Datasets Available</div>
+          <div class="metric-val" id="cardTotalDatasets"><span class="pulse-dot"></span></div>
+          <div class="metric-sub">Live from the metadata layer</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Active Dataset Preview</div>
+          <div class="metric-val" id="cardActiveDataset" style="font-size:1rem;">—</div>
+          <div class="metric-sub">Selected in the catalog flow</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Engine Status</div>
+          <div class="metric-val" id="cardEngineStatus" style="color:var(--accent-green);">Checking…</div>
+          <div class="metric-sub">StatGateAnalysisEngine + DuckDB</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">ABAC Security</div>
+          <div class="metric-val" style="color:var(--accent-green);">Strict RLS</div>
+          <div class="metric-sub">Logical tenant partitioning</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">🔭 Live Dataset Analytical Snapshot</div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <select id="dashboardDatasetSelect" class="tenant-select" style="min-width:220px;" onchange="onDashboardDatasetChange()">
+            <option value="">Loading datasets from database…</option>
+          </select>
+          <a id="launchNotebookLink" href="/notebook" class="btn-primary" style="text-decoration:none;padding:9px 16px;">🚀 Notebook</a>
+        </div>
+      </div>
+
+      <div id="snapshotPills" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="stat-pill"><span class="stat-pill-label">Status</span><span class="stat-pill-val" id="snapStatus">Select a dataset</span></div>
+        <div class="stat-pill"><span class="stat-pill-label">Rows (sample)</span><span class="stat-pill-val" id="snapRows">—</span></div>
+        <div class="stat-pill"><span class="stat-pill-label">Columns</span><span class="stat-pill-val" id="snapCols">—</span></div>
+        <div class="stat-pill"><span class="stat-pill-label">Engine SLA</span><span class="stat-pill-val" id="snapSLA">—</span></div>
+      </div>
+
+      <div id="snapshotTableWrap" style="display:none; overflow-x:auto;">
+        <table class="table-custom" id="snapshotSchemaTable">
+          <thead id="snapshotSchemaHead"></thead>
+          <tbody id="snapshotSchemaBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">📊 Metadata-Driven Interactive Dashboard Builder</div>
+        <button class="btn-primary" onclick="saveDashboardLayout()">💾 Save Layout (JSON)</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:14px;">
+        Select any dataset — axis columns are populated dynamically from <code>information_schema.columns</code>. Zero hardcoding.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;">
+        <select id="builderDatasetSelect" class="tenant-select" onchange="onBuilderDatasetChange()">
+          <option value="">— Select Dataset —</option>
+        </select>
+        <select id="builderColXSelect" class="tenant-select" onchange="renderPlotlyChart()">
+          <option value="">X Axis Column</option>
+        </select>
+        <select id="builderColYSelect" class="tenant-select" onchange="renderPlotlyChart()">
+          <option value="">Y Axis Column</option>
+        </select>
+        <select id="builderChartTypeSelect" class="tenant-select" onchange="renderPlotlyChart()">
+          <option value="bar">Bar Chart</option>
+          <option value="scatter">Scatter / Line</option>
+          <option value="histogram">Histogram</option>
+        </select>
+      </div>
+      <div id="plotlyDashboardContainer" style="width:100%;height:400px;background:rgba(6,9,15,0.5);border-radius:8px;"></div>
+    </section>
+
+    <section class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">📌 Published Analytical Assets & Notebook Widgets</div>
+        <button class="btn-primary" onclick="loadPublishedWidgets()">🔄 Refresh Widgets</button>
+      </div>
+      <div id="publishedWidgetsCanvas" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
+        <div style="color:var(--text-muted); font-size:0.85rem; padding:20px; text-align:center;">Loading published analytical widgets...</div>
+      </div>
+    </section>
+
+    <section class="glass-panel" id="intelligenceFeedPanel">
+      <div class="panel-header">
+        <div class="panel-title">⚡ Proactive Intelligence Feed — Autonomous Statistical Monitoring</div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div id="alertBadge" style="background:var(--accent-red);color:#fff;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:20px;display:none;">0 Alerts</div>
+          <button class="btn-primary" style="padding:6px 12px;font-size:0.8rem;" onclick="refreshIntelligenceFeed()">🔄 Refresh Feed</button>
+        </div>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:14px;">
+        The Auto-Sense Engine continuously evaluates every ingested data stream for <strong>±3σ statistical anomalies</strong>. Alerts below are proactively generated — zero analyst queries needed.
+      </p>
+      <div id="intelligenceFeedContainer">
+        <div style="color:var(--text-muted);text-align:center;padding:20px;">Scanning data streams for statistical anomalies…</div>
+      </div>
+    </section>
+
+    <section class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">🔍 Semantic Natural Language Querying</div>
+      </div>
+      <div style="display:flex;gap:12px;margin-bottom:16px;">
+        <input type="text" id="nlqInput" class="tenant-select" style="flex:1;padding:10px 16px;"
+          placeholder="Ask StatGate: e.g. 'Show average confirmed covid cases by country'">
+        <button class="btn-primary" onclick="runNLQ()">⚡ Query Engine</button>
+      </div>
+      <div id="nlqResult" class="console-output" style="display:none;"></div>
+    </section>
+  </main>
+
+  <script>
+    function toggleAppLauncher() {
+      const menu = document.getElementById('appLauncherMenu');
+      if (!menu) return;
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    document.addEventListener('click', function (event) {
+      const wrapper = event.target.closest('.app-launcher-wrapper');
+      const menu = document.getElementById('appLauncherMenu');
+      if (!wrapper && menu) {
+        menu.style.display = 'none';
+      }
+    });
+  </script>
+
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/dashboard_builder.js"></script>
+</body>
+</html>

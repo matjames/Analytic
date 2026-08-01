@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StatGate - Attribute-Based Access Control (ABAC)</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand-link">
+      <img src="{{ analytics_logo_url }}" alt="StatGate logo" class="brand-logo">
+      <div class="brand-title">StatGate <span class="brand-badge">Analytics & Decision Support</span></div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/datasets" class="nav-item">Dataset Catalog</a>
+      <a href="/notebook" class="nav-item">Notebook</a>
+      <a href="/semantic" class="nav-item">Semantic Registry</a>
+      <a href="{{ registry_ui_url }}" class="nav-item registry-link" target="_blank" rel="noopener">Open Registry</a>
+      <a href="/abac" class="nav-item active">ABAC Security</a>
+    </nav>
+  </header>
+
+  <main class="main-container">
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">Attribute-Based Access Control (ABAC) Active Policy Matrix</div>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px;">
+        Evaluates dynamic user attributes (TenantID, Clearance Level, Role) against resource operations prior to execution.
+      </p>
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Policy ID</th>
+            <th>Resource</th>
+            <th>Allowed Action</th>
+            <th>Min Clearance Level</th>
+            <th>Allowed Roles</th>
+            <th>Tenant Scope</th>
+          </tr>
+        </thead>
+        <tbody id="policiesTableBody">
+          <tr><td colspan="6">Loading active security policies...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+egg-info/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# Testing / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.npm/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local config
+secrets/
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.pfx
+
+# Local runtime artifacts
+logs/
+*.log
+tmp/
+*.sqlite3
+*.db
+
+# Project-specific local/generated content
+backend/bin/
+frontend/Lib/
+frontend/Scripts/
+frontend/.pytest_cache/
+frontend/temp_debug.py
+frontend/pytest_tourism_failure.txt

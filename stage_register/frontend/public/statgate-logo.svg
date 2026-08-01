@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="StatGate logo">
+  <defs>
+    <linearGradient id="sgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="45%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0f4170"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="28" fill="#0f172a"/>
+  <path d="M80 20 123 44v72L80 140 37 116V44L80 20Z" fill="url(#sgGradient)" opacity="0.9"/>
+  <path d="M80 40 104 54v52L80 120 56 106V54l24-14Z" fill="#e8f8ff" opacity="0.96"/>
+  <path d="M69 70h22v7H69zm0 19h22v7H69zm0-9h22v7H69z" fill="#0f172a"/>
+  <path d="M90 48h18v52h-18z" fill="#0f4170" opacity="0.3"/>
+</svg>

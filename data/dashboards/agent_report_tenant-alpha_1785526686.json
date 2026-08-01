@@ -1,0 +1,92 @@
+{
+  "goal": "Forecast budget overruns",
+  "tenant_id": "tenant-alpha",
+  "domain": "economy",
+  "datasets_analyzed": [
+    {
+      "table": "gdp_by_region",
+      "row_count": 100,
+      "col_count": 23,
+      "anomaly_cols": [
+        {
+          "column": "Value",
+          "mean": 3060288.72,
+          "std": 15959954.94,
+          "max": 150561000.0,
+          "sigma": 9.24
+        }
+      ]
+    },
+    {
+      "table": "gdp_vs_pollution_rates_by_country",
+      "row_count": 100,
+      "col_count": 4,
+      "anomaly_cols": []
+    },
+    {
+      "table": "income_per_capita_by_region",
+      "row_count": 100,
+      "col_count": 23,
+      "anomaly_cols": []
+    }
+  ],
+  "anomalies_detected": [
+    {
+      "table": "gdp_by_region",
+      "column": "Value",
+      "sigma": 9.24
+    }
+  ],
+  "actions_needed": 1,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "GDP Growth Acceleration Plan",
+      "description": "Identify fastest-growing sectors per region and propose budget shifts.",
+      "evidence": "Statistical evidence: Value = 9.24\u03c3 deviation in gdp_by_region.",
+      "formula": "AVG(GDP) - LAG(AVG(GDP))",
+      "action": "webhook/alert-finance-ministry",
+      "priority": "HIGH",
+      "dataset_links": [
+        "gdp_by_region",
+        "gdp_vs_pollution_rates_by_country"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Inequality Reduction: Gini Intervention",
+      "description": "Target regions above 0.4 Gini coefficient for redistribution policy.",
+      "evidence": "Statistical evidence: Value = 9.24\u03c3 deviation in gdp_by_region.",
+      "formula": "AVG(gini_index) WHERE gini_index > 0.4",
+      "action": "webhook/create-indicator",
+      "priority": "CRITICAL",
+      "dataset_links": [
+        "gdp_by_region",
+        "gdp_vs_pollution_rates_by_country"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Budget Overrun Forecast",
+      "description": "Real-time stream forecasting flags potential budget overruns 30 days ahead.",
+      "evidence": "Statistical evidence: Value = 9.24\u03c3 deviation in gdp_by_region.",
+      "formula": "AVG(expenditure) * 1.25",
+      "action": "webhook/alert-comptroller",
+      "priority": "HIGH",
+      "dataset_links": [
+        "gdp_by_region",
+        "gdp_vs_pollution_rates_by_country"
+      ],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": 1002.09,
+    "global_count": 100,
+    "participating_datasets": 2
+  },
+  "generated_at": "2026-07-31T19:38:06.143523Z",
+  "engine_latency_ms": 950.0
+}

@@ -1,0 +1,108 @@
+{
+  "goal": "Improve education outcomes in underserved regions",
+  "tenant_id": "tenant-alpha",
+  "domain": "education",
+  "dataset_discovery_error": null,
+  "dataset_candidates": [
+    "education_by_region",
+    "world_development_data_imputed"
+  ],
+  "datasets_analyzed": [
+    {
+      "table": "education_by_region",
+      "row_count": 50,
+      "col_count": 1,
+      "anomaly_cols": [
+        {
+          "column": "value",
+          "mean": 10.0,
+          "std": 1.0,
+          "max": 14.0,
+          "sigma": 4.0
+        }
+      ]
+    },
+    {
+      "table": "world_development_data_imputed",
+      "row_count": 50,
+      "col_count": 1,
+      "anomaly_cols": [
+        {
+          "column": "value",
+          "mean": 10.0,
+          "std": 1.0,
+          "max": 14.0,
+          "sigma": 4.0
+        }
+      ]
+    }
+  ],
+  "profile_errors": [],
+  "anomalies_detected": [
+    {
+      "table": "education_by_region",
+      "column": "value",
+      "sigma": 4.0
+    },
+    {
+      "table": "world_development_data_imputed",
+      "column": "value",
+      "sigma": 4.0
+    }
+  ],
+  "actions_needed": 0,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "Boost Teacher Deployment in Low-Performing Regions",
+      "description": "Deploy resources to bottom-quartile regional education scores. Uses dataset 'education_by_region' to validate assumptions.",
+      "goal": "improve education outcomes in underserved regions",
+      "evidence": "Anomaly evidence from education_by_region: value reached 4.0\u03c3. Recommended action is grounded in live dataset signals from education_by_region. Primary dataset candidate: education_by_region.",
+      "formula": "AVG(value) WHERE region IN (SELECT region FROM ... ORDER BY AVG(value) ASC LIMIT 5)",
+      "action": "webhook/alert-education-director",
+      "priority": "HIGH",
+      "dataset_links": [
+        "education_by_region",
+        "world_development_data_imputed"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Fund Digital Infrastructure Rollout",
+      "description": "Correlate digital access rates with academic performance uplift. Uses dataset 'education_by_region' to validate assumptions.",
+      "goal": "improve education outcomes in underserved regions",
+      "evidence": "Anomaly evidence from world_development_data_imputed: value reached 4.0\u03c3. Recommended action is grounded in live dataset signals from world_development_data_imputed. Primary dataset candidate: education_by_region.",
+      "formula": "AVG(value) * 1.15",
+      "action": "webhook/create-indicator",
+      "priority": "MEDIUM",
+      "dataset_links": [
+        "education_by_region",
+        "world_development_data_imputed"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Early Warning: Dropout Risk Index",
+      "description": "Flag regions with attendance trends below 3-sigma moving average as high-risk. Uses dataset 'education_by_region' to validate assumptions.",
+      "goal": "improve education outcomes in underserved regions",
+      "evidence": "Anomaly evidence from world_development_data_imputed: value reached 4.0\u03c3. Recommended action is grounded in live dataset signals from world_development_data_imputed. Primary dataset candidate: education_by_region.",
+      "formula": "STDDEV(value) * 3 + AVG(value)",
+      "action": "webhook/create-alert",
+      "priority": "HIGH",
+      "dataset_links": [
+        "education_by_region",
+        "world_development_data_imputed"
+      ],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": null,
+    "global_count": 0,
+    "participating_datasets": 0
+  },
+  "generated_at": "2026-08-01T13:50:28.603814+00:00",
+  "engine_latency_ms": 2807.4
+}
