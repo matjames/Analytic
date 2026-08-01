@@ -1,0 +1,127 @@
+# StatGate Uganda Limited - Docker Compose Configuration
+# Multi-container deployment architecture
+
+version: '3.8'
+
+services:
+  # Main Application Launcher (Central Hub)
+  launcher:
+    container_name: statgate-launcher
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_APP_NAME=StatGate Uganda Limited
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
+      - NEXT_PUBLIC_AUTH_ENABLED=true
+      - NEXT_PUBLIC_FEATURE_RBAC=true
+    networks:
+      - statgate-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Nginx Reverse Proxy & Load Balancer
+  nginx:
+    container_name: statgate-nginx
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - statgate-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Placeholder containers for future applications
+  # These represent the 5+ proprietary statistical tools, databases, and applications
+  
+  # Stats Suite Application (Placeholder)
+  stats-suite:
+    container_name: statgate-stats-suite
+    image: nginx:alpine
+    ports:
+      - "3001:80"
+    networks:
+      - statgate-network
+    labels:
+      - "com.statgate.app=stats-suite"
+      - "com.statgate.category=analytics"
+    restart: unless-stopped
+
+  # Data Warehouse (Placeholder)
+  warehouse:
+    container_name: statgate-warehouse
+    image: nginx:alpine
+    ports:
+      - "3002:80"
+    networks:
+      - statgate-network
+    labels:
+      - "com.statgate.app=warehouse"
+      - "com.statgate.category=database"
+    restart: unless-stopped
+
+  # Report Builder (Placeholder)
+  reports:
+    container_name: statgate-reports
+    image: nginx:alpine
+    ports:
+      - "3003:80"
+    networks:
+      - statgate-network
+    labels:
+      - "com.statgate.app=reports"
+      - "com.statgate.category=reporting"
+    restart: unless-stopped
+
+  # Admin Panel (Placeholder)
+  admin:
+    container_name: statgate-admin
+    image: nginx:alpine
+    ports:
+      - "3004:80"
+    networks:
+      - statgate-network
+    labels:
+      - "com.statgate.app=admin"
+      - "com.statgate.category=admin"
+    restart: unless-stopped
+
+  # Integration Hub (Placeholder)
+  integration:
+    container_name: statgate-integration
+    image: nginx:alpine
+    ports:
+      - "3005:80"
+    networks:
+      - statgate-network
+    labels:
+      - "com.statgate.app=integration"
+      - "com.statgate.category=integration"
+    restart: unless-stopped
+
+networks:
+  statgate-network:
+    driver: bridge
+    name: statgate-network
+
+volumes:
+  # Add volume definitions as needed for persistent data
+  launcher-data:
+  nginx-logs:

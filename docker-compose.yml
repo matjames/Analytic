@@ -1,0 +1,380 @@
+services:
+  # ══════════════════════════════════════════════════════════════
+  # UNIFIED STATGATE PLATFORM - ALL SERVICES
+  # ══════════════════════════════════════════════════════════════
+
+  # ── PostgreSQL (existing databases with data) ───────────────
+  # Uses external PostgreSQL - databases already exist with data:
+  #   - statgate_ml_staging (user: Kaggle, password: Statgate_kaggle)
+  #   - statgate (user: statgate, password: Uganda2026) 
+  #   - kaggle (user: Kaggle, password: Statgate_kaggle)
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=Kaggle
+      - POSTGRES_PASSWORD=Statgate_kaggle
+      - POSTGRES_DB=statgate_ml_staging
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Kaggle -d statgate_ml_staging -h localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ── Redis (shared cache) ─────────────────────────────────────
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 1. APP LAUNCHER (Next.js - main entry point)
+  # ══════════════════════════════════════════════════════════════
+  statgate-launcher:
+    build:
+      context: ./appluancher
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_APP_NAME=StatGate
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 2. STATGATE ANALYTICS - Go Core Engine
+  # ══════════════════════════════════════════════════════════════
+  statgate-core:
+    build:
+      context: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - STATGATE_ENV=production
+      - BIND_ADDRESS=0.0.0.0
+      - CORS_ALLOWED_ORIGIN=http://localhost:5000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR}
+      - FLASK_BACKEND_URL=http://statgate-analytics:5000
+    secrets:
+      - STATGATE_INTERNAL_API_KEY
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ready >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 3. STATGATE ANALYTICS - Flask UI
+  # ══════════════════════════════════════════════════════════════
+  statgate-analytics:
+    build:
+      context: ./frontend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_PORT=5000
+      - GO_BACKEND_URL=http://statgate-core:8080
+      - ANALYTICS_REQUIRE_AUTH=${ANALYTICS_REQUIRE_AUTH:-false}
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - STATGATE_REGISTRY_UI_URL=http://statgate-registry-ui:80
+      - ENABLE_NOTEBOOK_EXECUTION=false
+      - KAGGLE_DB_HOST=postgres
+      - KAGGLE_DB_PORT=5432
+      - KAGGLE_DB_NAME=statgate_ml_staging
+      - KAGGLE_DB_USER=Kaggle
+      - KAGGLE_DB_PASSWORD=Statgate_kaggle
+      - KAGGLE_DB_SSLMODE=disable
+      - KAGGLE_STAGING_SCHEMA=ml_staging
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-F6nQ2rK9vT4xM8pW1dC7yH3sL0aE5jB}
+    secrets:
+      - FLASK_SECRET_KEY
+      - STATGATE_INTERNAL_API_KEY
+      - STATGATE_REGISTRY_JWT_SECRET
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      statgate-core:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()\" >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 4. FIELD OPERATIONS REGISTRY - Go API
+  # ══════════════════════════════════════════════════════════════
+  statgate-registry-api:
+    build:
+      context: ./stage_register/go-backend
+    ports:
+      - "9090:9090"
+    environment:
+      - PORT=9090
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=Kaggle
+      - DB_PASSWORD=Statgate_kaggle
+      - DB_NAME=kaggle
+      - DB_SSLMODE=disable
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
+    secrets:
+      - STATGATE_REGISTRY_JWT_SECRET
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/ready >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 5. FIELD OPERATIONS REGISTRY - React UI
+  # ══════════════════════════════════════════════════════════════
+  statgate-registry-ui:
+    build:
+      context: ./stage_register/frontend
+      args:
+        REACT_APP_API_BASE_URL_PROD: http://localhost:9090/api
+        REACT_APP_API_BASE_URL_DEV: http://localhost:9090/api
+    ports:
+      - "3001:80"
+    depends_on:
+      statgate-registry-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 6. OPERATIONS HELPDESK - Node.js Backend
+  # ══════════════════════════════════════════════════════════════
+  statgate-helpdesk-api:
+    build:
+      context: ./helpdesk-master/backend
+    ports:
+      - "5006:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=statgate
+      - POSTGRES_USER=statgate
+      - POSTGRES_PASSWORD=Uganda2026
+      - JWT_SECRET=${HELPDESK_JWT_SECRET:-statgate_helpdesk_secret_2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api-docs >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 7. OPERATIONS HELPDESK - React UI
+  # ══════════════════════════════════════════════════════════════
+  statgate-helpdesk-ui:
+    build:
+      context: ./helpdesk-master/frontend
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:5006/api
+    ports:
+      - "3002:80"
+    depends_on:
+      statgate-helpdesk-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # MONITORING & OBSERVABILITY
+  # ══════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9095:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  grafana:
+    image: grafana/grafana:9.0.0
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - statgate-network
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # OPTIONAL ANALYTICS SERVICES
+  # ══════════════════════════════════════════════════════════════
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  jupyterhub:
+    build:
+      context: ./jupyterhub
+    ports:
+      - "8000:8000"
+    volumes:
+      - jupyterhub_data:/srv/jupyterhub
+      - ./monitoring/jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  superset:
+    image: apache/superset:latest
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-StatGate_Superset_Secret_Key_2026}
+      - SUPERSET_LOAD_EXAMPLES=no
+    volumes:
+      - superset_data:/var/lib/superset
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  airflow:
+    image: apache/airflow:2.6.3
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./monitoring/airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+  mlflow:
+    image: larribas/mlflow:latest
+    ports:
+      - "5002:5000"
+    environment:
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=s3://mlflow/artifacts
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+    networks:
+      - statgate-network
+
+networks:
+  statgate-network:
+    driver: bridge
+    name: statgate-network
+
+secrets:
+  FLASK_SECRET_KEY:
+    file: ./secrets/FLASK_SECRET_KEY
+  STATGATE_INTERNAL_API_KEY:
+    file: ./secrets/STATGATE_INTERNAL_API_KEY
+  STATGATE_REGISTRY_JWT_SECRET:
+    file: ./secrets/STATGATE_REGISTRY_JWT_SECRET
+
+volumes:
+  pgdata:
+  minio_data:
+  jupyterhub_data:
+  superset_data:
+  airflow_logs:
+  mlflow_data:

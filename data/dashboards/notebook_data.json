@@ -1,0 +1,11 @@
+{
+  "session_id": "jupyter_session_1785526624854",
+  "dataset": "data",
+  "saved_at": "2026-07-31T19:37:26.665Z",
+  "cells": [
+    "# StatGate Jupyter Session: data\n# SDK Connection: Native StatGate Engine Client\n\nfrom statgate import engine\nimport pandas as pd\n\ndf = engine.load_dataset('data')\nprint(f\"Loaded dataset: data | Shape: {df.shape}\")\nprint(\"\\n--- Column Data Types ---\")\nprint(df.dtypes)\n",
+    "# Perform statistical analysis & group aggregations on df\nif not df.empty:\n    print(\"--- Summary Statistics ---\")\n    print(df.describe())\n",
+    "# Write custom Python code using `from statgate import engine` or pandas\n",
+    "# Write custom Python code using `from statgate import engine` or pandas\n"
+  ]
+}

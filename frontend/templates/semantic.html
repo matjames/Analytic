@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>StatGate - Semantic Layer Indicator Registry</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand-link">
+      <img src="{{ analytics_logo_url }}" alt="StatGate logo" class="brand-logo">
+      <div class="brand-title">StatGate <span class="brand-badge">Analytics & Decision Support</span></div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/datasets" class="nav-item">Dataset Catalog</a>
+      <a href="/notebook" class="nav-item">Notebook</a>
+      <a href="/semantic" class="nav-item active">Semantic Registry</a>
+      <a href="{{ registry_ui_url }}" class="nav-item registry-link" target="_blank" rel="noopener">Open Registry</a>
+      <a href="/abac" class="nav-item">ABAC Security</a>
+    </nav>
+  </header>
+
+  <main class="main-container">
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">Dynamic Indicator Registry</div>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px;">
+        Decouples analytical logic, formulas, and KPIs from the underlying raw Lakehouse tables.
+      </p>
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Indicator ID</th>
+            <th>Metric Name</th>
+            <th>Decoupled Formula</th>
+            <th>Unit</th>
+            <th>Tenant Context</th>
+          </tr>
+        </thead>
+        <tbody id="indicatorsTableBody">
+          <tr><td colspan="5">Loading semantic indicators...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="glass-panel">
+      <div class="panel-header">
+        <div class="panel-title">+ Register New Metric Formula</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <input type="text" id="indName" class="tenant-select" placeholder="Indicator Name (e.g. Mortality Rate)">
+        <input type="text" id="indUnit" class="tenant-select" placeholder="Unit (e.g. per 100k)">
+        <input type="text" id="indFormula" class="tenant-select" style="grid-column: span 2;" placeholder="Decoupled Expression (e.g. SUM(deaths) / SUM(population) * 100000)">
+        <input type="text" id="indDesc" class="tenant-select" style="grid-column: span 2;" placeholder="Description">
+      </div>
+      <button class="btn-primary" onclick="createIndicator()">Register Semantic Indicator</button>
+    </div>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

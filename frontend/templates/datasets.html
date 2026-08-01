@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StatGate – Dataset Exploration Workspace</title>
+  <meta name="description" content="Explore 40+ datasets, inspect schemas, preview raw data, and launch analytical sessions in StatGate.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/datasets.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand-link">
+      <img src="{{ analytics_logo_url }}" alt="StatGate logo" class="brand-logo">
+      <div class="brand-title">StatGate <span class="brand-badge">Analytics & Decision Support</span></div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/datasets" class="nav-item active">Dataset Catalog</a>
+      <a href="/notebook" class="nav-item">Notebook</a>
+      <a href="/semantic" class="nav-item">Semantic Registry</a>
+      <a href="{{ registry_ui_url }}" class="nav-item registry-link" target="_blank" rel="noopener">Open Registry</a>
+      <a href="/abac" class="nav-item">ABAC Security</a>
+    </nav>
+  </header>
+
+  <div class="workspace-layout">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="workspace-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">
+          <span class="sidebar-icon">🗂️</span>
+          <span>Dataset Catalog</span>
+        </div>
+        <div id="catalogCountBadge" class="badge-tag badge-green" style="font-size:0.72rem;">Loading…</div>
+      </div>
+
+      <div class="sidebar-search">
+        <input type="text" id="sidebarSearchInput" class="sidebar-search-input" placeholder="🔍 Search datasets…" onkeyup="filterSidebarDatasets()">
+      </div>
+
+      <ul class="dataset-list" id="datasetSidebarList">
+        <li class="dataset-list-placeholder">Loading datasets from Go engine…</li>
+      </ul>
+    </aside>
+
+    <!-- ── MAIN WORKSPACE ── -->
+    <main class="workspace-main">
+
+      <!-- Welcome state (no dataset selected) -->
+      <div class="workspace-welcome" id="workspaceWelcome">
+        <div class="welcome-icon">📊</div>
+        <h2>Select a Dataset to Explore</h2>
+        <p>Click any dataset in the sidebar to inspect its schema, data types, null counts, distribution statistics, and preview raw records directly in the browser.</p>
+        <div class="welcome-features">
+          <div class="welcome-feature"><span>📋</span><span>Deep Schema Analysis</span></div>
+          <div class="welcome-feature"><span>📊</span><span>Interactive Data Grid (100 rows)</span></div>
+          <div class="welcome-feature"><span>🚀</span><span>1-Click Notebook Launch</span></div>
+          <div class="welcome-feature"><span>⚡</span><span>Sub-second Profiling SLA</span></div>
+        </div>
+      </div>
+
+      <!-- Dataset workspace panel (visible after selection) -->
+      <div class="workspace-panel" id="workspacePanel" style="display:none;">
+
+        <!-- Dataset header -->
+        <div class="dataset-header-bar">
+          <div class="dataset-header-left">
+            <div class="dataset-header-name" id="panelDatasetName">—</div>
+            <div class="dataset-header-meta" id="panelDatasetMeta">—</div>
+          </div>
+          <div class="dataset-header-actions">
+            <button class="btn-launch" id="launchNotebookBtn" onclick="launchAnalysisInNotebook()">
+              🚀 Launch Analysis in Notebook
+            </button>
+          </div>
+        </div>
+
+        <!-- Stat pills -->
+        <div class="stat-pills" id="statPills">
+          <div class="stat-pill"><span class="stat-pill-label">Rows</span><span class="stat-pill-val" id="pillRows">—</span></div>
+          <div class="stat-pill"><span class="stat-pill-label">Columns</span><span class="stat-pill-val" id="pillCols">—</span></div>
+          <div class="stat-pill"><span class="stat-pill-label">Engine SLA</span><span class="stat-pill-val" id="pillLatency">—</span></div>
+          <div class="stat-pill"><span class="stat-pill-label">Schema</span><span class="stat-pill-val">ml_staging</span></div>
+          <div class="stat-pill"><span class="stat-pill-label">ABAC</span><span class="stat-pill-val" style="color:var(--accent-green);">Verified</span></div>
+        </div>
+
+        <!-- Tab navigation -->
+        <div class="tab-nav">
+          <button id="tabBtnSchema" class="tab-btn tab-btn-active" onclick="switchTab('schema')">📋 Schema Definition</button>
+          <button id="tabBtnData" class="tab-btn" onclick="switchTab('data')">📊 Raw Data Grid <span id="rowCountLabel" class="tab-badge">0 rows</span></button>
+        </div>
+
+        <!-- SCHEMA TAB -->
+        <div id="tabSchema" class="tab-content">
+          <div class="schema-table-wrap">
+            <table class="schema-table" id="schemaTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Column Name</th>
+                  <th>Data Type</th>
+                  <th>Null Count</th>
+                  <th>Distinct Values</th>
+                  <th>Min</th>
+                  <th>Mean</th>
+                  <th>Max</th>
+                  <th>Std Dev</th>
+                </tr>
+              </thead>
+              <tbody id="schemaTableBody">
+                <tr><td colspan="9" class="loading-cell">Fetching schema from StatGateAnalysisEngine…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- DATA GRID TAB -->
+        <div id="tabData" class="tab-content" style="display:none;">
+          <div class="data-grid-wrap" id="dataGridWrap">
+            <div class="loading-cell" style="padding:40px; text-align:center;">Select a dataset and switch to the Data tab to load records.</div>
+          </div>
+        </div>
+
+      </div><!-- /workspace-panel -->
+    </main>
+  </div>
+
+  <script src="/static/js/catalog.js"></script>
+</body>
+</html>

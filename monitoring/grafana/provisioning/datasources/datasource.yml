@@ -1,0 +1,31 @@
+apiVersion: 1
+providers:
+  - name: 'Prometheus'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+---
+# Datasource definition
+apiVersion: 1
+kind: Datasource
+metadata:
+  name: Prometheus
+  type: prometheus
+spec:
+  access: proxy
+  url: http://prometheus:9090
+  basicAuth: false
+
+---
+# Loki datasource
+apiVersion: 1
+kind: Datasource
+metadata:
+  name: Loki
+  type: loki
+spec:
+  access: proxy
+  url: http://loki:3100
+  basicAuth: false

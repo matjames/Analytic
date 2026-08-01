@@ -1,0 +1,74 @@
+{
+  "goal": "Improve tourism infrastructure",
+  "tenant_id": "tenant-alpha",
+  "domain": "tourism",
+  "dataset_discovery_error": null,
+  "dataset_candidates": [
+    "hotel_bookings_raw"
+  ],
+  "datasets_analyzed": [
+    {
+      "table": "hotel_bookings_raw",
+      "error": "Database unavailable while reading schema for table hotel_bookings_raw and KAGGLE_ALLOW_FALLBACK is disabled."
+    }
+  ],
+  "profile_errors": [
+    {
+      "table": "hotel_bookings_raw",
+      "error": "Database unavailable while reading schema for table hotel_bookings_raw and KAGGLE_ALLOW_FALLBACK is disabled."
+    }
+  ],
+  "anomalies_detected": [],
+  "actions_needed": 1,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "Cross-Domain Anomaly Investigation",
+      "description": "3-sigma breach detected. Recommend immediate dataset review across related tables. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "STDDEV(value)",
+      "action": "webhook/alert-manager",
+      "priority": "HIGH",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Federated Benchmark Comparison",
+      "description": "Compare current tenant metrics against anonymized global averages from the federated model. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "AVG(value) / global_avg",
+      "action": "webhook/benchmark-request",
+      "priority": "MEDIUM",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Predictive Governance Alert",
+      "description": "Trend-extrapolation suggests metric will breach policy threshold within 14 days. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "value + (AVG(value) - LAG(AVG(value))) * 14",
+      "action": "webhook/create-alert",
+      "priority": "CRITICAL",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": null,
+    "global_count": 0,
+    "participating_datasets": 0
+  },
+  "generated_at": "2026-08-01T13:21:28.623113+00:00",
+  "engine_latency_ms": 36677.9
+}

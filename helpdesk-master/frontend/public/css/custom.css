@@ -1,0 +1,30 @@
+
+.widget-two-success {
+  background-color: rgba(75, 211, 150, .2);
+  border-color: rgba(75, 211, 150, .5);
+}
+
+.widget-two-primary {
+  background-color: rgba(127, 193, 252, .2);
+  border-color: rgba(127, 193, 252, .5);
+}
+
+.widget-two-warning {
+  background-color: rgba(249, 200, 81, .2);
+  border-color: rgba(249, 200, 81, .5);
+}
+
+.widget-two-info {
+  background-color: rgba(58, 201, 214, .2);
+  border-color: rgba(58, 201, 214, .5);
+}
+
+.widget-three {
+  background-color: #fabfc4;
+  border-color: #fabfc4;
+}
+
+.search-box .form-control {
+  border-radius: 10px;
+  padding-left: 40px;
+}

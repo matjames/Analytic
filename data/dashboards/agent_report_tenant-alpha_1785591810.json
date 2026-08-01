@@ -1,0 +1,74 @@
+{
+  "goal": "Improve tourism infrastructure",
+  "tenant_id": "tenant-alpha",
+  "domain": "tourism",
+  "dataset_discovery_error": null,
+  "dataset_candidates": [
+    "hotel_bookings_raw"
+  ],
+  "datasets_analyzed": [
+    {
+      "table": "hotel_bookings_raw",
+      "error": "Database unavailable while reading schema for table hotel_bookings_raw and KAGGLE_ALLOW_FALLBACK is disabled."
+    }
+  ],
+  "profile_errors": [
+    {
+      "table": "hotel_bookings_raw",
+      "error": "Database unavailable while reading schema for table hotel_bookings_raw and KAGGLE_ALLOW_FALLBACK is disabled."
+    }
+  ],
+  "anomalies_detected": [],
+  "actions_needed": 1,
+  "scenarios": [
+    {
+      "scenario_id": "scenario_1",
+      "title": "Optimize Hotel Occupancy",
+      "description": "Adjust room pricing and promotions based on low-occupancy periods in high-demand regions. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "AVG(occupancy_rate) WHERE region IN (SELECT region FROM ... ORDER BY occupancy_rate ASC LIMIT 5)",
+      "action": "webhook/alert-tourism-board",
+      "priority": "HIGH",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_2",
+      "title": "Boost Destination Marketing",
+      "description": "Target digital campaigns to destinations with upward booking momentum. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "SUM(bookings) / NULLIF(SUM(ad_spend), 0)",
+      "action": "webhook/create-indicator",
+      "priority": "MEDIUM",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    },
+    {
+      "scenario_id": "scenario_3",
+      "title": "Tourism Revenue Leakage Audit",
+      "description": "Identify regions where average spend per visitor is declining versus expected seasonality. Uses dataset 'hotel_bookings_raw' to validate assumptions.",
+      "goal": "improve tourism infrastructure",
+      "evidence": "No active anomaly was detected. This scenario is built from domain model guidance and dataset 'hotel_bookings_raw'. Primary dataset candidate: hotel_bookings_raw.",
+      "formula": "AVG(spend_per_visitor) - LAG(AVG(spend_per_visitor))",
+      "action": "webhook/alert-revenue-office",
+      "priority": "CRITICAL",
+      "dataset_links": [
+        "hotel_bookings_raw"
+      ],
+      "approved": false
+    }
+  ],
+  "federated_summary": {
+    "global_mean": null,
+    "global_count": 0,
+    "participating_datasets": 0
+  },
+  "generated_at": "2026-08-01T13:43:30.169760+00:00",
+  "engine_latency_ms": 2816.1
+}

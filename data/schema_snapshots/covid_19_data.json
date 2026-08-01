@@ -1,0 +1,46 @@
+{
+  "table_name": "covid_19_data",
+  "snapshotted_at": "2026-07-31T16:13:46.751110Z",
+  "columns": [
+    {
+      "column_name": "SNo",
+      "data_type": "bigint",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "ObservationDate",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Province_per_State",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Country_per_Region",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Last_Update",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Confirmed",
+      "data_type": "double precision",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Deaths",
+      "data_type": "double precision",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "Recovered",
+      "data_type": "double precision",
+      "is_nullable": "YES"
+    }
+  ]
+}

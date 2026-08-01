@@ -1,0 +1,9 @@
+global:
+  resolve_timeout: 5m
+route:
+  receiver: 'local-webhook'
+receivers:
+  - name: 'local-webhook'
+    webhook_configs:
+      - url: 'http://statgate-analytics:5000/api/alerts'
+        send_resolved: true

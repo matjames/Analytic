@@ -1,0 +1,12 @@
+.custom-header {
+    background-color: #e6f7ff; /* Light blue background color */
+    color: #1890ff; /* Text color */
+    font-weight: bold;
+  }
+  
+  .custom-table {
+    /* Additional styles for the table */
+    border-radius: 8px;
+    /* Add other styles as needed */
+  }
+  

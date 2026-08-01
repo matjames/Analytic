@@ -1,0 +1,22 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "logs-abac",
+    "title": "ABAC Audit Logs",
+    "panels": [
+      {
+        "type": "logs",
+        "title": "ABAC Audit Stream (statgate-core)",
+        "targets": [
+          {
+            "expr": "{compose_service=\"statgate-core\"} |= \"telemetry\"",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 12}
+      }
+    ],
+    "schemaVersion": 16,
+    "version": 0
+  }
+}

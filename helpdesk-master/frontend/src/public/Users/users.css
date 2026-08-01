@@ -1,0 +1,80 @@
+.datagrid {
+    background-color: white;
+    padding: 20px;
+}
+
+.muiDataGrid-toolbarContainer {
+    flex-direction: row-reverse;
+}
+
+.actions {
+    display: flex;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.info {
+    display: flex;
+    gap: 20px;
+    align-items: ceneter;
+    padding: 20px;
+}
+
+button {
+    padding: 5px;
+    cursor: pointer;
+}
+
+.add {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.725);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal {
+    padding: 50px;
+    border-radius: 10px;
+    background-color: white;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    cursor: pointer;
+}
+
+.add h3 {
+    font-size: 24px;
+    margin-bottom: 30px;
+}
+
+.add form {
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 500px;
+    justify-content: space-between;
+}
+
+.add .item {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.add input {
+    padding: 10px;
+    background-color: transparent;
+    color: gray;
+    outline: none;
+    border: 1px solid #e1e1e1;
+    border-radius: 3px;
+}
