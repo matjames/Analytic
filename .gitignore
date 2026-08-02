@@ -72,3 +72,5 @@ frontend/Scripts/
 frontend/.pytest_cache/
 frontend/temp_debug.py
 frontend/pytest_tourism_failure.txt
+todo.md
+STATGATE_SYSTEM_SUMMARY.md

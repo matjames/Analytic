@@ -100,6 +100,29 @@ async function checkEngineStatus() {
   }
 }
 
+// ── App Launcher UI ─────────────────────────────
+function toggleAppLauncher() {
+  const wrapper = document.querySelector('.app-launcher-wrapper');
+  const menu = wrapper ? wrapper.querySelector('.app-launcher-menu') : null;
+  if (!menu) return;
+  const shouldOpen = menu.style.display !== 'block';
+  document.querySelectorAll('.app-launcher-menu').forEach((entry) => {
+    entry.style.display = 'none';
+  });
+  if (shouldOpen) {
+    menu.style.display = 'block';
+  }
+}
+
+document.addEventListener('click', function (event) {
+  const wrapper = event.target.closest('.app-launcher-wrapper');
+  if (!wrapper) {
+    document.querySelectorAll('.app-launcher-menu').forEach((menu) => {
+      menu.style.display = 'none';
+    });
+  }
+});
+
 // ── Service Launcher UI ───────────────────────────
 function toggleServiceLauncher() {
   const menu = document.getElementById('serviceLauncherMenu');

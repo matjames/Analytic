@@ -160,7 +160,7 @@ export default function Login() {
     <div className="main-container">
       <div className="login-container">
         <div className="login-header">
-          <img src={require("./logo.png")} alt="StatGate logo" className="brand-logo" />
+          <img src="/statgate-logo.svg" alt="StatGate logo" className="brand-logo" />
           <h1>StatGate</h1>
           <p>Field Operations &amp; Agent Workforce Registry</p>
         </div>

@@ -50,7 +50,7 @@ services:
     build:
       context: ./appluancher
     ports:
-      - "3000:3000"
+      - "3006:3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_NAME=StatGate
@@ -71,7 +71,7 @@ services:
     build:
       context: ./backend
     ports:
-      - "8080:8080"
+      - "8082:8080"
     environment:
       - PORT=8080
       - STATGATE_ENV=production
@@ -83,7 +83,7 @@ services:
       - STATGATE_INTERNAL_API_KEY
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ready >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -147,11 +147,11 @@ services:
       - "9090:9090"
     environment:
       - PORT=9090
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=Kaggle
-      - DB_PASSWORD=Statgate_kaggle
-      - DB_NAME=kaggle
+      - REGISTRY_DB_HOST=postgres
+      - REGISTRY_DB_PORT=5432
+      - REGISTRY_DB_USER=Kaggle
+      - REGISTRY_DB_PASSWORD=Statgate_kaggle
+      - REGISTRY_DB_NAME=kaggle
       - DB_SSLMODE=disable
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
@@ -181,7 +181,7 @@ services:
         REACT_APP_API_BASE_URL_PROD: http://localhost:9090/api
         REACT_APP_API_BASE_URL_DEV: http://localhost:9090/api
     ports:
-      - "3001:80"
+      - "3007:80"
     depends_on:
       statgate-registry-api:
         condition: service_healthy
@@ -234,9 +234,51 @@ services:
       args:
         REACT_APP_API_BASE_URL: http://localhost:5006/api
     ports:
-      - "3002:80"
+      - "3005:80"
     depends_on:
       statgate-helpdesk-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 8. STATCHAT - Real-Time Collaboration Platform
+  # ══════════════════════════════════════════════════════════════
+  statchat-backend:
+    build:
+      context: ./StatChat/backend
+    ports:
+      - "4000:4000"
+    environment:
+      - BACKEND_PORT=4000
+      - DATABASE_URL=postgres://Kaggle:Statgate_kaggle@postgres:5432/statchat?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statchat-frontend:
+    build:
+      context: ./StatChat/frontend
+    ports:
+      - "3009:80"
+    depends_on:
+      statchat-backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -334,6 +376,11 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_DB_MIGRATE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    command: standalone
     ports:
       - "8085:8080"
     volumes:

@@ -7,7 +7,9 @@ COPY . .
 RUN go mod tidy
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/statgate-core ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.20
+RUN apk add --no-cache wget ca-certificates && adduser -D -u 10001 appuser
 COPY --from=build /out/statgate-core /statgate-core
+USER appuser
 EXPOSE 8080
 ENTRYPOINT ["/statgate-core"]

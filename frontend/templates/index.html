@@ -21,7 +21,7 @@
       <a href="/notebook" class="nav-item">Notebook</a>
       <a href="/semantic" class="nav-item">Semantic Registry</a>
       <div class="app-launcher-wrapper">
-        <button type="button" class="nav-item launcher-toggle" onclick="toggleAppLauncher()">Apps ▾</button>
+        <button type="button" class="nav-item launcher-toggle" onclick="toggleAppLauncher()" aria-label="Open app launcher"><i class="bi bi-grid-3x3-gap-fill"></i></button>
         <div id="appLauncherMenu" class="app-launcher-menu" style="display:none;">
           <div class="launcher-title">All applications</div>
           <div class="launcher-grid">
@@ -30,7 +30,7 @@
               <span>Analytics Home</span>
             </a>
             <a href="/datasets" class="launcher-card">
-              <span class="launcher-icon">🗂️</span>
+              <span class="launcher-icon">�</span>
               <span>Dataset Catalog</span>
             </a>
             <a href="/notebook" class="launcher-card">
@@ -49,9 +49,13 @@
               <span class="launcher-icon">🏛️</span>
               <span>Executive Centre</span>
             </a>
-            <a href="{{ registry_ui_url }}" class="launcher-card" target="_blank" rel="noopener">
-              <span class="launcher-icon">🌐</span>
-              <span>Open Registry</span>
+            <a href="http://localhost:3002" class="launcher-card">
+              <span class="launcher-icon">🧩</span>
+              <span>System Launcher</span>
+            </a>
+            <a href="http://localhost:3000" class="launcher-card">
+              <span class="launcher-icon">📝</span>
+              <span>Register Portal</span>
             </a>
           </div>
         </div>
@@ -59,23 +63,7 @@
       <a href="/abac" class="nav-item">ABAC</a>
       <a href="/executive" class="nav-item executive-link">Executive</a>
     </nav>
-    <div class="header-actions">
-      <div class="tenant-selector">
-        <span style="color:rgba(255,255,255,.82)">Workspace:</span>
-        <select id="tenantSelect" class="tenant-select" onchange="onTenantChange()">
-          <option value="tenant-alpha">Ministry of Health (tenant-alpha)</option>
-          <option value="tenant-beta">Ministry of Education (tenant-beta)</option>
-        </select>
-      </div>
-      <div class="service-launcher" style="margin-left:16px;">
-        <button class="btn-secondary" id="serviceLauncherBtn" onclick="toggleServiceLauncher()">Services ▾</button>
-        <div id="serviceLauncherMenu" style="display:none;position:absolute;background:#0b0f17;padding:10px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;right:16px;top:56px;z-index:60;min-width:260px;">
-          <div style="margin-bottom:8px;font-weight:700;color:#ddd;">Service Launcher</div>
-          <div id="serviceItems">Loading…</div>
-          <div style="margin-top:8px;text-align:right;"><button class="btn-primary" onclick="checkAllServices()">Check Status</button></div>
-        </div>
-      </div>
-    </div>
+    <div class="header-actions"></div>
   </header>
 
   <main class="main-container">
@@ -99,7 +87,7 @@
         <p>Start from the operational dashboard and live analytics overview.</p>
       </a>
       <a class="app-card" href="/datasets">
-        <div class="app-card-icon">🗂️</div>
+        <div class="app-card-icon">�</div>
         <h3>Dataset Catalog</h3>
         <p>Browse and inspect available datasets and their metadata.</p>
       </a>

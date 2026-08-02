@@ -111,9 +111,13 @@ export default function UnitsManager() {
 
   const parentOptions = useMemo(() => {
     if (!parentLevelId) return [];
-    return (unitsByLevel[parentLevelId] || []).slice().sort((a, b) => {
-      return a.name.localeCompare(b.name);
-    });
+    return (unitsByLevel[parentLevelId] || [])
+      .slice()
+      .sort((a, b) => {
+        const left = a?.name ?? "";
+        const right = b?.name ?? "";
+        return left.localeCompare(right);
+      });
   }, [parentLevelId, unitsByLevel]);
 
   async function submit(e) {

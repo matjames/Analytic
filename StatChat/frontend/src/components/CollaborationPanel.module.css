@@ -1,0 +1,370 @@
+.collabShell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.collabScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px clamp(16px, 4vw, 48px);
+  min-height: 0;
+}
+
+/* Feed posts — LinkedIn style */
+.postCard {
+  border-radius: 16px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.postHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.postAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  background: rgba(22, 92, 146, 0.12);
+  color: #165c92;
+  flex-shrink: 0;
+}
+
+.postAuthorInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.postAuthorName {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.postAuthorMeta {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.postTime {
+  font-size: 12px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.postBody {
+  padding: 0 16px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.postActions {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid rgba(107, 162, 195, 0.12);
+}
+
+.postAction {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0.7;
+  transition: background 120ms ease;
+}
+
+.postAction:hover {
+  background: rgba(22, 92, 146, 0.06);
+  opacity: 1;
+}
+
+/* Create post box */
+.createPostBox {
+  border-radius: 16px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.createPostRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.createPostInput {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(107, 162, 195, 0.3);
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.createPostInput:focus {
+  outline: none;
+  border-color: #165c92;
+}
+
+.createPostActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.createPostAction {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.createPostAction:hover {
+  background: rgba(22, 92, 146, 0.06);
+}
+
+/* Network cards */
+.networkGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.networkCard {
+  border-radius: 16px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  padding: 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.networkAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  background: rgba(22, 92, 146, 0.12);
+  color: #165c92;
+}
+
+.networkName {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.networkRole {
+  font-size: 13px;
+  opacity: 0.65;
+}
+
+.networkOrg {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+.connectButton {
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 1px solid #165c92;
+  background: transparent;
+  color: #165c92;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all 160ms ease;
+}
+
+.connectButton:hover {
+  background: #165c92;
+  color: #ffffff;
+}
+
+.connectedButton {
+  background: #165c92;
+  color: #ffffff;
+}
+
+/* Jobs */
+.jobCard {
+  border-radius: 16px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  padding: 20px;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.jobIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(22, 92, 146, 0.1);
+  flex-shrink: 0;
+}
+
+.jobInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.jobTitle {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.jobCompany {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.jobMeta {
+  font-size: 12px;
+  opacity: 0.5;
+  margin-top: 4px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.jobApply {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: none;
+  background: #165c92;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Section header */
+.sectionHeader {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 16px;
+}
+
+.sectionSubheader {
+  font-size: 13px;
+  opacity: 0.6;
+  margin: 0 0 20px;
+}
+
+/* Stats row */
+.statsRow {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.statCard {
+  flex: 1;
+  min-width: 120px;
+  border-radius: 14px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  padding: 16px;
+  text-align: center;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 800;
+  color: #165c92;
+}
+
+.statLabel {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+/* Opportunities */
+.oppCard {
+  border-radius: 16px;
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+.oppBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.oppTitle {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.oppDesc {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .collabScroll {
+    padding: 16px 12px;
+  }
+
+  .networkGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .jobCard {
+    flex-direction: column;
+  }
+}

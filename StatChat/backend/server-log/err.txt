@@ -1,0 +1,2 @@
+main.go:12:2: missing go.sum entry for module providing package github.com/joho/godotenv (imported by statchat/cmd/server); to add:
+	go get statchat/cmd/server
