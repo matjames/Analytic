@@ -2,9 +2,22 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { getValidToken } from "../../utils/auth";
 
+const launcherApps = [
+    { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bi bi-house', description: 'Open StatGate Analytics dashboard' },
+    { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bi bi-table', description: 'Open the analytics dataset catalog' },
+    { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bi bi-journal-bookmark', description: 'Open the analytics notebook workspace' },
+    { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bi bi-brain', description: 'Open the semantic indicator registry' },
+    { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bi bi-shield-lock', description: 'Open ABAC security controls' },
+    { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bi bi-bank', description: 'Open executive decision support' },
+    { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', description: 'Open the StatGate launcher' },
+    { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bi bi-journal', description: 'Open the Field Operations Registry' },
+];
+
 const Header = () => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [showLauncherMenu, setShowLauncherMenu] = useState(false);
     const dropdownRef = useRef(null);
+    const launcherRef = useRef(null);
     const [isAuthed, setIsAuthed] = useState(() => !!getValidToken());
 
     // Keep isAuthed in sync when token changes or expires (getValidToken clears storage when expired)
@@ -34,16 +47,17 @@ const Header = () => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setDropdownOpen(false);
             }
+            if (launcherRef.current && !launcherRef.current.contains(event.target)) {
+                setShowLauncherMenu(false);
+            }
         };
 
-        if (dropdownOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
+        document.addEventListener('mousedown', handleClickOutside);
 
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [dropdownOpen]);
+    }, []);
 
     return (
         <header className="public-header">
@@ -60,6 +74,29 @@ const Header = () => {
                     <ul className="nav-menu">
                         <li><Link to="/">Home</Link></li>
                         <li><Link to="/mfl">Field Operations Registry</Link></li>
+                        <li className="launcher-dropdown" ref={launcherRef}>
+                            <button
+                                className="launcher-toggle"
+                                onClick={() => setShowLauncherMenu(!showLauncherMenu)}
+                                aria-label="Open app launcher"
+                                aria-expanded={showLauncherMenu}
+                            >
+                                <i className="bi bi-grid-3x3-gap-fill"></i>
+                            </button>
+                            {showLauncherMenu && (
+                                <div className="launcher-menu">
+                                    {launcherApps.map((app) => (
+                                        <a key={app.name} href={app.url} className="launcher-item">
+                                            <i className={app.icon}></i>
+                                            <div>
+                                                <div className="launcher-item-title">{app.name}</div>
+                                                <div className="launcher-item-desc">{app.description}</div>
+                                            </div>
+                                        </a>
+                                    ))}
+                                </div>
+                            )}
+                        </li>
                         {/* <li className="nav-item dropdown" ref={dropdownRef}>
                             <span 
                                 className="nav-link dropdown-toggle" 

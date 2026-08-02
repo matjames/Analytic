@@ -133,12 +133,12 @@ def add_request_id_header(response):
 
 @app.context_processor
 def inject_registry_context():
-    registry_logo_url = f"{REGISTRY_UI_URL.rstrip('/')}/logo.png"
+    local_logo_url = url_for('static', filename='images/logo.png', _external=False)
     return {
         'registry_api_url': REGISTRY_API_URL,
         'registry_ui_url': REGISTRY_UI_URL,
         'analytics_title': 'StatGate Analytics',
-        'analytics_logo_url': registry_logo_url,
+        'analytics_logo_url': local_logo_url,
     }
 
 if AUTH_REQUIRED and (not app.secret_key or not REGISTRY_JWT_SECRET):

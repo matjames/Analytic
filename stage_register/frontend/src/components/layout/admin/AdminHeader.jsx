@@ -1,10 +1,23 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useHistory } from "react-router-dom";
 
+const launcherApps = [
+  { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bi bi-house', description: 'Open StatGate Analytics dashboard' },
+  { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bi bi-table', description: 'Open the analytics dataset catalog' },
+  { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bi bi-journal-bookmark', description: 'Open the analytics notebook workspace' },
+  { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bi bi-brain', description: 'Open the semantic indicator registry' },
+  { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bi bi-shield-lock', description: 'Open ABAC security controls' },
+  { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bi bi-bank', description: 'Open executive decision support' },
+  { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', description: 'Open the StatGate launcher' },
+  { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bi bi-journal', description: 'Open the Field Operations Registry' },
+];
+
 export default function AdminHeader({ user, userDisplay }) {
   const history = useHistory();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showLauncherMenu, setShowLauncherMenu] = useState(false);
   const dropdownRef = useRef(null);
+  const launcherRef = useRef(null);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -18,16 +31,17 @@ export default function AdminHeader({ user, userDisplay }) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
+      if (launcherRef.current && !launcherRef.current.contains(event.target)) {
+        setShowLauncherMenu(false);
+      }
     }
 
-    if (showDropdown) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showDropdown]);
+  }, []);
 
   if (!user) return null;
 
@@ -45,7 +59,7 @@ export default function AdminHeader({ user, userDisplay }) {
       <div className="header-content">
         <div className="header-left" onClick={() => history.push("/")} style={{ cursor: "pointer" }}>
           <img
-            src={require("./logo.png")}
+            src="/statgate-logo.svg"
             alt="StatGate logo"
             className="logo-badge"
           />
@@ -62,6 +76,29 @@ export default function AdminHeader({ user, userDisplay }) {
           </div>
         </div>
         <div className="header-right">
+          <div className="launcher-dropdown" ref={launcherRef}>
+            <button
+              className="launcher-toggle"
+              onClick={() => setShowLauncherMenu(!showLauncherMenu)}
+              aria-label="Open app launcher"
+              aria-expanded={showLauncherMenu}
+            >
+              <i className="bi bi-grid-3x3-gap-fill"></i>
+            </button>
+            {showLauncherMenu && (
+              <div className="launcher-menu">
+                {launcherApps.map((app) => (
+                  <a key={app.name} href={app.url} className="launcher-item">
+                    <i className={app.icon}></i>
+                    <div>
+                      <div className="launcher-item-title">{app.name}</div>
+                      <div className="launcher-item-desc">{app.description}</div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="user-profile-dropdown" ref={dropdownRef}>
             <button
               className="user-avatar-btn"

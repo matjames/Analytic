@@ -32,7 +32,7 @@ docker compose --project-directory $repoRoot up --build -d
 
 $urls = @(
     'http://localhost:5001/health',
-    'http://localhost:8081/health'
+    'http://localhost:8082/health'
 )
 
 foreach ($url in $urls) {
@@ -57,4 +57,4 @@ foreach ($url in $urls) {
 }
 
 Write-Host "Analytics is running. UI: http://localhost:5001"
-Write-Host "Core: http://localhost:8081/health"
+Write-Host "Core: http://localhost:8082/health"

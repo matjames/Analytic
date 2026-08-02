@@ -426,6 +426,24 @@
       <span class="cmd-bar-badge badge-exec">ANALYTICS & DECISION SUPPORT</span>
     </div>
     <div class="cmd-bar-right">
+      <div class="app-launcher-wrapper" style="position:relative;">
+        <button type="button" class="nav-item launcher-toggle" onclick="toggleAppLauncher()" aria-label="Open app launcher">
+          <i class="bi bi-grid-3x3-gap-fill"></i>
+        </button>
+        <div id="appLauncherMenu" class="app-launcher-menu" style="display:none;top:calc(100% + 10px);right:0;">
+          <div class="launcher-title">All applications</div>
+          <div class="launcher-grid">
+            <a href="/" class="launcher-card"><span class="launcher-icon">🏠</span><span>Dashboard</span></a>
+            <a href="/datasets" class="launcher-card"><span class="launcher-icon">📊</span><span>Dataset Catalog</span></a>
+            <a href="/notebook" class="launcher-card"><span class="launcher-icon">📓</span><span>Notebook</span></a>
+            <a href="/semantic" class="launcher-card"><span class="launcher-icon">🧠</span><span>Semantic Registry</span></a>
+            <a href="/abac" class="launcher-card"><span class="launcher-icon">🔐</span><span>ABAC Security</span></a>
+            <a href="/executive" class="launcher-card"><span class="launcher-icon">🏛️</span><span>Executive Centre</span></a>
+            <a href="http://localhost:3002" class="launcher-card"><span class="launcher-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span><span>System Launcher</span></a>
+            <a href="http://localhost:3000" class="launcher-card"><span class="launcher-icon">📝</span><span>Register Portal</span></a>
+          </div>
+        </div>
+      </div>
       <div class="live-indicator"><div class="live-dot"></div>LIVE DATA</div>
       <span style="font-size:0.78rem;color:var(--text-muted);">STATGATE UNIFIED THEME</span>
       <a href="/" class="nav-btn">← Dashboard</a>
@@ -583,5 +601,15 @@
 </div>
 
 <script src="/static/js/executive_dashboard.js"></script>
+<script>
+  document.addEventListener('click', function (event) {
+    const wrapper = event.target.closest('.app-launcher-wrapper');
+    if (!wrapper) {
+      document.querySelectorAll('.app-launcher-menu').forEach((menu) => {
+        menu.style.display = 'none';
+      });
+    }
+  });
+</script>
 </body>
 </html>

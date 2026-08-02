@@ -1,0 +1,45 @@
+.providerCard {
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  padding: 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.providerIcon {
+  font-size: 36px;
+  margin-bottom: 4px;
+}
+
+.providerName {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.providerStatus {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connectBtn {
+  margin-top: 8px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 1px solid #165c92;
+  background: transparent;
+  color: #165c92;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.connectBtn:hover {
+  background: #165c92;
+  color: #ffffff;
+}

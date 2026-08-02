@@ -191,6 +191,11 @@ export default function Register() {
       <Header />
       <div className="register-container">
         <div className="register-card">
+          <div className="register-header">
+            <img src="/statgate-logo.svg" alt="StatGate logo" className="brand-logo" />
+            <h1>StatGate</h1>
+            <p>Create your account</p>
+          </div>
           <h2 className="register-title">Create Account</h2>
 
           {success && (

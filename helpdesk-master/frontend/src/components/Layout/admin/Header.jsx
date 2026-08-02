@@ -1,11 +1,24 @@
 /* eslint-disable jsx-a11y/anchor-is-valid */
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Link, useHistory } from 'react-router-dom'
 import pic from './user.jpg'
+
+const launcherApps = [
+    { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bx bx-home', external: true },
+    { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bx bx-table', external: true },
+    { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bx bx-book-open', external: true },
+    { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bx bx-brain', external: true },
+    { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bx bx-shield', external: true },
+    { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bx bx-bank', external: true },
+    { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', external: true },
+    { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bx bx-edit', external: true },
+]
 
 const Header = () => {
 
     const history = useHistory();
+    const [showLauncher, setShowLauncher] = useState(false)
+    const launcherRef = useRef(null)
     const user = JSON.parse(localStorage.getItem("user") || "null")
     const avatarSrc = user?.profilePicture || pic
 
@@ -18,6 +31,16 @@ const Header = () => {
             console.log(error)
         }
     };
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (launcherRef.current && !launcherRef.current.contains(event.target)) {
+                setShowLauncher(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
 
     return (
         <header id="page-topbar">
@@ -34,6 +57,30 @@ const Header = () => {
                 </div>
 
                 <div class="d-flex">
+                    <div class="launcher-dropdown d-inline-block me-2" ref={launcherRef}>
+                        <button type="button" class="btn header-item noti-icon waves-effect launcher-toggle"
+                            aria-label="Open application launcher"
+                            onClick={() => setShowLauncher(!showLauncher)}>
+                            <i class="bi bi-grid-3x3-gap-fill"></i>
+                        </button>
+                        {showLauncher && (
+                            <div class="app-launcher-menu launcher-menu p-3" style={{position: 'absolute', right: '0', top: 'calc(100% + 10px)', minWidth: '280px', zIndex: 2000}}>
+                                {launcherApps.map((app) => (
+                                    <a
+                                        key={app.name}
+                                        href={app.url}
+                                        class="launcher-card d-flex align-items-center gap-2 mb-2"
+                                        style={{padding: '10px 12px', borderRadius: '10px', background: '#f8fbff', color: '#12263f', textDecoration: 'none', border: '1px solid rgba(22,92,146,0.12)'}}
+                                        onClick={() => setShowLauncher(false)}
+                                    >
+                                        <i class={app.icon} style={{fontSize: '1rem'}}></i>
+                                        <span>{app.name}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div class="dropdown d-inline-block d-lg-none ms-2">
                         <button type="button" class="btn header-item noti-icon waves-effect" id="page-header-search-dropdown"
                             data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -59,6 +106,8 @@ const Header = () => {
                             <i class="bx bx-fullscreen"></i>
                         </button>
                     </div>
+
+                    {/* Removed old standalone launcher button; using the app launcher dropdown above */}
 
                     <div class="dropdown d-inline-block">
                         <button type="button" class="btn header-item noti-icon waves-effect" id="page-header-notifications-dropdown"

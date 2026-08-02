@@ -13,11 +13,11 @@ var DB *sql.DB
 func ConnectDB() {
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
+		os.Getenv("REGISTRY_DB_HOST"),
+		os.Getenv("REGISTRY_DB_PORT"),
+		os.Getenv("REGISTRY_DB_USER"),
+		os.Getenv("REGISTRY_DB_PASSWORD"),
+		os.Getenv("REGISTRY_DB_NAME"),
 	)
 
 	db, err := sql.Open("postgres", dsn)
