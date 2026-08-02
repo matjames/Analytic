@@ -2,25 +2,29 @@ services:
   # ══════════════════════════════════════════════════════════════
   # UNIFIED STATGATE PLATFORM - ALL SERVICES
   # ══════════════════════════════════════════════════════════════
+  # NOTE: All DB credentials are sourced from .env (single source of truth).
+  # The DB *host* is set to the `postgres` service name inside Docker networking.
 
   # ── PostgreSQL (existing databases with data) ───────────────
-  # Uses external PostgreSQL - databases already exist with data:
+  # Databases created by ./docker/postgres-init/01-create-statchat-db.sql:
   #   - statgate_ml_staging (user: Kaggle, password: Statgate_kaggle)
-  #   - statgate (user: statgate, password: Uganda2026) 
+  #   - statgate (user: statgate, password: Uganda2026)
   #   - kaggle (user: Kaggle, password: Statgate_kaggle)
+  #   - statchat (user: Statchat, password: Statgate)
   postgres:
     image: postgres:15
     environment:
-      - POSTGRES_USER=Kaggle
-      - POSTGRES_PASSWORD=Statgate_kaggle
-      - POSTGRES_DB=statgate_ml_staging
+      - POSTGRES_USER=${KAGGLE_DB_USER:-Kaggle}
+      - POSTGRES_PASSWORD=${KAGGLE_DB_PASSWORD:-Statgate_kaggle}
+      - POSTGRES_DB=${KAGGLE_DB_NAME:-statgate_ml_staging}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U Kaggle -d statgate_ml_staging -h localhost"]
+      test: ["CMD-SHELL", "pg_isready -U ${KAGGLE_DB_USER:-Kaggle} -d ${KAGGLE_DB_NAME:-statgate_ml_staging} -h localhost"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -107,12 +111,12 @@ services:
       - STATGATE_REGISTRY_UI_URL=http://statgate-registry-ui:80
       - ENABLE_NOTEBOOK_EXECUTION=false
       - KAGGLE_DB_HOST=postgres
-      - KAGGLE_DB_PORT=5432
-      - KAGGLE_DB_NAME=statgate_ml_staging
-      - KAGGLE_DB_USER=Kaggle
-      - KAGGLE_DB_PASSWORD=Statgate_kaggle
-      - KAGGLE_DB_SSLMODE=disable
-      - KAGGLE_STAGING_SCHEMA=ml_staging
+      - KAGGLE_DB_PORT=${KAGGLE_DB_PORT:-5432}
+      - KAGGLE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - KAGGLE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-Statgate_kaggle}
+      - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
+      - KAGGLE_STAGING_SCHEMA=${KAGGLE_STAGING_SCHEMA:-ml_staging}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-F6nQ2rK9vT4xM8pW1dC7yH3sL0aE5jB}
@@ -148,11 +152,11 @@ services:
     environment:
       - PORT=9090
       - REGISTRY_DB_HOST=postgres
-      - REGISTRY_DB_PORT=5432
-      - REGISTRY_DB_USER=Kaggle
-      - REGISTRY_DB_PASSWORD=Statgate_kaggle
-      - REGISTRY_DB_NAME=kaggle
-      - DB_SSLMODE=disable
+      - REGISTRY_DB_PORT=${REGISTRY_DB_PORT:-5432}
+      - REGISTRY_DB_USER=${REGISTRY_DB_USER:-Kaggle}
+      - REGISTRY_DB_PASSWORD=${REGISTRY_DB_PASSWORD:-Statgate_kaggle}
+      - REGISTRY_DB_NAME=${REGISTRY_DB_NAME:-kaggle}
+      - DB_SSLMODE=${REGISTRY_DB_SSLMODE:-disable}
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
@@ -198,6 +202,8 @@ services:
   # ══════════════════════════════════════════════════════════════
   # 6. OPERATIONS HELPDESK - Node.js Backend
   # ══════════════════════════════════════════════════════════════
+  # NOTE: The app reads POSTGRES_* env vars. We map HELPDESK_DB_* from
+  # .env to POSTGRES_* here so the container gets the right credentials.
   statgate-helpdesk-api:
     build:
       context: ./helpdesk-master/backend
@@ -207,10 +213,10 @@ services:
       - PORT=5000
       - NODE_ENV=production
       - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=statgate
-      - POSTGRES_USER=statgate
-      - POSTGRES_PASSWORD=Uganda2026
+      - POSTGRES_PORT=${HELPDESK_DB_PORT:-5432}
+      - POSTGRES_DB=${HELPDESK_DB_NAME:-statgate}
+      - POSTGRES_USER=${HELPDESK_DB_USER:-statgate}
+      - POSTGRES_PASSWORD=${HELPDESK_DB_PASSWORD:-Uganda2026}
       - JWT_SECRET=${HELPDESK_JWT_SECRET:-statgate_helpdesk_secret_2026}
     depends_on:
       postgres:
@@ -257,8 +263,10 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - BACKEND_PORT=4000
-      - DATABASE_URL=postgres://Kaggle:Statgate_kaggle@postgres:5432/statchat?sslmode=disable
+      - BACKEND_PORT=${BACKEND_PORT:-4000}
+      # Override host to `postgres` (Docker service name) while keeping
+      # user/password/db from .env DATABASE_URL.
+      - DATABASE_URL=postgres://Statchat:Statgate@postgres:5432/statchat?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
@@ -376,6 +384,7 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${KAGGLE_DB_USER:-Kaggle}:${KAGGLE_DB_PASSWORD:-Statgate_kaggle}@postgres:5432/${KAGGLE_DB_NAME:-statgate_ml_staging}
       - _AIRFLOW_DB_MIGRATE=true
       - _AIRFLOW_WWW_USER_CREATE=true
       - _AIRFLOW_WWW_USER_USERNAME=admin

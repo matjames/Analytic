@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import Launcher from '../../Launcher/Launcher'
 
 const launcherApps = [
     { name: 'Dashboard', url: 'http://localhost:5000', icon: 'fa fa-home', external: true },
@@ -61,30 +62,10 @@ const Header = () => {
                         <Link className={`nav-link ${isActive('/public/videos') ? 'active' : ''}`} to="/public/videos">Training Library</Link>
                     </li>
                 </ul>
-                <div className="launcher-dropdown" ref={launcherRef}>
-                    <button
-                        type="button"
-                        className="launcher-toggle"
-                        aria-label="Open app launcher"
-                        onClick={() => setShowLauncher(!showLauncher)}
-                    >
-                        <i className="bi bi-grid-3x3-gap-fill"></i>
-                    </button>
-                    {showLauncher && (
-                        <div className="launcher-menu">
-                            {launcherApps.map((app) => (
-                                <a
-                                    key={app.name}
-                                    href={app.url}
-                                    className="launcher-card"
-                                    onClick={() => setShowLauncher(false)}
-                                >
-                                    <i className={app.icon}></i>
-                                    <span>{app.name}</span>
-                                </a>
-                            ))}
-                        </div>
-                    )}
+                {/* Use shared Launcher component */}
+                <div>
+                  {/* Launcher component injected here */}
+                  <Launcher />
                 </div>
             </div>
         </nav>
