@@ -1,0 +1,27 @@
+version: "3.9"
+
+# StatChat — Postgres backing store for the messaging gateway.
+# Start with:  docker compose up -d
+# The backend reads DATABASE_URL or the STATCHAT_DB_* env vars (see backend/.env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: statchat-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: Statchat
+      POSTGRES_PASSWORD: Statgate
+      POSTGRES_DB: statchat
+    ports:
+      - "5432:5432"
+    volumes:
+      - statchat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Statchat -d statchat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  statchat_pgdata:
