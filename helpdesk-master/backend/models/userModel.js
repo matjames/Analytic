@@ -49,7 +49,4 @@ const UserModel = sequelize.define(
   },
   { timestamps: true, schema: "statgate" }
 );
-
-UserModel.sync({ alter: true });
-
 export default UserModel;

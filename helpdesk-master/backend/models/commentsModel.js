@@ -34,6 +34,5 @@ const CommentModel = sequelize.define(
 );
 
 CommentModel.belongsTo(Ticket, { foreignKey: "ticketId" });
-CommentModel.sync({ alter: false });
 
 export default CommentModel;

@@ -54,13 +54,13 @@ services:
     build:
       context: ./appluancher
     ports:
-      - "3006:3000"
+      - "3006:3002"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_NAME=StatGate
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002 >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -160,6 +160,8 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
+      # The Go app signs/verifies tokens with JWT_SECRET (not STATGATE_REGISTRY_JWT_SECRET)
+      - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate_field_secret_key_2026}
     secrets:
       - STATGATE_REGISTRY_JWT_SECRET
     depends_on:
@@ -205,6 +207,7 @@ services:
   # NOTE: The app reads POSTGRES_* env vars. We map HELPDESK_DB_* from
   # .env to POSTGRES_* here so the container gets the right credentials.
   statgate-helpdesk-api:
+    profiles: ["disabled"]
     build:
       context: ./helpdesk-master/backend
     ports:
@@ -217,7 +220,8 @@ services:
       - POSTGRES_DB=${HELPDESK_DB_NAME:-statgate}
       - POSTGRES_USER=${HELPDESK_DB_USER:-statgate}
       - POSTGRES_PASSWORD=${HELPDESK_DB_PASSWORD:-Uganda2026}
-      - JWT_SECRET=${HELPDESK_JWT_SECRET:-statgate_helpdesk_secret_2026}
+      # The Node app signs/verifies tokens with SECRETKEY (not JWT_SECRET)
+      - SECRETKEY=${HELPDESK_JWT_SECRET:-statgate_helpdesk_secret_2026}
     depends_on:
       postgres:
         condition: service_healthy
@@ -235,6 +239,7 @@ services:
   # 7. OPERATIONS HELPDESK - React UI
   # ══════════════════════════════════════════════════════════════
   statgate-helpdesk-ui:
+    profiles: ["disabled"]
     build:
       context: ./helpdesk-master/frontend
       args:
@@ -264,9 +269,14 @@ services:
       - "4000:4000"
     environment:
       - BACKEND_PORT=${BACKEND_PORT:-4000}
-      # Override host to `postgres` (Docker service name) while keeping
-      # user/password/db from .env DATABASE_URL.
-      - DATABASE_URL=postgres://Statchat:Statgate@postgres:5432/statchat?sslmode=disable
+      - STATCHAT_DB_HOST=postgres
+      - STATCHAT_DB_PORT=${STATCHAT_DB_PORT:-5432}
+      - STATCHAT_DB_NAME=${STATCHAT_DB_NAME:-statchat}
+      - STATCHAT_DB_USER=${STATCHAT_DB_USER:-Statchat}
+      - STATCHAT_DB_PASSWORD=${STATCHAT_DB_PASSWORD:-Statgate}
+      - STATCHAT_DB_SSLMODE=${STATCHAT_DB_SSLMODE:-disable}
+      - STATCHAT_AUTH_REQUIRED=${STATCHAT_AUTH_REQUIRED:-false}
+      - STATCHAT_JWT_SECRET=${STATCHAT_JWT_SECRET:-statchat_prod_secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -434,3 +444,4 @@ volumes:
   superset_data:
   airflow_logs:
   mlflow_data:
+

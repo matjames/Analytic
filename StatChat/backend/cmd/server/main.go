@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +21,31 @@ func main() {
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/statchat?sslmode=disable"
+		host := os.Getenv("STATCHAT_DB_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("STATCHAT_DB_PORT")
+		if port == "" {
+			port = "5432"
+		}
+		user := os.Getenv("STATCHAT_DB_USER")
+		if user == "" {
+			user = "postgres"
+		}
+		password := os.Getenv("STATCHAT_DB_PASSWORD")
+		if password == "" {
+			password = "postgres"
+		}
+		name := os.Getenv("STATCHAT_DB_NAME")
+		if name == "" {
+			name = "statchat"
+		}
+		sslmode := os.Getenv("STATCHAT_DB_SSLMODE")
+		if sslmode == "" {
+			sslmode = "disable"
+		}
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, password, host, port, name, sslmode)
 	}
 
 	if err := store.Init(dsn); err != nil {

@@ -10,10 +10,14 @@ import {
   removeConnection,
   fetchOpportunities,
   fetchJobs,
+  togglePostLike,
+  addPostComment,
+  fetchPostComments,
   type Post,
   type Connection,
   type Opportunity,
   type Job,
+  type PostComment,
 } from '../api/client';
 import styles from './CollaborationPanel.module.css';
 
@@ -42,8 +46,11 @@ export default function CollaborationPanel({ user, theme, isMobile, activeSubVie
   const [connections, setConnections] = useState<Connection[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [postDraft, setPostDraft] = useState('');
+const [postDraft, setPostDraft] = useState('');
   const [showPostForm, setShowPostForm] = useState(false);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [postComments, setPostComments] = useState<Record<string, PostComment[]>>({});
 
   const connectedIds = new Set(connections.map((c) => c.connectedToId));
 
@@ -88,7 +95,7 @@ export default function CollaborationPanel({ user, theme, isMobile, activeSubVie
     }
   };
 
-  const toggleConnect = async (userId: string) => {
+const toggleConnect = async (userId: string) => {
     try {
       if (connectedIds.has(userId)) {
         await removeConnection(userId);
@@ -97,6 +104,54 @@ export default function CollaborationPanel({ user, theme, isMobile, activeSubVie
         const conn = await createConnection(userId);
         setConnections((prev) => [conn, ...prev]);
       }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleToggleLike = async (postId: string) => {
+    try {
+      const { liked } = await togglePostLike(postId, user?.id);
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, likedByMe: liked, likes: Math.max(0, p.likes + (liked ? 1 : -1)) }
+            : p
+        )
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleComments = async (postId: string) => {
+    const isOpen = expandedComments[postId];
+    setExpandedComments((prev) => ({ ...prev, [postId]: !isOpen }));
+    if (!isOpen && !postComments[postId]) {
+      try {
+        const comments = await fetchPostComments(postId);
+        setPostComments((prev) => ({ ...prev, [postId]: comments }));
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const handleAddComment = async (postId: string) => {
+    const text = commentDrafts[postId]?.trim();
+    if (!text) return;
+    try {
+      const comment = await addPostComment(postId, {
+        author: user?.name ?? 'StatChat User',
+        role: user?.roles?.[0],
+        org: user?.organizationId,
+        text,
+      });
+      setPostComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), comment] }));
+      setPosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, comments: p.comments + 1 } : p))
+      );
+      setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
     } catch {
       // ignore
     }
@@ -181,12 +236,85 @@ export default function CollaborationPanel({ user, theme, isMobile, activeSubVie
             </div>
             <span className={styles.postTime}>{post.time}</span>
           </div>
-          <div className={styles.postBody}>{post.text}</div>
+<div className={styles.postBody}>{post.text}</div>
           <div className={styles.postActions}>
-            <button type="button" className={styles.postAction}>👍 Like ({post.likes})</button>
-            <button type="button" className={styles.postAction}>💬 Comment ({post.comments})</button>
+            <button
+              type="button"
+              className={`${styles.postAction} ${post.likedByMe ? styles.postActionActive : ''}`}
+              onClick={() => handleToggleLike(post.id)}
+              style={post.likedByMe ? { color: '#165c92', fontWeight: 700 } : undefined}
+            >
+              {post.likedByMe ? '👍 Liked' : '👍 Like'} ({post.likes})
+            </button>
+            <button type="button" className={styles.postAction} onClick={() => toggleComments(post.id)}>
+              💬 Comment ({post.comments})
+            </button>
             <button type="button" className={styles.postAction}>↗ Share ({post.shares})</button>
           </div>
+
+          {expandedComments[post.id] && (
+            <div className={styles.commentsSection} style={{ borderTop: `1px solid ${borderColor}`, paddingTop: 12, marginTop: 8 }}>
+              {postComments[post.id]?.map((comment) => (
+                <div key={comment.id} className={styles.commentRow} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div className={styles.postAvatar} style={{ width: 28, height: 28, fontSize: 11 }}>
+                    {getAvatarText(comment.author)}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                      {comment.author}
+                      {comment.role && <span style={{ fontWeight: 400, opacity: 0.6 }}> · {comment.role}</span>}
+                    </div>
+                    <div style={{ fontSize: 13, opacity: 0.9 }}>{comment.text}</div>
+                    <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>
+                      {new Date(comment.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className={styles.postAvatar} style={{ width: 28, height: 28, fontSize: 11 }}>
+                  {getAvatarText(user?.name ?? 'U')}
+                </div>
+                <input
+                  type="text"
+                  value={commentDrafts[post.id] || ''}
+                  onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddComment(post.id);
+                  }}
+                  placeholder="Write a comment..."
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: 999,
+                    border: `1px solid ${borderColor}`,
+                    background: 'transparent',
+                    color: textColor,
+                    fontSize: 13,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddComment(post.id)}
+                  disabled={!commentDrafts[post.id]?.trim()}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: '#165c92',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    opacity: commentDrafts[post.id]?.trim() ? 1 : 0.5,
+                  }}
+                >
+                  Post
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

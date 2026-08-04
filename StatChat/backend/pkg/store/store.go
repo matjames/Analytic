@@ -101,6 +101,8 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS parent_message_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS thread_root_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'sent';
 
 CREATE TABLE IF NOT EXISTS message_reactions (
   id TEXT PRIMARY KEY,
@@ -150,15 +152,65 @@ CREATE TABLE IF NOT EXISTS user_settings (
   voice_notes BOOLEAN NOT NULL DEFAULT true,
   read_by_default BOOLEAN NOT NULL DEFAULT false,
   auto_download TEXT NOT NULL DEFAULT 'never',
-  notif_messages BOOLEAN NOT NULL DEFAULT true,
+notif_messages BOOLEAN NOT NULL DEFAULT true,
   notif_groups BOOLEAN NOT NULL DEFAULT true,
   notif_mentions BOOLEAN NOT NULL DEFAULT true,
   notif_meetings BOOLEAN NOT NULL DEFAULT true,
   notif_sound BOOLEAN NOT NULL DEFAULT true,
   notif_preview BOOLEAN NOT NULL DEFAULT false,
+  notif_collaboration BOOLEAN NOT NULL DEFAULT true,
+  notif_files BOOLEAN NOT NULL DEFAULT true,
+  notif_knowledge BOOLEAN NOT NULL DEFAULT true,
+  notif_wellness BOOLEAN NOT NULL DEFAULT true,
+  cross_service_alerts BOOLEAN NOT NULL DEFAULT true,
   download_images TEXT NOT NULL DEFAULT 'wifi',
   download_videos TEXT NOT NULL DEFAULT 'wifi',
   download_documents TEXT NOT NULL DEFAULT 'wifi'
+);
+
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS notif_collaboration BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS notif_files BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS notif_knowledge BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS notif_wellness BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS cross_service_alerts BOOLEAN NOT NULL DEFAULT true;
+
+CREATE TABLE IF NOT EXISTS read_receipts (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES messages(id),
+  user_id TEXT NOT NULL,
+  read_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (message_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  assignee TEXT,
+  priority TEXT NOT NULL DEFAULT 'medium',
+  due_date TEXT,
+  status TEXT NOT NULL DEFAULT 'todo',
+  conversation_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  link TEXT,
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_presence (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'offline',
+  updated_at TIMESTAMPTZ NOT NULL
 );
 `)
 	return err
@@ -774,12 +826,12 @@ func GetUserSettings(userID string) (model.UserSettings, error) {
 	err := db.QueryRowContext(context.Background(), `
 SELECT user_id, theme, accent_color, font_size, enter_to_send, language, last_seen, profile_photo,
        read_receipts, typing_indicator, voice_notes, read_by_default, auto_download,
-       notif_messages, notif_groups, notif_mentions, notif_meetings, notif_sound, notif_preview,
+       notif_messages, notif_groups, notif_mentions, notif_meetings, notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
        download_images, download_videos, download_documents
 FROM user_settings WHERE user_id = $1`, userID).Scan(
 		&s.UserID, &s.Theme, &s.AccentColor, &s.FontSize, &s.EnterToSend, &s.Language, &s.LastSeen, &s.ProfilePhoto,
 		&s.ReadReceipts, &s.TypingIndicator, &s.VoiceNotes, &s.ReadByDefault, &s.AutoDownload,
-		&s.NotifMessages, &s.NotifGroups, &s.NotifMentions, &s.NotifMeetings, &s.NotifSound, &s.NotifPreview,
+		&s.NotifMessages, &s.NotifGroups, &s.NotifMentions, &s.NotifMeetings, &s.NotifCollaboration, &s.NotifFiles, &s.NotifKnowledge, &s.NotifWellness, &s.NotifSound, &s.NotifPreview, &s.CrossServiceAlerts,
 		&s.DownloadImages, &s.DownloadVideos, &s.DownloadDocuments,
 	)
 	if err == sql.ErrNoRows {
@@ -793,9 +845,9 @@ func UpsertUserSettings(s model.UserSettings) error {
 INSERT INTO user_settings (
   user_id, theme, accent_color, font_size, enter_to_send, language, last_seen, profile_photo,
   read_receipts, typing_indicator, voice_notes, read_by_default, auto_download,
-  notif_messages, notif_groups, notif_mentions, notif_meetings, notif_sound, notif_preview,
+  notif_messages, notif_groups, notif_mentions, notif_meetings, notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
   download_images, download_videos, download_documents
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
 ON CONFLICT (user_id) DO UPDATE SET
   theme = EXCLUDED.theme, accent_color = EXCLUDED.accent_color, font_size = EXCLUDED.font_size,
   enter_to_send = EXCLUDED.enter_to_send, language = EXCLUDED.language, last_seen = EXCLUDED.last_seen,
@@ -804,12 +856,14 @@ ON CONFLICT (user_id) DO UPDATE SET
   read_by_default = EXCLUDED.read_by_default, auto_download = EXCLUDED.auto_download,
   notif_messages = EXCLUDED.notif_messages, notif_groups = EXCLUDED.notif_groups,
   notif_mentions = EXCLUDED.notif_mentions, notif_meetings = EXCLUDED.notif_meetings,
+  notif_collaboration = EXCLUDED.notif_collaboration, notif_files = EXCLUDED.notif_files,
+  notif_knowledge = EXCLUDED.notif_knowledge, notif_wellness = EXCLUDED.notif_wellness,
   notif_sound = EXCLUDED.notif_sound, notif_preview = EXCLUDED.notif_preview,
-  download_images = EXCLUDED.download_images, download_videos = EXCLUDED.download_videos,
-  download_documents = EXCLUDED.download_documents`,
+  cross_service_alerts = EXCLUDED.cross_service_alerts, download_images = EXCLUDED.download_images,
+  download_videos = EXCLUDED.download_videos, download_documents = EXCLUDED.download_documents`,
 		s.UserID, s.Theme, s.AccentColor, s.FontSize, s.EnterToSend, s.Language, s.LastSeen, s.ProfilePhoto,
 		s.ReadReceipts, s.TypingIndicator, s.VoiceNotes, s.ReadByDefault, s.AutoDownload,
-		s.NotifMessages, s.NotifGroups, s.NotifMentions, s.NotifMeetings, s.NotifSound, s.NotifPreview,
+		s.NotifMessages, s.NotifGroups, s.NotifMentions, s.NotifMeetings, s.NotifCollaboration, s.NotifFiles, s.NotifKnowledge, s.NotifWellness, s.NotifSound, s.NotifPreview, s.CrossServiceAlerts,
 		s.DownloadImages, s.DownloadVideos, s.DownloadDocuments,
 	)
 	return err
@@ -925,12 +979,23 @@ func GetChannels() ([]model.Channel, error) {
 
 func GetConversations() ([]model.Conversation, error) {
 	rows, err := db.QueryContext(context.Background(), `
-SELECT id, name, type, channel_id, member_ids, COALESCE(category, ''), COALESCE(latest_preview, ''), latest_message_at, COALESCE(attachment_count, 0)
+SELECT id, name, type, channel_id, member_ids, COALESCE(category, ''), COALESCE(latest_preview, ''), latest_message_at, COALESCE(attachment_count, 0), COALESCE(unread_count, 0)
 FROM (
   SELECT c.id, c.name, c.type, c.channel_id, c.member_ids, c.category,
          m.text AS latest_preview,
          m.created_at AS latest_message_at,
-         COALESCE(a.attachment_count, 0) AS attachment_count
+         COALESCE(a.attachment_count, 0) AS attachment_count,
+         (
+           SELECT COUNT(1)
+           FROM messages unread_m
+           WHERE unread_m.conversation_id = c.id
+             AND unread_m.status != 'deleted'
+             AND unread_m.sender != 'StatChat User'
+             AND NOT EXISTS (
+               SELECT 1 FROM read_receipts rr
+               WHERE rr.message_id = unread_m.id AND rr.user_id = 'user-001'
+             )
+         ) AS unread_count
   FROM conversations c
   LEFT JOIN LATERAL (
     SELECT id, text, created_at
@@ -962,7 +1027,8 @@ ORDER BY name
 		var latestPreview string
 		var latestMessageAt sql.NullTime
 		var attachmentCount int
-		if err := rows.Scan(&conversation.ID, &conversation.Name, &convType, &channelID, &memberIDsJSON, &category, &latestPreview, &latestMessageAt, &attachmentCount); err != nil {
+		var unreadCount int
+		if err := rows.Scan(&conversation.ID, &conversation.Name, &convType, &channelID, &memberIDsJSON, &category, &latestPreview, &latestMessageAt, &attachmentCount, &unreadCount); err != nil {
 			return nil, err
 		}
 		conversation.Type = model.ConversationType(convType)
@@ -970,6 +1036,7 @@ ORDER BY name
 		conversation.Category = category
 		conversation.LatestPreview = latestPreview
 		conversation.AttachmentCount = attachmentCount
+		conversation.UnreadCount = unreadCount
 		if latestMessageAt.Valid {
 			conversation.LatestMessageAt = latestMessageAt.Time
 		}
@@ -982,13 +1049,16 @@ ORDER BY name
 }
 
 func GetMessages(conversationID string) ([]model.Message, error) {
+	return GetMessagesForTenant(conversationID, "")
+}
+
+func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, error) {
 	var rows *sql.Rows
 	var err error
-
 	if conversationID == "" {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status FROM messages WHERE status != 'deleted' ORDER BY created_at`)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE status != 'deleted' AND ($1 = '' OR tenant_id = $1) ORDER BY created_at`, tenantID)
 	} else {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status FROM messages WHERE conversation_id = $1 AND status != 'deleted' ORDER BY created_at`, conversationID)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE conversation_id = $1 AND status != 'deleted' AND ($2 = '' OR tenant_id = $2) ORDER BY created_at`, conversationID, tenantID)
 	}
 	if err != nil {
 		return nil, err
@@ -1015,6 +1085,8 @@ func GetMessages(conversationID string) ([]model.Message, error) {
 			&parentID,
 			&threadRootID,
 			&msg.Status,
+			&msg.TenantID,
+			&msg.DeliveryStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -1029,6 +1101,31 @@ func GetMessages(conversationID string) ([]model.Message, error) {
 		msg.ThreadRootID = threadRootID.String
 		messages = append(messages, msg)
 	}
+	for i := range messages {
+		attachments, err := GetMessageAttachments(messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].Attachments = attachments
+
+		reactions, err := GetMessageReactions(messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].Reactions = reactions
+
+		pinned, err := IsMessagePinned(messages[i].ConversationID, messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].Pinned = pinned
+
+		readBy, err := GetMessageReadBy(messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].ReadBy = readBy
+	}
 	return messages, rows.Err()
 }
 
@@ -1039,7 +1136,7 @@ func StoreMessage(message model.Message) error {
 	if message.Status == "" {
 		message.Status = "active"
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		message.ID,
 		message.ConversationID,
 		message.ChannelID,
@@ -1051,8 +1148,42 @@ func StoreMessage(message model.Message) error {
 		nullString(message.ParentMessageID),
 		nullString(message.ThreadRootID),
 		message.Status,
+		message.TenantID,
+		message.DeliveryStatus,
 	)
 	return err
+}
+
+func StoreMessageAttachment(attachment model.MessageAttachment) error {
+	_, err := db.ExecContext(context.Background(), `INSERT INTO message_attachments (id, message_id, file_name, file_type, url, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		attachment.ID,
+		attachment.MessageID,
+		attachment.FileName,
+		attachment.FileType,
+		attachment.URL,
+		nil,
+		attachment.CreatedAt,
+	)
+	return err
+}
+
+func GetMessageAttachments(messageID string) ([]model.MessageAttachment, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, message_id, file_name, file_type, url, created_at FROM message_attachments WHERE message_id = $1 ORDER BY created_at`, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	attachments := []model.MessageAttachment{}
+	for rows.Next() {
+		var attachment model.MessageAttachment
+		if err := rows.Scan(&attachment.ID, &attachment.MessageID, &attachment.FileName, &attachment.FileType, &attachment.URL, &attachment.CreatedAt); err != nil {
+			return nil, err
+		}
+		attachment.MimeType = attachment.FileType
+		attachments = append(attachments, attachment)
+	}
+	return attachments, rows.Err()
 }
 
 func UpdateMessage(message model.Message) error {
@@ -1075,7 +1206,7 @@ func GetMessageByID(messageID string) (model.Message, error) {
 	var threadRootID sql.NullString
 	var status sql.NullString
 
-	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status FROM messages WHERE id = $1`, messageID).Scan(
+	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE id = $1`, messageID).Scan(
 		&msg.ID,
 		&msg.ConversationID,
 		&channelID,
@@ -1087,6 +1218,8 @@ func GetMessageByID(messageID string) (model.Message, error) {
 		&parentID,
 		&threadRootID,
 		&status,
+		&msg.TenantID,
+		&msg.DeliveryStatus,
 	)
 	if err != nil {
 		return msg, err
@@ -1118,12 +1251,25 @@ func nullString(s string) interface{} {
 	return s
 }
 
+func conversationRouteKey(tenantID, conversationID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		conversationID = "general"
+	}
+	return fmt.Sprintf("%s:%s", tenantID, conversationID)
+}
+
 func BroadcastMessage(message model.Message) {
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
 
+	roomKey := conversationRouteKey(message.TenantID, message.ConversationID)
 	for client := range clients {
-		if client.conversation != message.ConversationID {
+		if client.conversation != roomKey {
 			continue
 		}
 		if err := client.conn.WriteJSON(message); err != nil {
