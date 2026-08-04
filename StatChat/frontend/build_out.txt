@@ -1,0 +1,13 @@
+﻿
+> statchat-frontend@0.1.0 build
+> vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 51 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                 [39m[1m[2m  1.39 kB[22m[1m[22m[2m Γöé gzip:  0.69 kB[22m
+[2mdist/[22m[35massets/index-DEuo-zYO.css  [39m[1m[2m 48.74 kB[22m[1m[22m[2m Γöé gzip:  9.45 kB[22m
+[2mdist/[22m[36massets/index-CHdPoQJV.js   [39m[1m[2m279.30 kB[22m[1m[22m[2m Γöé gzip: 79.96 kB[22m
+[32mΓ£ô built in 1.73s[39m

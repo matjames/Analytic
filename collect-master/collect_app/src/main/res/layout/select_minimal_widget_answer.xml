@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <org.odk.collect.androidshared.ui.multiclicksafe.MultiClickSafeTextInputEditText
+        android:id="@+id/answer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="@dimen/margin_extra_small"
+        android:paddingHorizontal="@dimen/margin_extra_small"
+        android:text="@string/select_answer"
+        android:focusable="false"
+        android:drawableEnd="@drawable/ic_arrow_drop_down"
+        android:cursorVisible="false"
+        android:inputType="textMultiLine|textNoSuggestions"
+        android:saveEnabled="false"/>
+</FrameLayout>

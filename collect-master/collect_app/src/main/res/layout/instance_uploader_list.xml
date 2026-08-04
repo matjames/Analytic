@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Copyright (C) 2009 University of Washington
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations under
+the License.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/app_bar_with_progress_bar_layout" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/llParent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/appBarLayout">
+
+        <org.odk.collect.android.instancemanagement.send.ReadyToSendBanner
+            android:id="@+id/ready_to_send_banner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <ListView
+            android:id="@android:id/list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:clipToPadding="false"
+            android:divider="@drawable/list_item_divider"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:scrollbarStyle="outsideOverlay"
+            app:layout_constraintBottom_toTopOf="@id/buttonholder"
+            app:layout_constraintTop_toBottomOf="@id/ready_to_send_banner" />
+
+        <org.odk.collect.androidshared.ui.EmptyListView
+            android:id="@android:id/empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:icon="@drawable/ic_baseline_send_72"
+            app:title="@string/empty_list_of_finalized_forms_title"
+            app:subtitle="@string/empty_list_of_finalized_forms_subtitle"/>
+
+        <LinearLayout
+            android:id="@+id/buttonholder"
+            style="@style/Widget.AndroidShared.ButtonBar"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/toggle_button"
+                style="?materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="@dimen/margin_standard"
+                android:layout_weight="1"
+                android:text="@string/select_all" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/upload_button"
+                style="?materialButtonStyle"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="@dimen/margin_standard"
+                android:layout_marginEnd="@dimen/margin_standard"
+                android:layout_weight="1"
+                android:text="@string/send_selected_data" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</RelativeLayout>
