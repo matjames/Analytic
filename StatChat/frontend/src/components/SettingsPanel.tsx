@@ -30,11 +30,11 @@ interface NavMeta {
 
 const navMeta: Record<SettingsSection, NavMeta> = {
   profile: { label: 'Profile', subtitle: 'Name, avatar, about', icon: '👤' },
-  notifications: { label: 'Notifications', subtitle: 'Messages, mentions, sounds', icon: '🔔' },
-  appearance: { label: 'Appearance', subtitle: 'Theme and accent colour', icon: '🎨' },
-  privacy: { label: 'Privacy', subtitle: 'Last seen, receipts, blocks', icon: '🔒' },
-  chats: { label: 'Chats & Calls', subtitle: 'Wallpaper, font size, calls', icon: '💬' },
-  storage: { label: 'Storage & Data', subtitle: 'Usage, downloads, clear data', icon: '🗄️' },
+  notifications: { label: 'Notifications', subtitle: 'Messages, collaboration, meetings, files', icon: '🔔' },
+  appearance: { label: 'Appearance', subtitle: 'Theme and workspace styling', icon: '🎨' },
+  privacy: { label: 'Privacy', subtitle: 'Presence, visibility, and access', icon: '🔒' },
+  chats: { label: 'Workspace Services', subtitle: 'Messaging, meetings, knowledge, wellness', icon: '🧩' },
+  storage: { label: 'Files & Data', subtitle: 'Media, sync, and retention', icon: '🗄️' },
   language: { label: 'Language', subtitle: 'Interface language', icon: '🌐' },
   help: { label: 'Help', subtitle: 'FAQ, contact, community', icon: '❓' },
   about: { label: 'About', subtitle: 'Version and licenses', icon: 'ℹ️' },
@@ -78,8 +78,13 @@ const defaultSettings: UserSettings = {
   notifGroups: true,
   notifMentions: true,
   notifMeetings: true,
+  notifCollaboration: true,
+  notifFiles: true,
+  notifKnowledge: true,
+  notifWellness: true,
   notifSound: true,
   notifPreview: false,
+  crossServiceAlerts: true,
   downloadImages: 'wifi',
   downloadVideos: 'wifi',
   downloadDocuments: 'wifi',
@@ -95,8 +100,8 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
   const saveNoteTimer = useRef<number | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [draftName, setDraftName] = useState(user?.name ?? '');
-  const [draftAbout, setDraftAbout] = useState(user?.about ?? 'Enterprise researcher at StatGate');
+const [draftName, setDraftName] = useState(user?.name ?? '');
+  const [draftAbout, setDraftAbout] = useState(user?.about ?? '');
   const [draftAvatar, setDraftAvatar] = useState(user?.avatarUrl ?? '');
 
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
@@ -127,8 +132,8 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
 
   useEffect(() => {
     if (user) {
-      setDraftName(user.name);
-      setDraftAbout(user.about ?? 'Enterprise researcher at StatGate');
+setDraftName(user.name);
+      setDraftAbout(user.about ?? '');
       setDraftAvatar(user.avatarUrl ?? '');
     }
   }, [user]);
@@ -183,8 +188,8 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
   };
 
   const saveProfile = () => {
-    const nextName = draftName.trim() || user?.name || 'StatChat User';
-    const nextAbout = draftAbout.trim() || 'Enterprise researcher at StatGate';
+const nextName = draftName.trim() || user?.name || 'StatChat User';
+    const nextAbout = draftAbout.trim();
     setSaving(true);
     updateProfile(nextName, nextAbout, draftAvatar)
       .then((updatedUser) => {
@@ -324,7 +329,7 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
 
   const renderNotificationsSection = () => (
     <div>
-      <p className={styles.groupHeader}>Chat notifications</p>
+      <p className={styles.groupHeader}>Platform notifications</p>
       <div className={styles.groupCard} style={{ borderColor }}>
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>💬</span>
@@ -358,6 +363,38 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
           </div>
           {renderToggle(settings.notifMeetings, () => saveSettings({ notifMeetings: !settings.notifMeetings }), 'Toggle meetings')}
         </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🤝</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Collaboration</span>
+            <span className={styles.rowDescription}>Posts, connections, and team activity</span>
+          </div>
+          {renderToggle(settings.notifCollaboration, () => saveSettings({ notifCollaboration: !settings.notifCollaboration }), 'Toggle collaboration alerts')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>📁</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Files</span>
+            <span className={styles.rowDescription}>Shared documents and file activity</span>
+          </div>
+          {renderToggle(settings.notifFiles, () => saveSettings({ notifFiles: !settings.notifFiles }), 'Toggle file alerts')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🧠</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Knowledge</span>
+            <span className={styles.rowDescription}>Insights, articles, and expert updates</span>
+          </div>
+          {renderToggle(settings.notifKnowledge, () => saveSettings({ notifKnowledge: !settings.notifKnowledge }), 'Toggle knowledge alerts')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🌿</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Wellness</span>
+            <span className={styles.rowDescription}>Wellness posts and community updates</span>
+          </div>
+          {renderToggle(settings.notifWellness, () => saveSettings({ notifWellness: !settings.notifWellness }), 'Toggle wellness alerts')}
+        </div>
       </div>
 
       <p className={styles.groupHeader}>Delivery</p>
@@ -374,9 +411,17 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
           <span className={styles.rowIcon}>🪟</span>
           <div className={styles.rowText}>
             <span className={styles.rowLabel}>Message previews</span>
-            <span className={styles.rowDescription}>Show message text in notifications</span>
+            <span className={styles.rowDescription}>Show message text across platform alerts</span>
           </div>
           {renderToggle(settings.notifPreview, () => saveSettings({ notifPreview: !settings.notifPreview }), 'Toggle previews')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🔗</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Cross-service alerts</span>
+            <span className={styles.rowDescription}>Surface updates from every StatChat service</span>
+          </div>
+          {renderToggle(settings.crossServiceAlerts, () => saveSettings({ crossServiceAlerts: !settings.crossServiceAlerts }), 'Toggle cross-service alerts')}
         </div>
       </div>
 
@@ -445,12 +490,12 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
         </div>
       </div>
 
-      <p className={styles.groupHeader}>Chat display</p>
+      <p className={styles.groupHeader}>Workspace display</p>
       <div className={styles.groupCard} style={{ borderColor }}>
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>🔤</span>
           <div className={styles.rowText}>
-            <span className={styles.rowLabel}>Message font size</span>
+            <span className={styles.rowLabel}>Workspace text size</span>
             <span className={styles.rowDescription}>Small, medium, or large</span>
           </div>
           <select
@@ -513,7 +558,7 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
         </div>
       </div>
 
-      <p className={styles.groupHeader}>Messaging</p>
+      <p className={styles.groupHeader}>Cross-service privacy</p>
       <div className={styles.groupCard} style={{ borderColor }}>
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>✓✓</span>
@@ -547,18 +592,62 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
     </div>
   );
 
-  const renderChatsSection = () => (
+  const renderServicesSection = () => (
     <div>
-      <p className={styles.groupHeader}>Chats</p>
+      <p className={styles.groupHeader}>Workspace services</p>
       <div className={styles.groupCard} style={{ borderColor }}>
-        <div className={styles.row} onClick={() => showSaveNote('Wallpaper picker coming with Chats')}>
-          <span className={styles.rowIcon}>🖼️</span>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>💬</span>
           <div className={styles.rowText}>
-            <span className={styles.rowLabel}>Wallpaper</span>
-            <span className={styles.rowDescription}>Customize your chat background</span>
+            <span className={styles.rowLabel}>Messaging</span>
+            <span className={styles.rowDescription}>Direct messages, channels, and gateway traffic</span>
           </div>
-          <span className={styles.rowValue}>›</span>
+          {renderToggle(settings.notifMessages, () => saveSettings({ notifMessages: !settings.notifMessages }), 'Toggle messaging')}
         </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🤝</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Collaboration</span>
+            <span className={styles.rowDescription}>Connections, posts, and team coordination</span>
+          </div>
+          {renderToggle(settings.notifCollaboration, () => saveSettings({ notifCollaboration: !settings.notifCollaboration }), 'Toggle collaboration')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>📅</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Meetings</span>
+            <span className={styles.rowDescription}>Calendars, reminders, and virtual rooms</span>
+          </div>
+          {renderToggle(settings.notifMeetings, () => saveSettings({ notifMeetings: !settings.notifMeetings }), 'Toggle meetings')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>📁</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Files</span>
+            <span className={styles.rowDescription}>Shared docs, uploads, and media workflows</span>
+          </div>
+          {renderToggle(settings.notifFiles, () => saveSettings({ notifFiles: !settings.notifFiles }), 'Toggle files')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🧠</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Knowledge</span>
+            <span className={styles.rowDescription}>Expert content, articles, and discovery</span>
+          </div>
+          {renderToggle(settings.notifKnowledge, () => saveSettings({ notifKnowledge: !settings.notifKnowledge }), 'Toggle knowledge')}
+        </div>
+        <div className={styles.row} style={{ cursor: 'default' }}>
+          <span className={styles.rowIcon}>🌿</span>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Wellness</span>
+            <span className={styles.rowDescription}>Community wellbeing and support updates</span>
+          </div>
+          {renderToggle(settings.notifWellness, () => saveSettings({ notifWellness: !settings.notifWellness }), 'Toggle wellness')}
+        </div>
+      </div>
+
+      <p className={styles.groupHeader}>Media and delivery</p>
+      <div className={styles.groupCard} style={{ borderColor }}>
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>🗑️</span>
           <div className={styles.rowText}>
@@ -578,14 +667,14 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>🗂️</span>
           <div className={styles.rowText}>
-            <span className={styles.rowLabel}>Read messages by default</span>
-            <span className={styles.rowDescription}>Mark new messages as read automatically</span>
+            <span className={styles.rowLabel}>Read items by default</span>
+            <span className={styles.rowDescription}>Mark new updates as read automatically</span>
           </div>
           {renderToggle(settings.readByDefault, () => saveSettings({ readByDefault: !settings.readByDefault }), 'Toggle read by default')}
         </div>
       </div>
 
-      <p className={styles.groupHeader}>Calls</p>
+      <p className={styles.groupHeader}>Calls and voice</p>
       <div className={styles.groupCard} style={{ borderColor }}>
         <div className={styles.row} style={{ cursor: 'default' }}>
           <span className={styles.rowIcon}>🎙️</span>
@@ -822,7 +911,7 @@ export default function SettingsPanel({ user, theme, isMobile, onThemeChange, on
       case 'privacy':
         return renderPrivacySection();
       case 'chats':
-        return renderChatsSection();
+        return renderServicesSection();
       case 'storage':
         return renderStorageSection();
       case 'language':

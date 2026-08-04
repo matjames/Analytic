@@ -34,6 +34,24 @@ CREATE TABLE IF NOT EXISTS connections (
   UNIQUE (user_id, connected_to_id)
 );
 
+CREATE TABLE IF NOT EXISTS post_comments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL REFERENCES posts(id),
+  author TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT '',
+  org TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS post_likes (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL REFERENCES posts(id),
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (post_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS opportunities (
   id TEXT PRIMARY KEY,
   badge TEXT NOT NULL,
@@ -274,7 +292,95 @@ func GetPosts() ([]model.Post, error) {
 		}
 		posts = append(posts, p)
 	}
-	return posts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Attach comments and likedByMe for each post
+	for i := range posts {
+		comments, err := GetPostComments(posts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		posts[i].CommentList = comments
+		posts[i].Comments = len(comments)
+		liked, err := IsPostLikedByUser(posts[i].ID, "user-001")
+		if err != nil {
+			return nil, err
+		}
+		posts[i].LikedByMe = liked
+	}
+	return posts, nil
+}
+
+// ── Post Comments ──
+
+func GetPostComments(postID string) ([]model.PostComment, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, post_id, author, role, org, text, created_at FROM post_comments WHERE post_id = $1 ORDER BY created_at ASC`, postID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	comments := []model.PostComment{}
+	for rows.Next() {
+		var c model.PostComment
+		if err := rows.Scan(&c.ID, &c.PostID, &c.Author, &c.Role, &c.Org, &c.Text, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		comments = append(comments, c)
+	}
+	return comments, rows.Err()
+}
+
+func AddPostComment(req model.PostComment) (model.PostComment, error) {
+	if req.ID == "" {
+		req.ID = uuid.NewString()
+	}
+	if req.CreatedAt.IsZero() {
+		req.CreatedAt = time.Now().UTC()
+	}
+	_, err := db.ExecContext(context.Background(), `INSERT INTO post_comments (id, post_id, author, role, org, text, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		req.ID, req.PostID, req.Author, req.Role, req.Org, req.Text, req.CreatedAt)
+	if err != nil {
+		return model.PostComment{}, err
+	}
+	// Update the count on the post
+	_, err = db.ExecContext(context.Background(), `UPDATE posts SET comments = (SELECT COUNT(1) FROM post_comments WHERE post_id = $1) WHERE id = $1`, req.PostID)
+	return req, err
+}
+
+// ── Post Likes ──
+
+func IsPostLikedByUser(postID, userID string) (bool, error) {
+	var count int
+	err := db.QueryRowContext(context.Background(), `SELECT COUNT(1) FROM post_likes WHERE post_id = $1 AND user_id = $2`, postID, userID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func TogglePostLike(postID, userID string) (bool, error) {
+	liked, err := IsPostLikedByUser(postID, userID)
+	if err != nil {
+		return false, err
+	}
+	if liked {
+		_, err = db.ExecContext(context.Background(), `DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, postID, userID)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		_, err = db.ExecContext(context.Background(), `INSERT INTO post_likes (id, post_id, user_id, created_at) VALUES ($1,$2,$3,$4)`,
+			uuid.NewString(), postID, userID, time.Now().UTC())
+		if err != nil {
+			return false, err
+		}
+	}
+	// Update the count on the post
+	_, err = db.ExecContext(context.Background(), `UPDATE posts SET likes = (SELECT COUNT(1) FROM post_likes WHERE post_id = $1) WHERE id = $1`, postID)
+	return !liked, err
 }
 
 func CreatePost(req model.Post) (model.Post, error) {

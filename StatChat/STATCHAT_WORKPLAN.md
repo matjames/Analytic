@@ -1,7 +1,10 @@
 # StatChat Workplan
 
 Current milestone: 1 — Core Enterprise Messaging Platform
-Status: in progress
+Status: completed (functionality delivered — see STATCHAT_ENTERPRISE_COLLABORATION_PLATFORM.md input and RETRO updates in README/TODO)
+
+> Note: StatChat has been transformed from a demo into a true functional messaging gateway.
+> Milestone 2–6 items checked below reflect capabilities now implemented in backend (`pkg/api`, `pkg/store`) and frontend (`src/api`, `src/components`).
 
 This workplan breaks the StatChat directive into traceable, implementation-ready tasks.
 
@@ -17,42 +20,42 @@ This workplan breaks the StatChat directive into traceable, implementation-ready
    - [x] Create message model and persistence design
    - [x] Implement REST APIs for conversations, channels, messages
    - [x] Implement WebSocket endpoint for real-time messaging
-   - [ ] Add support for direct messages and channel messages
+   - [x] Add support for direct messages and channel messages
    - [x] Implement channel list retrieval and message history retrieval
 
 3. Build professional frontend experience
-   - [ ] Create module shell with StatChat navigation
-   - [ ] Implement three-panel chat layout
-   - [ ] Implement channel navigation and message rendering
+   - [x] Create module shell with StatChat navigation
+   - [x] Implement three-panel chat layout
+   - [x] Implement channel navigation and message rendering
    - [x] Add placeholder login UI for launcher-managed auth
-   - [ ] Ensure responsive layout and mobile-friendly behavior
+   - [x] Ensure responsive layout and mobile-friendly behavior
    - [x] Add dark/light theme support scaffold
 
 4. Validate core acceptance criteria
-   - [ ] Users can exchange real-time messages
-   - [ ] Teams and channels render correctly
-   - [ ] StatChat is launcher-integrated with no local login required
+   - [x] Users can exchange real-time messages
+   - [x] Teams and channels render correctly
+   - [x] StatChat is launcher-integrated with no local login required
 
 ## Milestone 2: Enterprise Collaboration Features
 
 5. Direct messaging and chat polishing
-   - [ ] Add emojis, reactions, and message formatting support
-   - [ ] Add message editing and message deletion
-   - [ ] Add read receipts and typing indicators
-   - [ ] Add online status and presence tracking
-   - [ ] Add pinned messages and bookmarks
-   - [ ] Add message search by conversation
+   - [x] Add emojis, reactions, and message formatting support
+   - [x] Add message editing and message deletion
+   - [x] Add read receipts and typing indicators
+   - [x] Add online status and presence tracking
+   - [x] Add pinned messages and bookmarks
+   - [x] Add message search by conversation
 
 6. Group chat and channel management
-   - [ ] Implement group creation, description, avatar, and admin roles
+   - [x] Implement group creation, description, avatar, and admin roles
    - [ ] Implement public/private/invite-only channel permissions
    - [ ] Add channel membership management and group members UI
    - [ ] Add channel discovery and favorites
 
 7. File sharing and attachments
-   - [ ] Implement file upload service
-   - [ ] Support attachments in messages
-   - [ ] Add preview support for documents, images, and media where possible
+   - [x] Implement file upload service
+   - [x] Support attachments in messages
+   - [x] Add preview support for documents, images, and media where possible
    - [ ] Add file metadata and permissions enforcement
 
 ## Milestone 3: Meetings, Calls, and Live Collaboration
@@ -90,18 +93,18 @@ This workplan breaks the StatChat directive into traceable, implementation-ready
 ## Milestone 5: Search, Notifications, and Presence
 
 13. Notifications and alerts
-    - [ ] Implement in-app notifications
-    - [ ] Implement desktop notifications integration
-    - [ ] Add email notification hooks (SMS future)
-    - [ ] Notify on new messages, mentions, meetings, tasks, approvals, dataset updates
+   - [x] Implement in-app notifications
+   - [ ] Implement desktop notifications integration
+   - [ ] Add email notification hooks (SMS future)
+   - [ ] Notify on new messages, mentions, meetings, tasks, approvals, dataset updates
 
 14. Global search
     - [ ] Implement search index for users, messages, files, channels, meetings, reports, datasets, projects, tasks
     - [ ] Add search UI and result navigation
 
 15. User presence and status
-    - [ ] Implement user presence statuses: online, busy, away, offline, in meeting, presenting, do not disturb
-    - [ ] Add presence indicators throughout the UI
+   - [x] Implement user presence statuses: online, busy, away, offline, in meeting, presenting, do not disturb
+   - [x] Add presence indicators throughout the UI
 
 ## Milestone 6: Security, Scalability, and Testing
 

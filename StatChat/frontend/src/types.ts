@@ -3,8 +3,28 @@ export interface Channel {
   name: string;
 }
 
+export interface MessageAttachment {
+  id: string;
+  messageId?: string;
+  fileName: string;
+  fileType: string;
+  url: string;
+  mimeType?: string;
+  createdAt?: string;
+}
+
+export interface MessageReaction {
+  id: string;
+  messageId: string;
+  userId: string;
+  userName?: string;
+  emoji: string;
+  createdAt?: string;
+}
+
 export interface Message {
   id: string;
+  tenantId?: string;
   conversationId: string;
   channelId?: string;
   sender: string;
@@ -15,6 +35,11 @@ export interface Message {
   parentMessageId?: string;
   threadRootId?: string;
   status?: string;
+  deliveryStatus?: string;
+  attachments?: MessageAttachment[];
+  reactions?: MessageReaction[];
+  pinned?: boolean;
+  readBy?: string[];
 }
 
 export interface User {
@@ -46,8 +71,13 @@ export interface UserSettings {
   notifGroups: boolean;
   notifMentions: boolean;
   notifMeetings: boolean;
+  notifCollaboration: boolean;
+  notifFiles: boolean;
+  notifKnowledge: boolean;
+  notifWellness: boolean;
   notifSound: boolean;
   notifPreview: boolean;
+  crossServiceAlerts: boolean;
   downloadImages: string;
   downloadVideos: string;
   downloadDocuments: string;
@@ -55,6 +85,7 @@ export interface UserSettings {
 
 export interface Conversation {
   id: string;
+  tenantId?: string;
   name: string;
   type: 'channel' | 'direct' | 'group';
   memberIds?: string[];
@@ -62,4 +93,44 @@ export interface Conversation {
   latestPreview?: string;
   latestMessageAt?: string;
   attachmentCount?: number;
+  unreadCount?: number;
+}
+
+export interface PinnedMessage {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  pinnedBy: string;
+  pinnedAt: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  assignee?: string;
+  priority?: string;
+  dueDate?: string;
+  status: string;
+  conversationId?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  link?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface Presence {
+  userId: string;
+  status: string;
+  updatedAt: string;
 }

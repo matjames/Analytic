@@ -4,6 +4,7 @@ import "time"
 
 type User struct {
 	ID             string   `json:"id"`
+	TenantID       string   `json:"tenantId,omitempty"`
 	Name           string   `json:"name"`
 	Email          string   `json:"email"`
 	OrganizationID string   `json:"organizationId"`
@@ -14,28 +15,33 @@ type User struct {
 }
 
 type UserSettings struct {
-	UserID            string `json:"userId"`
-	Theme             string `json:"theme"`
-	AccentColor       string `json:"accentColor"`
-	FontSize          string `json:"fontSize"`
-	EnterToSend       bool   `json:"enterToSend"`
-	Language          string `json:"language"`
-	LastSeen          string `json:"lastSeen"`
-	ProfilePhoto      string `json:"profilePhoto"`
-	ReadReceipts      bool   `json:"readReceipts"`
-	TypingIndicator   bool   `json:"typingIndicator"`
-	VoiceNotes        bool   `json:"voiceNotes"`
-	ReadByDefault     bool   `json:"readByDefault"`
-	AutoDownload      string `json:"autoDownload"`
-	NotifMessages     bool   `json:"notifMessages"`
-	NotifGroups       bool   `json:"notifGroups"`
-	NotifMentions     bool   `json:"notifMentions"`
-	NotifMeetings     bool   `json:"notifMeetings"`
-	NotifSound        bool   `json:"notifSound"`
-	NotifPreview      bool   `json:"notifPreview"`
-	DownloadImages    string `json:"downloadImages"`
-	DownloadVideos    string `json:"downloadVideos"`
-	DownloadDocuments string `json:"downloadDocuments"`
+	UserID             string `json:"userId"`
+	Theme              string `json:"theme"`
+	AccentColor        string `json:"accentColor"`
+	FontSize           string `json:"fontSize"`
+	EnterToSend        bool   `json:"enterToSend"`
+	Language           string `json:"language"`
+	LastSeen           string `json:"lastSeen"`
+	ProfilePhoto       string `json:"profilePhoto"`
+	ReadReceipts       bool   `json:"readReceipts"`
+	TypingIndicator    bool   `json:"typingIndicator"`
+	VoiceNotes         bool   `json:"voiceNotes"`
+	ReadByDefault      bool   `json:"readByDefault"`
+	AutoDownload       string `json:"autoDownload"`
+	NotifMessages      bool   `json:"notifMessages"`
+	NotifGroups        bool   `json:"notifGroups"`
+	NotifMentions      bool   `json:"notifMentions"`
+	NotifMeetings      bool   `json:"notifMeetings"`
+	NotifCollaboration bool   `json:"notifCollaboration"`
+	NotifFiles         bool   `json:"notifFiles"`
+	NotifKnowledge     bool   `json:"notifKnowledge"`
+	NotifWellness      bool   `json:"notifWellness"`
+	NotifSound         bool   `json:"notifSound"`
+	NotifPreview       bool   `json:"notifPreview"`
+	CrossServiceAlerts bool   `json:"crossServiceAlerts"`
+	DownloadImages     string `json:"downloadImages"`
+	DownloadVideos     string `json:"downloadVideos"`
+	DownloadDocuments  string `json:"downloadDocuments"`
 }
 
 type ConversationType string
@@ -48,6 +54,7 @@ const (
 
 type Conversation struct {
 	ID              string           `json:"id"`
+	TenantID        string           `json:"tenantId,omitempty"`
 	Name            string           `json:"name"`
 	Type            ConversationType `json:"type"`
 	MemberIDs       []string         `json:"memberIds"`
@@ -56,6 +63,7 @@ type Conversation struct {
 	LatestPreview   string           `json:"latestPreview,omitempty"`
 	LatestMessageAt time.Time        `json:"latestMessageAt,omitempty"`
 	AttachmentCount int              `json:"attachmentCount,omitempty"`
+	UnreadCount     int              `json:"unreadCount,omitempty"`
 }
 
 type ConversationCategory string
@@ -91,15 +99,27 @@ type Channel struct {
 }
 
 type Post struct {
+	ID          string        `json:"id"`
+	Author      string        `json:"author"`
+	Role        string        `json:"role"`
+	Org         string        `json:"org"`
+	Time        string        `json:"time"`
+	Text        string        `json:"text"`
+	Likes       int           `json:"likes"`
+	Comments    int           `json:"comments"`
+	Shares      int           `json:"shares"`
+	CreatedAt   time.Time     `json:"createdAt"`
+	LikedByMe   bool          `json:"likedByMe,omitempty"`
+	CommentList []PostComment `json:"commentList,omitempty"`
+}
+
+type PostComment struct {
 	ID        string    `json:"id"`
+	PostID    string    `json:"postId"`
 	Author    string    `json:"author"`
-	Role      string    `json:"role"`
-	Org       string    `json:"org"`
-	Time      string    `json:"time"`
+	Role      string    `json:"role,omitempty"`
+	Org       string    `json:"org,omitempty"`
 	Text      string    `json:"text"`
-	Likes     int       `json:"likes"`
-	Comments  int       `json:"comments"`
-	Shares    int       `json:"shares"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -223,16 +243,93 @@ type KnowledgePost struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type MessageAttachment struct {
+	ID        string    `json:"id"`
+	MessageID string    `json:"messageId,omitempty"`
+	FileName  string    `json:"fileName"`
+	FileType  string    `json:"fileType"`
+	URL       string    `json:"url"`
+	MimeType  string    `json:"mimeType"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Message struct {
-	ID              string    `json:"id"`
-	ConversationID  string    `json:"conversationId,omitempty"`
-	ChannelID       string    `json:"channelId,omitempty"`
-	Sender          string    `json:"sender"`
-	Text            string    `json:"text"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt,omitempty"`
-	DeletedAt       time.Time `json:"deletedAt,omitempty"`
-	ParentMessageID string    `json:"parentMessageId,omitempty"`
-	ThreadRootID    string    `json:"threadRootId,omitempty"`
-	Status          string    `json:"status"`
+	ID              string              `json:"id"`
+	TenantID        string              `json:"tenantId,omitempty"`
+	ConversationID  string              `json:"conversationId,omitempty"`
+	ChannelID       string              `json:"channelId,omitempty"`
+	Sender          string              `json:"sender"`
+	Text            string              `json:"text"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	UpdatedAt       time.Time           `json:"updatedAt,omitempty"`
+	DeletedAt       time.Time           `json:"deletedAt,omitempty"`
+	ParentMessageID string              `json:"parentMessageId,omitempty"`
+	ThreadRootID    string              `json:"threadRootId,omitempty"`
+	Status          string              `json:"status"`
+	DeliveryStatus  string              `json:"deliveryStatus,omitempty"`
+	Attachments     []MessageAttachment `json:"attachments,omitempty"`
+	Reactions       []MessageReaction   `json:"reactions,omitempty"`
+	Pinned          bool                `json:"pinned,omitempty"`
+	ReadBy          []string            `json:"readBy,omitempty"`
+}
+
+type MessageReaction struct {
+	ID        string    `json:"id"`
+	MessageID string    `json:"messageId"`
+	UserID    string    `json:"userId"`
+	UserName  string    `json:"userName,omitempty"`
+	Emoji     string    `json:"emoji"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type PinnedMessage struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	MessageID      string    `json:"messageId"`
+	PinnedBy       string    `json:"pinnedBy"`
+	PinnedAt       time.Time `json:"pinnedAt"`
+}
+
+type ReadReceipt struct {
+	ID        string    `json:"id"`
+	MessageID string    `json:"messageId"`
+	UserID    string    `json:"userId"`
+	ReadAt    time.Time `json:"readAt"`
+}
+
+type Task struct {
+	ID             string    `json:"id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description,omitempty"`
+	Assignee       string    `json:"assignee,omitempty"`
+	Priority       string    `json:"priority,omitempty"`
+	DueDate        string    `json:"dueDate,omitempty"`
+	Status         string    `json:"status"`
+	ConversationID string    `json:"conversationId,omitempty"`
+	CreatedBy      string    `json:"createdBy"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt,omitempty"`
+}
+
+type Notification struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	Type      string    `json:"type"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	Link      string    `json:"link,omitempty"`
+	Read      bool      `json:"read"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type GatewayEnvelope struct {
+	Event    string      `json:"event"`
+	TenantID string      `json:"tenantId,omitempty"`
+	Payload  interface{} `json:"payload"`
+}
+
+type Presence struct {
+	UserID    string    `json:"userId"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

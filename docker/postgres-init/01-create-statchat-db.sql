@@ -16,7 +16,7 @@ $$;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'Statchat') THEN
-    CREATE ROLE Statchat WITH LOGIN PASSWORD 'Statgate';
+    CREATE ROLE "Statchat" WITH LOGIN PASSWORD 'Statgate';
   END IF;
 END
 $$;
@@ -39,3 +39,4 @@ GRANT ALL ON SCHEMA public TO statgate;
 
 \c statchat
 GRANT ALL ON SCHEMA public TO "Statchat";
+CREATE SCHEMA IF NOT EXISTS public;

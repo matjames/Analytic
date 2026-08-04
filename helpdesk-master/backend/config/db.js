@@ -16,16 +16,21 @@ const credentials = {
         min: 0,
         acquire: 30000,
         idle: 10000
-    }
+    },
+    logging: false
 };
 const sequelize = new Sequelize(credentials);
-console.log("credentials", credentials)
+
 const connectDB = async () => {
     try {
         await sequelize.authenticate();
         console.log("✅ Database Connection has been established successfully.");
+
+        await sequelize.query('CREATE SCHEMA IF NOT EXISTS statgate AUTHORIZATION statgate;');
+        console.log("✅ Ensured statgate schema exists.");
     } catch (error) {
         console.error("Unable to connect to the database:", error.message);
+        throw error;
     }
 }
 

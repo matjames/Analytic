@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConversations, fetchCurrentUser, fetchMessages, WS_URL } from './api/client';
-import { Conversation, Message, User } from './types';
+import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, WS_URL } from './api/client';
+import { Conversation, Message, User, Notification } from './types';
 import ChatSidebarList from './components/ChatSidebarList';
 import ChatWorkspace from './components/ChatWorkspace';
 import SidebarRail from './components/SidebarRail';
@@ -57,6 +57,7 @@ export default function App() {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const [activeSidebarView, setActiveSidebarView] = useState<SidebarView>('directMessages');
@@ -65,7 +66,11 @@ export default function App() {
   const [showAppLauncher, setShowAppLauncher] = useState(false);
   const [legalPanelOpen, setLegalPanelOpen] = useState(false);
   const [legalPanelTab, setLegalPanelTab] = useState<LegalTab>('privacy');
+const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
   const currentConversationRef = useRef(currentConversation);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === currentConversation),
@@ -119,16 +124,19 @@ export default function App() {
         }
         setMessages(initialMessages);
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
         console.error('Failed to load initial data', error);
+        setError(`Unable to reach StatChat right now: ${message}`);
       }
     }
 
     loadInitialData();
 
     const ws = new WebSocket(WS_URL);
+    const tenantId = 'statgate-uganda';
     const joinConversation = () => {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action: 'join-conversation', conversationId: currentConversationRef.current }));
+        ws.send(JSON.stringify({ action: 'join-conversation', conversationId: currentConversationRef.current, tenantId }));
       }
     };
 
@@ -137,6 +145,7 @@ export default function App() {
       joinConversation();
     });
     ws.addEventListener('close', () => setConnected(false));
+    ws.addEventListener('error', () => setError('Live connection dropped. The UI will retry when the backend is reachable again.'));
     ws.addEventListener('message', (event) => {
       const message = JSON.parse(event.data) as Message;
       setMessages((prev) => {
@@ -160,13 +169,45 @@ export default function App() {
     };
   }, []);
 
+  // Load notifications and set presence on mount
+  useEffect(() => {
+    fetchNotifications()
+      .then((notifs) => setNotifications(notifs))
+      .catch(() => {});
+    updatePresence('online').catch(() => {});
+  }, []);
+
+  // Close notifications dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleNotificationsClick = () => {
+    setShowNotifications((prev) => !prev);
+    if (!showNotifications && unreadCount > 0) {
+      markAllNotificationsRead()
+        .then(() => {
+          setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        })
+        .catch(() => {});
+    }
+  };
+
   useEffect(() => {
     const activeConversationId = currentConversation || 'general';
     currentConversationRef.current = activeConversationId;
     if (!socket) return;
 
     if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ action: 'join-conversation', conversationId: activeConversationId }));
+      socket.send(JSON.stringify({ action: 'join-conversation', conversationId: activeConversationId, tenantId: 'statgate-uganda' }));
     }
 
     let isCancelled = false;
@@ -185,23 +226,72 @@ export default function App() {
     };
   }, [currentConversation, socket]);
 
-  const sendMessage = (textOverride?: string) => {
+  const sendMessage = async (textOverride?: string) => {
     const messageText = (textOverride ?? draft).trim();
-    if (!messageText || !socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!messageText) return;
 
     const channelId = activeConversation?.type === 'channel' ? currentConversation : undefined;
-
-    socket.send(
-      JSON.stringify({
-        action: 'send-message',
-        conversationId: currentConversation,
-        channelId,
-        sender: user?.name ?? 'StatChat User',
-        text: messageText,
-      })
-    );
+    const payload = {
+      conversationId: currentConversation,
+      channelId,
+      sender: user?.name ?? 'StatChat User',
+      text: messageText,
+      tenantId: user?.organizationId ?? 'statgate-uganda',
+    };
 
     setDraft('');
+
+    try {
+      const createdMessage = await sendChatMessage(payload);
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === createdMessage.id)) {
+          return prev;
+        }
+        return [...prev, createdMessage];
+      });
+      setError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to send message', error);
+      setError(`Unable to send message: ${message}`);
+if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: 'send-message', ...payload }));
+      }
+    }
+  };
+
+const handleMessageUpdate = (updated: Message) => {
+    setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  };
+
+  const handleMessageDelete = (messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  };
+
+  const uploadAttachment = async (file: File, text?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('conversationId', currentConversation);
+    formData.append('sender', user?.name ?? 'StatChat User');
+    if (text) {
+      formData.append('text', text);
+    }
+
+    try {
+      const createdMessage = await uploadChatAttachment(formData);
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === createdMessage.id)) {
+          return prev;
+        }
+        return [...prev, createdMessage];
+      });
+      setDraft('');
+      setError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to upload attachment', error);
+      setError(`Unable to upload attachment: ${message}`);
+    }
   };
 
   const activeButtonStyle = (isActive: boolean): React.CSSProperties => ({
@@ -210,6 +300,12 @@ export default function App() {
 
   return (
     <div className={styles.appShell} style={{ color: theme === 'dark' ? '#e8eef4' : '#1a1a1a' }}>
+      {error && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#fef2f2', color: '#991b1b', padding: '12px 16px', borderBottom: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
+
       {showAppLauncher && (
         <div className={styles.launcherBackdrop} onClick={() => setShowAppLauncher(false)}>
           <div className={styles.launcherPanel} onClick={(event) => event.stopPropagation()}>
@@ -264,12 +360,14 @@ export default function App() {
           </div>
         </div>
 
-        <div className={styles.headerSearch}>
+<div className={styles.headerSearch}>
           <span style={{ marginRight: 10, opacity: 0.65 }}>🔍</span>
           <input
             type="text"
             placeholder="Search StatChat..."
             className={styles.headerSearchInput}
+            value={globalSearch}
+            onChange={(event) => setGlobalSearch(event.target.value)}
           />
         </div>
 
@@ -277,9 +375,82 @@ export default function App() {
           <button type="button" className={styles.headerActionButton} title="App launcher" onClick={() => setShowAppLauncher(true)}>
             ◧
           </button>
-          <button type="button" className={styles.headerActionButton} title="Notifications">
-            🔔
-          </button>
+          <div ref={notificationsRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className={styles.headerActionButton}
+              title="Notifications"
+              onClick={handleNotificationsClick}
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  background: '#ef4444',
+                  color: '#fff',
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  minWidth: 16,
+                  height: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                }}>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+            {showNotifications && (
+              <div style={{
+                position: 'absolute',
+                top: 40,
+                right: 0,
+                width: 320,
+                maxHeight: 400,
+                overflowY: 'auto',
+                background: theme === 'dark' ? '#0a2b45' : '#ffffff',
+                border: `1px solid ${theme === 'dark' ? '#6b7280' : '#e5e7eb'}`,
+                borderRadius: 16,
+                boxShadow: '0 12px 30px rgba(22, 92, 146, 0.15)',
+                zIndex: 50,
+                padding: 12,
+              }}>
+                <strong style={{ display: 'block', marginBottom: 10, color: theme === 'dark' ? '#e8eef4' : '#1a1a1a' }}>
+                  Notifications
+                </strong>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: 20, textAlign: 'center', opacity: 0.6, color: theme === 'dark' ? '#e8eef4' : '#1a1a1a' }}>
+                    No notifications yet
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        marginBottom: 6,
+                        background: notification.read
+                          ? (theme === 'dark' ? '#0f3f5f' : '#f9fafb')
+                          : (theme === 'dark' ? '#165c92' : '#e8f0fe'),
+                        color: theme === 'dark' ? '#e8eef4' : '#1a1a1a',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{notification.title}</div>
+                      <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{notification.body}</div>
+                      <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+                        {new Date(notification.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className={`${styles.headerActionButton} ${activeSidebarView === 'projects' ? styles.headerActionButtonActive : ''}`}
@@ -384,9 +555,10 @@ export default function App() {
                   currentUserId={user?.id}
                   onConversationCreated={handleConversationCreated}
                   viewType={chatViewType}
+                  externalSearch={globalSearch}
                 />
               ) : (
-                <ChatWorkspace
+<ChatWorkspace
                   conversation={activeConversation}
                   messages={messages}
                   draft={draft}
@@ -395,12 +567,15 @@ export default function App() {
                   currentUserName={user?.name}
                   onDraftChange={setDraft}
                   onSend={sendMessage}
+                  onUploadAttachment={uploadAttachment}
                   onCloseMobile={closeMobileChat}
+                  onMessageUpdate={handleMessageUpdate}
+                  onMessageDelete={handleMessageDelete}
                 />
               )
             ) : (
               <div className={styles.chatGrid}>
-                <ChatSidebarList
+<ChatSidebarList
                   conversations={conversations}
                   activeConversationId={currentConversation}
                   onSelectConversation={handleSelectConversation}
@@ -410,8 +585,9 @@ export default function App() {
                   currentUserId={user?.id}
                   onConversationCreated={handleConversationCreated}
                   viewType={chatViewType}
+                  externalSearch={globalSearch}
                 />
-                <ChatWorkspace
+<ChatWorkspace
                   conversation={activeConversation}
                   messages={messages}
                   draft={draft}
@@ -420,6 +596,9 @@ export default function App() {
                   currentUserName={user?.name}
                   onDraftChange={setDraft}
                   onSend={sendMessage}
+                  onUploadAttachment={uploadAttachment}
+                  onMessageUpdate={handleMessageUpdate}
+                  onMessageDelete={handleMessageDelete}
                 />
               </div>
             )

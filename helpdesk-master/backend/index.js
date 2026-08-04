@@ -11,6 +11,9 @@ import commentsRoutes from "./routes/commentsRoutes.js";
 import agentRoutes from "./routes/agents.js";
 import videoRoutes from "./routes/videoRoutes.js";
 import {swaggerSpec, swaggerUi} from "./swagger.js";
+import UserModel from "./models/userModel.js";
+import TicketModel from "./models/ticketModel.js";
+import CommentModel from "./models/commentsModel.js";
 
 
 const app = express();
@@ -22,10 +25,6 @@ app.use("/uploads", express.static("uploads"));
 if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
 
 import { connectDB, sequelize } from "./config/db.js";
-
-import "./models/userModel.js";
-import "./models/ticketModel.js";
-import "./models/commentsModel.js";
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -48,8 +47,17 @@ app.listen(process.env.PORT, async () => {
     console.log(
         `🚀Server started Successfully on port ${process.env.PORT} in ${process.env.NODE_ENV}`
     );
-    await connectDB();
-    sequelize.sync({ force: false }).then(() => {
-        console.log("✅Synced database successfully...");
-    });
+
+    try {
+        await connectDB();
+
+        await UserModel.sync({ force: false, alter: false });
+        await TicketModel.sync({ force: false, alter: false });
+        await CommentModel.sync({ force: false, alter: false });
+
+        console.log("✅ Synced database successfully...");
+    } catch (error) {
+        console.error("❌ Database initialization failed:", error.message);
+        process.exit(1);
+    }
 });

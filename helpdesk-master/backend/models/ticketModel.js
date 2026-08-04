@@ -99,6 +99,6 @@ const TicketModel = sequelize.define(
 );
 
 TicketModel.belongsTo(User, { foreignKey: "agentId" });
-TicketModel.sync({ alter: true });
+// TicketModel.sync({ alter: true });
 
 export default TicketModel;

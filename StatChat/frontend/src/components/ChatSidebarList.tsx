@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Conversation, Message, User } from '../types';
-import { fetchAllUsers, createDM, createGroup, fetchGroupTemplates, type GroupCategory } from '../api/client';
+import { fetchAllUsers, createDM, createGroup, fetchGroupTemplates, fetchPresence, type GroupCategory } from '../api/client';
 import styles from './ChatSidebarList.module.css';
 
 interface Props {
@@ -11,8 +11,9 @@ interface Props {
   messages: Message[];
   isMobile: boolean;
   currentUserId?: string;
-  onConversationCreated?: (conversation: Conversation) => void;
+onConversationCreated?: (conversation: Conversation) => void;
   viewType: 'direct' | 'group' | 'channel';
+  externalSearch?: string;
 }
 
 const filters = ['All', 'Unread', 'Favourites', 'Users'] as const;
@@ -62,16 +63,9 @@ function getAvatarText(name: string) {
   return cleaned.slice(0, 2).toUpperCase();
 }
 
-function isOnline(conversation: Conversation) {
-  return conversation.type === 'direct' && (conversation.id === 'dm-user-2' || conversation.id.startsWith('dm-user-001-'));
-}
-
 function getUnreadCount(conversation: Conversation, isActive: boolean) {
   if (isActive) return 0;
-  if (conversation.id === 'general') return 3;
-  if (conversation.id === 'research') return 1;
-  if (conversation.id === 'dm-user-2') return 2;
-  return 0;
+  return conversation.unreadCount ?? 0;
 }
 
 export default function ChatSidebarList({
@@ -84,6 +78,7 @@ export default function ChatSidebarList({
   currentUserId,
   onConversationCreated,
   viewType,
+  externalSearch,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<Filter>('All');
   const [search, setSearch] = useState('');
@@ -92,8 +87,9 @@ export default function ChatSidebarList({
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
+const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
 
   // Reset filter when view type changes
   useEffect(() => {
@@ -101,6 +97,22 @@ export default function ChatSidebarList({
     setShowNewGroup(false);
     setActiveCategory('all');
   }, [viewType]);
+
+  // Fetch real presence for all users
+  useEffect(() => {
+    let cancelled = false;
+    fetchPresence()
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data) ? data : [data];
+        const onlineIds = new Set(items.filter((p) => p.status === 'online').map((p) => p.userId));
+        setOnlineUserIds(onlineIds);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch group templates when in groups view
   useEffect(() => {
@@ -123,9 +135,10 @@ export default function ChatSidebarList({
     }
   }, [activeFilter, users.length, usersLoading, currentUserId]);
 
-  const filteredConversations = useMemo(() => {
+const filteredConversations = useMemo(() => {
     if (activeFilter === 'Users') return [];
     const lowercaseSearch = search.trim().toLowerCase();
+    const externalLower = (externalSearch ?? '').trim().toLowerCase();
 
     return conversations
       .filter((conversation) => conversation.type === viewType)
@@ -146,6 +159,13 @@ export default function ChatSidebarList({
         if (!lowercaseSearch) return true;
         return conversation.name.toLowerCase().includes(lowercaseSearch);
       })
+      .filter((conversation) => {
+        if (!externalLower) return true;
+        return (
+          conversation.name.toLowerCase().includes(externalLower) ||
+          (conversation.latestPreview ?? '').toLowerCase().includes(externalLower)
+        );
+      })
       .sort((a, b) => {
         const aUnread = getUnreadCount(a, a.id === activeConversationId);
         const bUnread = getUnreadCount(b, b.id === activeConversationId);
@@ -155,13 +175,19 @@ export default function ChatSidebarList({
         if (b.id === activeConversationId) return 1;
         return a.name.localeCompare(b.name);
       });
-  }, [conversations, activeConversationId, activeFilter, search, viewType, activeCategory]);
+  }, [conversations, activeConversationId, activeFilter, search, viewType, activeCategory, externalSearch]);
 
   const filteredUsers = useMemo(() => {
     const lowercaseSearch = search.trim().toLowerCase();
-    if (!lowercaseSearch) return users;
-    return users.filter((u) => u.name.toLowerCase().includes(lowercaseSearch));
-  }, [users, search]);
+    const externalLower = (externalSearch ?? '').trim().toLowerCase();
+    const combined = lowercaseSearch || externalLower;
+    if (!combined) return users;
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(combined) ||
+        (u.organizationId ?? '').toLowerCase().includes(combined)
+    );
+  }, [users, search, externalSearch]);
 
   useEffect(() => {
     if (activeFilter === 'Users') return;
@@ -370,7 +396,8 @@ export default function ChatSidebarList({
               : conversation.id === activeConversationId && activePreview
               ? formatTime(activePreview.createdAt)
               : '';
-            const online = isOnline(conversation);
+const online = conversation.type === 'direct' &&
+              (conversation.memberIds?.some((id) => id !== currentUserId && onlineUserIds.has(id)) ?? false);
             const isChannel = conversation.type === 'channel';
             const isGroup = conversation.type === 'group';
 
