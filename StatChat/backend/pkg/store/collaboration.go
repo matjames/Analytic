@@ -277,7 +277,7 @@ func seedCollaborationDefaults(ctx context.Context) error {
 	return nil
 }
 
-func GetPosts() ([]model.Post, error) {
+func GetPosts(userID string) ([]model.Post, error) {
 	rows, err := db.QueryContext(context.Background(), `SELECT id, author, role, org, time_label, text, likes, comments, shares, created_at FROM posts ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -304,7 +304,7 @@ func GetPosts() ([]model.Post, error) {
 		}
 		posts[i].CommentList = comments
 		posts[i].Comments = len(comments)
-		liked, err := IsPostLikedByUser(posts[i].ID, "user-001")
+		liked, err := IsPostLikedByUser(posts[i].ID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -381,6 +381,16 @@ func TogglePostLike(postID, userID string) (bool, error) {
 	// Update the count on the post
 	_, err = db.ExecContext(context.Background(), `UPDATE posts SET likes = (SELECT COUNT(1) FROM post_likes WHERE post_id = $1) WHERE id = $1`, postID)
 	return !liked, err
+}
+
+func SharePost(postID string) (int, error) {
+	_, err := db.ExecContext(context.Background(), `UPDATE posts SET shares = shares + 1 WHERE id = $1`, postID)
+	if err != nil {
+		return 0, err
+	}
+	var shares int
+	err = db.QueryRowContext(context.Background(), `SELECT shares FROM posts WHERE id = $1`, postID).Scan(&shares)
+	return shares, err
 }
 
 func CreatePost(req model.Post) (model.Post, error) {
@@ -722,6 +732,26 @@ func CreateKnowledgePost(req model.KnowledgePost) (model.KnowledgePost, error) {
 	_, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_posts (id, title, author, category, content, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		req.ID, req.Title, req.Author, req.Category, req.Content, req.CreatedBy, req.CreatedAt)
 	return req, err
+}
+
+func UpvoteKnowledgeIdea(ideaID string) (int, error) {
+	_, err := db.ExecContext(context.Background(), `UPDATE knowledge_ideas SET votes = votes + 1 WHERE id = $1`, ideaID)
+	if err != nil {
+		return 0, err
+	}
+	var votes int
+	err = db.QueryRowContext(context.Background(), `SELECT votes FROM knowledge_ideas WHERE id = $1`, ideaID).Scan(&votes)
+	return votes, err
+}
+
+func FollowKnowledgeExpert(expertID string) (int, error) {
+	_, err := db.ExecContext(context.Background(), `UPDATE knowledge_experts SET followers = followers + 1 WHERE id = $1`, expertID)
+	if err != nil {
+		return 0, err
+	}
+	var followers int
+	err = db.QueryRowContext(context.Background(), `SELECT followers FROM knowledge_experts WHERE id = $1`, expertID).Scan(&followers)
+	return followers, err
 }
 
 func GetKnowledgePosts() ([]model.KnowledgePost, error) {

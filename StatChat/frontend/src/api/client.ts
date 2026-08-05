@@ -1,6 +1,26 @@
-import { Conversation, Message, User, UserSettings, PinnedMessage, Task, Notification, Presence, MessageReaction } from '../types';
+import { Conversation, Message, User, UserSettings, PinnedMessage, Task, Notification, Presence, MessageReaction, CallSession, CallParticipant, CallRecording, SearchResult, Favourite } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
+
+function getStoredToken(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return window.localStorage.getItem('statchat_token')?.trim() ?? '';
+}
+
+async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers ?? {});
+  const token = getStoredToken();
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (!headers.has('Content-Type') && init.body && typeof init.body === 'string') {
+    headers.set('Content-Type', 'application/json');
+  }
+  return fetch(input, { ...init, headers });
+}
+
 export const WS_URL = import.meta.env.VITE_WS_URL ?? (() => {
   if (typeof window === 'undefined') {
     return 'ws://localhost:4000/ws';
@@ -11,7 +31,7 @@ export const WS_URL = import.meta.env.VITE_WS_URL ?? (() => {
 })();
 
 export async function fetchCurrentUser(): Promise<User> {
-  const response = await fetch(`${BASE_URL}/users/me`);
+  const response = await apiFetch(`${BASE_URL}/users/me`);
   if (!response.ok) {
     throw new Error(`Failed to fetch current user: ${response.status}`);
   }
@@ -19,7 +39,7 @@ export async function fetchCurrentUser(): Promise<User> {
 }
 
 export async function fetchConversations(): Promise<Conversation[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/conversations`);
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations`);
   if (!response.ok) {
     throw new Error(`Failed to fetch conversations: ${response.status}`);
   }
@@ -27,15 +47,23 @@ export async function fetchConversations(): Promise<Conversation[]> {
 }
 
 export async function fetchMessages(conversationId: string): Promise<Message[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/messages`);
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${encodeURIComponent(conversationId)}/messages`);
   if (!response.ok) {
     throw new Error(`Failed to fetch messages: ${response.status}`);
   }
   return response.json();
 }
 
-export async function sendChatMessage(payload: { conversationId: string; channelId?: string; sender: string; text: string; tenantId?: string }): Promise<Message> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages`, {
+export async function sendChatMessage(payload: {
+  conversationId: string;
+  channelId?: string;
+  sender: string;
+  text: string;
+  tenantId?: string;
+  parentMessageId?: string;
+  threadRootId?: string;
+}): Promise<Message> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ event: 'message.send', tenantId: payload.tenantId, payload }),
@@ -47,7 +75,7 @@ export async function sendChatMessage(payload: { conversationId: string; channel
 }
 
 export async function uploadChatAttachment(formData: FormData): Promise<Message> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/attachments`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/attachments`, {
     method: 'POST',
     body: formData,
   });
@@ -58,7 +86,7 @@ export async function uploadChatAttachment(formData: FormData): Promise<Message>
 }
 
 export async function fetchAllUsers(): Promise<User[]> {
-  const response = await fetch(`${BASE_URL}/users`);
+  const response = await apiFetch(`${BASE_URL}/users`);
   if (!response.ok) {
     throw new Error(`Failed to fetch users: ${response.status}`);
   }
@@ -66,7 +94,7 @@ export async function fetchAllUsers(): Promise<User[]> {
 }
 
 export async function createDM(targetUserId: string, targetName: string): Promise<Conversation> {
-  const response = await fetch(`${BASE_URL}/conversations/dm`, {
+  const response = await apiFetch(`${BASE_URL}/conversations/dm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId, targetName }),
@@ -93,7 +121,7 @@ export interface GroupCategory {
 }
 
 export async function fetchGroupTemplates(): Promise<GroupCategory[]> {
-  const response = await fetch(`${BASE_URL}/groups/templates`);
+  const response = await apiFetch(`${BASE_URL}/groups/templates`);
   if (!response.ok) {
     throw new Error(`Failed to fetch group templates: ${response.status}`);
   }
@@ -101,7 +129,7 @@ export async function fetchGroupTemplates(): Promise<GroupCategory[]> {
 }
 
 export async function createGroup(groupId: string, name: string, memberIds: string[]): Promise<Conversation> {
-  const response = await fetch(`${BASE_URL}/conversations/group`, {
+  const response = await apiFetch(`${BASE_URL}/conversations/group`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ groupId, name, memberIds }),
@@ -113,7 +141,7 @@ export async function createGroup(groupId: string, name: string, memberIds: stri
 }
 
 export async function updateProfile(name: string, about: string, avatarUrl: string): Promise<User> {
-  const response = await fetch(`${BASE_URL}/users/me/profile`, {
+  const response = await apiFetch(`${BASE_URL}/users/me/profile`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, about, avatarUrl }),
@@ -125,7 +153,7 @@ export async function updateProfile(name: string, about: string, avatarUrl: stri
 }
 
 export async function fetchUserSettings(): Promise<UserSettings> {
-  const response = await fetch(`${BASE_URL}/users/me/settings`);
+  const response = await apiFetch(`${BASE_URL}/users/me/settings`);
   if (!response.ok) {
     throw new Error(`Failed to fetch settings: ${response.status}`);
   }
@@ -133,7 +161,7 @@ export async function fetchUserSettings(): Promise<UserSettings> {
 }
 
 export async function updateUserSettings(settings: UserSettings): Promise<UserSettings> {
-  const response = await fetch(`${BASE_URL}/users/me/settings`, {
+  const response = await apiFetch(`${BASE_URL}/users/me/settings`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -220,13 +248,13 @@ export interface MeetingRecording {
 }
 
 export async function fetchPosts(): Promise<Post[]> {
-  const response = await fetch(`${BASE_URL}/collaboration/posts`);
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts`);
   if (!response.ok) throw new Error(`Failed to fetch posts: ${response.status}`);
   return response.json();
 }
 
 export async function createPost(post: Omit<Post, 'id' | 'createdAt'>): Promise<Post> {
-  const response = await fetch(`${BASE_URL}/collaboration/posts`, {
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(post),
@@ -246,7 +274,7 @@ export interface PostComment {
 }
 
 export async function togglePostLike(postId: string, userId?: string): Promise<{ liked: boolean }> {
-  const response = await fetch(`${BASE_URL}/collaboration/posts/${postId}/like`, {
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts/${postId}/like`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -256,13 +284,13 @@ export async function togglePostLike(postId: string, userId?: string): Promise<{
 }
 
 export async function fetchPostComments(postId: string): Promise<PostComment[]> {
-  const response = await fetch(`${BASE_URL}/collaboration/posts/${postId}/comments`);
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts/${postId}/comments`);
   if (!response.ok) throw new Error(`Failed to fetch comments: ${response.status}`);
   return response.json();
 }
 
 export async function addPostComment(postId: string, comment: { author: string; role?: string; org?: string; text: string }): Promise<PostComment> {
-  const response = await fetch(`${BASE_URL}/collaboration/posts/${postId}/comments`, {
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts/${postId}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(comment),
@@ -272,13 +300,13 @@ export async function addPostComment(postId: string, comment: { author: string; 
 }
 
 export async function fetchConnections(): Promise<Connection[]> {
-  const response = await fetch(`${BASE_URL}/collaboration/connections`);
+  const response = await apiFetch(`${BASE_URL}/collaboration/connections`);
   if (!response.ok) throw new Error(`Failed to fetch connections: ${response.status}`);
   return response.json();
 }
 
 export async function createConnection(targetUserId: string): Promise<Connection> {
-  const response = await fetch(`${BASE_URL}/collaboration/connections`, {
+  const response = await apiFetch(`${BASE_URL}/collaboration/connections`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId }),
@@ -288,7 +316,7 @@ export async function createConnection(targetUserId: string): Promise<Connection
 }
 
 export async function removeConnection(targetUserId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/collaboration/connections`, {
+  const response = await apiFetch(`${BASE_URL}/collaboration/connections`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId }),
@@ -297,25 +325,25 @@ export async function removeConnection(targetUserId: string): Promise<void> {
 }
 
 export async function fetchOpportunities(): Promise<Opportunity[]> {
-  const response = await fetch(`${BASE_URL}/collaboration/opportunities`);
+  const response = await apiFetch(`${BASE_URL}/collaboration/opportunities`);
   if (!response.ok) throw new Error(`Failed to fetch opportunities: ${response.status}`);
   return response.json();
 }
 
 export async function fetchJobs(): Promise<Job[]> {
-  const response = await fetch(`${BASE_URL}/collaboration/jobs`);
+  const response = await apiFetch(`${BASE_URL}/collaboration/jobs`);
   if (!response.ok) throw new Error(`Failed to fetch jobs: ${response.status}`);
   return response.json();
 }
 
 export async function fetchMeetings(): Promise<Meeting[]> {
-  const response = await fetch(`${BASE_URL}/meetings`);
+  const response = await apiFetch(`${BASE_URL}/meetings`);
   if (!response.ok) throw new Error(`Failed to fetch meetings: ${response.status}`);
   return response.json();
 }
 
 export async function createMeeting(meeting: Omit<Meeting, 'id' | 'createdAt'>): Promise<Meeting> {
-  const response = await fetch(`${BASE_URL}/meetings`, {
+  const response = await apiFetch(`${BASE_URL}/meetings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(meeting),
@@ -325,13 +353,13 @@ export async function createMeeting(meeting: Omit<Meeting, 'id' | 'createdAt'>):
 }
 
 export async function fetchMeetingRooms(): Promise<MeetingRoom[]> {
-  const response = await fetch(`${BASE_URL}/meetings/rooms`);
+  const response = await apiFetch(`${BASE_URL}/meetings/rooms`);
   if (!response.ok) throw new Error(`Failed to fetch meeting rooms: ${response.status}`);
   return response.json();
 }
 
 export async function fetchMeetingRecordings(): Promise<MeetingRecording[]> {
-  const response = await fetch(`${BASE_URL}/meetings/recordings`);
+  const response = await apiFetch(`${BASE_URL}/meetings/recordings`);
   if (!response.ok) throw new Error(`Failed to fetch recordings: ${response.status}`);
   return response.json();
 }
@@ -353,13 +381,13 @@ export interface WellnessPost {
 }
 
 export async function fetchWellnessPosts(): Promise<WellnessPost[]> {
-  const response = await fetch(`${BASE_URL}/wellness/posts`);
+  const response = await apiFetch(`${BASE_URL}/wellness/posts`);
   if (!response.ok) throw new Error(`Failed to fetch wellness posts: ${response.status}`);
   return response.json();
 }
 
 export async function createWellnessPost(post: Omit<WellnessPost, 'id' | 'createdAt'>): Promise<WellnessPost> {
-  const response = await fetch(`${BASE_URL}/wellness/posts`, {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(post),
@@ -413,31 +441,31 @@ export interface KnowledgePost {
 }
 
 export async function fetchKnowledgeExperts(): Promise<KnowledgeExpert[]> {
-  const response = await fetch(`${BASE_URL}/knowledge/experts`);
+  const response = await apiFetch(`${BASE_URL}/knowledge/experts`);
   if (!response.ok) throw new Error(`Failed to fetch experts: ${response.status}`);
   return response.json();
 }
 
 export async function fetchKnowledgeArticles(): Promise<KnowledgeArticle[]> {
-  const response = await fetch(`${BASE_URL}/knowledge/articles`);
+  const response = await apiFetch(`${BASE_URL}/knowledge/articles`);
   if (!response.ok) throw new Error(`Failed to fetch articles: ${response.status}`);
   return response.json();
 }
 
 export async function fetchKnowledgeIdeas(): Promise<KnowledgeIdea[]> {
-  const response = await fetch(`${BASE_URL}/knowledge/ideas`);
+  const response = await apiFetch(`${BASE_URL}/knowledge/ideas`);
   if (!response.ok) throw new Error(`Failed to fetch ideas: ${response.status}`);
   return response.json();
 }
 
 export async function fetchKnowledgePosts(): Promise<KnowledgePost[]> {
-  const response = await fetch(`${BASE_URL}/knowledge/posts`);
+  const response = await apiFetch(`${BASE_URL}/knowledge/posts`);
   if (!response.ok) throw new Error(`Failed to fetch posts: ${response.status}`);
   return response.json();
 }
 
 export async function createKnowledgePost(post: Omit<KnowledgePost, 'id' | 'createdAt'>): Promise<KnowledgePost> {
-  const response = await fetch(`${BASE_URL}/knowledge/posts`, {
+  const response = await apiFetch(`${BASE_URL}/knowledge/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(post),
@@ -449,7 +477,7 @@ export async function createKnowledgePost(post: Omit<KnowledgePost, 'id' | 'crea
 // ── Message Edit / Delete ──
 
 export async function editChatMessage(messageId: string, text: string): Promise<Message> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages/${messageId}`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${messageId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -459,7 +487,7 @@ export async function editChatMessage(messageId: string, text: string): Promise<
 }
 
 export async function deleteChatMessage(messageId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages/${messageId}`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${messageId}`, {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error(`Failed to delete message: ${response.status}`);
@@ -468,7 +496,7 @@ export async function deleteChatMessage(messageId: string): Promise<void> {
 // ── Message Reactions ──
 
 export async function addReaction(messageId: string, emoji: string, userId?: string): Promise<MessageReaction> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages/${messageId}/reactions`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${messageId}/reactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emoji, userId }),
@@ -478,7 +506,7 @@ export async function addReaction(messageId: string, emoji: string, userId?: str
 }
 
 export async function removeReaction(messageId: string, emoji: string, userId?: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages/${messageId}/reactions`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${messageId}/reactions`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emoji, userId }),
@@ -489,7 +517,7 @@ export async function removeReaction(messageId: string, emoji: string, userId?: 
 // ── Read Receipts ──
 
 export async function markMessageRead(messageId: string, userId?: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/messages/${messageId}/read`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${messageId}/read`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId }),
@@ -500,13 +528,13 @@ export async function markMessageRead(messageId: string, userId?: string): Promi
 // ── Pinned Messages ──
 
 export async function fetchPinnedMessages(conversationId: string): Promise<PinnedMessage[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/conversations/${conversationId}/pinned`);
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/pinned`);
   if (!response.ok) throw new Error(`Failed to fetch pinned messages: ${response.status}`);
   return response.json();
 }
 
 export async function pinMessage(conversationId: string, messageId: string, pinnedBy?: string): Promise<PinnedMessage> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/conversations/${conversationId}/pinned`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/pinned`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messageId, pinnedBy }),
@@ -516,7 +544,7 @@ export async function pinMessage(conversationId: string, messageId: string, pinn
 }
 
 export async function unpinMessage(conversationId: string, messageId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/chat/conversations/${conversationId}/pinned`, {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/pinned`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messageId }),
@@ -528,13 +556,13 @@ export async function unpinMessage(conversationId: string, messageId: string): P
 
 export async function fetchTasks(conversationId?: string): Promise<Task[]> {
   const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
-  const response = await fetch(`${BASE_URL}/api/v1/tasks${query}`);
+  const response = await apiFetch(`${BASE_URL}/v1/tasks${query}`);
   if (!response.ok) throw new Error(`Failed to fetch tasks: ${response.status}`);
   return response.json();
 }
 
 export async function createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<Task> {
-  const response = await fetch(`${BASE_URL}/api/v1/tasks`, {
+  const response = await apiFetch(`${BASE_URL}/v1/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(task),
@@ -544,7 +572,7 @@ export async function createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedA
 }
 
 export async function updateTaskStatus(taskId: string, status: string): Promise<Task> {
-  const response = await fetch(`${BASE_URL}/api/v1/tasks/${taskId}/status`, {
+  const response = await apiFetch(`${BASE_URL}/v1/tasks/${taskId}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
@@ -556,20 +584,20 @@ export async function updateTaskStatus(taskId: string, status: string): Promise<
 // ── Notifications ──
 
 export async function fetchNotifications(): Promise<Notification[]> {
-  const response = await fetch(`${BASE_URL}/api/v1/notifications`);
+  const response = await apiFetch(`${BASE_URL}/v1/notifications`);
   if (!response.ok) throw new Error(`Failed to fetch notifications: ${response.status}`);
   return response.json();
 }
 
 export async function markNotificationRead(notificationId: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/notifications/${notificationId}/read`, {
+  const response = await apiFetch(`${BASE_URL}/v1/notifications/${notificationId}/read`, {
     method: 'POST',
   });
   if (!response.ok) throw new Error(`Failed to mark notification as read: ${response.status}`);
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/v1/notifications/read-all`, {
+  const response = await apiFetch(`${BASE_URL}/v1/notifications/read-all`, {
     method: 'POST',
   });
   if (!response.ok) throw new Error(`Failed to mark all notifications as read: ${response.status}`);
@@ -579,17 +607,195 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 export async function fetchPresence(userId?: string): Promise<Presence[] | Presence> {
   const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-  const response = await fetch(`${BASE_URL}/api/v1/presence${query}`);
+  const response = await apiFetch(`${BASE_URL}/v1/presence${query}`);
   if (!response.ok) throw new Error(`Failed to fetch presence: ${response.status}`);
   return response.json();
 }
 
 export async function updatePresence(status: string, userId?: string): Promise<Presence> {
-  const response = await fetch(`${BASE_URL}/api/v1/presence`, {
+  const response = await apiFetch(`${BASE_URL}/v1/presence`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, userId }),
   });
   if (!response.ok) throw new Error(`Failed to update presence: ${response.status}`);
   return response.json();
+}
+
+// ── Conferencing (Native WebRTC) ──
+
+export async function createCallSession(payload: {
+  kind: 'voice' | 'video';
+  roomName?: string;
+  conversationId?: string;
+  hostId?: string;
+  hostName?: string;
+}): Promise<CallSession> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create call session: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCallSessions(): Promise<CallSession[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls`);
+  if (!response.ok) throw new Error(`Failed to list call sessions: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCallSession(sessionId: string): Promise<{ session: CallSession; participants: CallParticipant[] }> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}`);
+  if (!response.ok) throw new Error(`Failed to fetch call session: ${response.status}`);
+  return response.json();
+}
+
+export async function joinCallSession(sessionId: string, userId?: string, userName?: string): Promise<CallParticipant> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, userName }),
+  });
+  if (!response.ok) throw new Error(`Failed to join call session: ${response.status}`);
+  return response.json();
+}
+
+export async function leaveCallSession(sessionId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/leave`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) throw new Error(`Failed to leave call session: ${response.status}`);
+}
+
+export async function endCallSession(sessionId: string): Promise<CallSession> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/end`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to end call session: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCallParticipants(sessionId: string): Promise<CallParticipant[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/participants`);
+  if (!response.ok) throw new Error(`Failed to fetch call participants: ${response.status}`);
+  return response.json();
+}
+
+export async function uploadCallRecording(sessionId: string, formData: FormData): Promise<CallRecording> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/recordings`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`Failed to upload call recording: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCallRecordings(sessionId: string): Promise<CallRecording[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/recordings`);
+  if (!response.ok) throw new Error(`Failed to fetch call recordings: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchMeetingCallSession(meetingId: string): Promise<CallSession> {
+  const response = await apiFetch(`${BASE_URL}/v1/meetings/${meetingId}/session`);
+  if (!response.ok) throw new Error(`Failed to fetch meeting session: ${response.status}`);
+  return response.json();
+}
+
+// ── Auth Token ──
+
+export function setAuthToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    window.localStorage.setItem('statchat_token', token);
+  } else {
+    window.localStorage.removeItem('statchat_token');
+  }
+}
+
+export function getAuthToken(): string {
+  return getStoredToken();
+}
+
+// ── Global Search ──
+
+export async function searchAPI(query: string): Promise<SearchResult> {
+  const response = await apiFetch(`${BASE_URL}/v1/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) throw new Error(`Failed to search: ${response.status}`);
+  return response.json();
+}
+
+// ── Favourites ──
+
+export async function toggleFavourite(conversationId: string): Promise<Favourite> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/favourite`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to toggle favourite: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchFavouriteStatus(conversationId: string): Promise<Favourite> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/favourite`);
+  if (!response.ok) throw new Error(`Failed to fetch favourite status: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchFavouriteIds(): Promise<string[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/favourites`);
+  if (!response.ok) throw new Error(`Failed to fetch favourite ids: ${response.status}`);
+  return response.json();
+}
+
+// ── Mute ──
+
+export async function muteConversation(conversationId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/mute`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to mute conversation: ${response.status}`);
+}
+
+export async function unmuteConversation(conversationId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/mute`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to unmute conversation: ${response.status}`);
+}
+
+export async function fetchMutedIds(): Promise<string[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/muted`);
+  if (!response.ok) throw new Error(`Failed to fetch muted ids: ${response.status}`);
+  return response.json();
+}
+
+// ── Knowledge Hub interactions ──
+
+export async function upvoteKnowledgeIdea(ideaId: string): Promise<{ votes: number }> {
+  const response = await apiFetch(`${BASE_URL}/knowledge/ideas/${ideaId}/upvote`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to upvote idea: ${response.status}`);
+  return response.json();
+}
+
+export async function followKnowledgeExpert(expertId: string): Promise<{ followers: number }> {
+  const response = await apiFetch(`${BASE_URL}/knowledge/experts/${expertId}/follow`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to follow expert: ${response.status}`);
+  return response.json();
+}
+
+// ── Clear Conversation ──
+
+export async function clearConversation(conversationId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${conversationId}/messages`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to clear conversation: ${response.status}`);
 }

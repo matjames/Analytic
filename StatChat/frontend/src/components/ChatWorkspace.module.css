@@ -300,6 +300,71 @@
   transform: scale(1.01);
 }
 
+  .audioAttachment {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(22, 92, 146, 0.12);
+    max-width: 320px;
+  }
+
+  .audioAttachmentHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .audioPlayButton {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: #165c92;
+    color: #ffffff;
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .audioAttachmentTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .audioAttachmentMeta {
+    font-size: 12px;
+    color: #475569;
+  }
+
+  .audioProgress {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
+    appearance: none;
+    background: rgba(22, 92, 146, 0.12);
+  }
+
+  .audioProgress::-webkit-progress-bar {
+    background: rgba(22, 92, 146, 0.12);
+    border-radius: 999px;
+  }
+
+  .audioProgress::-webkit-progress-value {
+    background: #165c92;
+    border-radius: 999px;
+  }
+
+  .hiddenAudio {
+    display: none;
+  }
+
 .sent {
   background: #d9fdd3;
   color: #1a1a1a;
@@ -418,8 +483,120 @@
   transition: transform 180ms ease;
 }
 
-.quickReactionsVisible {
-  transform: translateX(-50%) scale(1);
+ .editToolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelButton {
+  background: transparent;
+  border: 1px solid rgba(22, 92, 146, 0.16);
+  color: inherit;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.sendButton {
+  background: #165c92;
+  border: none;
+  border-radius: 999px;
+  color: #ffffff;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.sendButton:hover,
+.cancelButton:hover {
+  opacity: 0.9;
+}
+
+.messageMetaWrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.messageActionButton {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.messageActionButton:hover {
+  background: rgba(22, 92, 146, 0.08);
+}
+
+.messageActionsPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 92, 146, 0.14);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+}
+
+.messageActionItem {
+  border: none;
+  background: transparent;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1a1a1a;
+}
+
+.messageActionItem:hover {
+  background: rgba(22, 92, 146, 0.08);
+}
+
+.messageActionDanger {
+  color: #dc2626;
+}
+
+.recordingStatus {
+  padding: 10px 14px;
+  margin: 0 16px 16px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.15);
+  color: #b91c1c;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voicePreview {
+  margin: 0 16px 16px;
+  padding: 14px;
+  background: #f5f8fb;
+  border: 1px solid rgba(22, 92, 146, 0.12);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.voicePreviewAudio {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.voicePreviewActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .quickReactionBtn {
@@ -650,6 +827,28 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.voiceButton:hover {
+  transform: scale(1.03);
+}
+
+.inputHint {
+  margin: 6px 16px 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(22, 92, 146, 0.08);
+  color: #0f4673;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inputHintDark {
+  background: rgba(30, 41, 59, 0.9);
+  color: #dbeafe;
 }
 
 .hiddenInput {

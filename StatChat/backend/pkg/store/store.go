@@ -26,6 +26,18 @@ var db *sql.DB
 var clients = map[*Client]bool{}
 var clientsMutex sync.Mutex
 
+func IsReady() bool {
+	if db == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		return false
+	}
+	return true
+}
+
 func Init(dsn string) error {
 	if dsn == "" {
 		return errors.New("database DSN must be provided")
@@ -46,6 +58,12 @@ func Init(dsn string) error {
 		return err
 	}
 	if err = ensureCollaborationSchema(ctx); err != nil {
+		return err
+	}
+	if err = ensureConferencingSchema(ctx); err != nil {
+		return err
+	}
+	if err = ensureFavouriteSchema(ctx); err != nil {
 		return err
 	}
 	if err = seedDefaults(ctx); err != nil {
@@ -827,12 +845,12 @@ func GetUserSettings(userID string) (model.UserSettings, error) {
 SELECT user_id, theme, accent_color, font_size, enter_to_send, language, last_seen, profile_photo,
        read_receipts, typing_indicator, voice_notes, read_by_default, auto_download,
        notif_messages, notif_groups, notif_mentions, notif_meetings, notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
-       download_images, download_videos, download_documents
+       download_images, download_videos, download_documents, COALESCE(wallpaper, '')
 FROM user_settings WHERE user_id = $1`, userID).Scan(
 		&s.UserID, &s.Theme, &s.AccentColor, &s.FontSize, &s.EnterToSend, &s.Language, &s.LastSeen, &s.ProfilePhoto,
 		&s.ReadReceipts, &s.TypingIndicator, &s.VoiceNotes, &s.ReadByDefault, &s.AutoDownload,
 		&s.NotifMessages, &s.NotifGroups, &s.NotifMentions, &s.NotifMeetings, &s.NotifCollaboration, &s.NotifFiles, &s.NotifKnowledge, &s.NotifWellness, &s.NotifSound, &s.NotifPreview, &s.CrossServiceAlerts,
-		&s.DownloadImages, &s.DownloadVideos, &s.DownloadDocuments,
+		&s.DownloadImages, &s.DownloadVideos, &s.DownloadDocuments, &s.Wallpaper,
 	)
 	if err == sql.ErrNoRows {
 		return s, nil
@@ -845,9 +863,9 @@ func UpsertUserSettings(s model.UserSettings) error {
 INSERT INTO user_settings (
   user_id, theme, accent_color, font_size, enter_to_send, language, last_seen, profile_photo,
   read_receipts, typing_indicator, voice_notes, read_by_default, auto_download,
-  notif_messages, notif_groups, notif_mentions, notif_meetings, notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
-  download_images, download_videos, download_documents
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
+  download_images, download_videos, download_documents, wallpaper
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
 ON CONFLICT (user_id) DO UPDATE SET
   theme = EXCLUDED.theme, accent_color = EXCLUDED.accent_color, font_size = EXCLUDED.font_size,
   enter_to_send = EXCLUDED.enter_to_send, language = EXCLUDED.language, last_seen = EXCLUDED.last_seen,
@@ -860,11 +878,12 @@ ON CONFLICT (user_id) DO UPDATE SET
   notif_knowledge = EXCLUDED.notif_knowledge, notif_wellness = EXCLUDED.notif_wellness,
   notif_sound = EXCLUDED.notif_sound, notif_preview = EXCLUDED.notif_preview,
   cross_service_alerts = EXCLUDED.cross_service_alerts, download_images = EXCLUDED.download_images,
-  download_videos = EXCLUDED.download_videos, download_documents = EXCLUDED.download_documents`,
+  download_videos = EXCLUDED.download_videos, download_documents = EXCLUDED.download_documents,
+  wallpaper = EXCLUDED.wallpaper`,
 		s.UserID, s.Theme, s.AccentColor, s.FontSize, s.EnterToSend, s.Language, s.LastSeen, s.ProfilePhoto,
 		s.ReadReceipts, s.TypingIndicator, s.VoiceNotes, s.ReadByDefault, s.AutoDownload,
 		s.NotifMessages, s.NotifGroups, s.NotifMentions, s.NotifMeetings, s.NotifCollaboration, s.NotifFiles, s.NotifKnowledge, s.NotifWellness, s.NotifSound, s.NotifPreview, s.CrossServiceAlerts,
-		s.DownloadImages, s.DownloadVideos, s.DownloadDocuments,
+		s.DownloadImages, s.DownloadVideos, s.DownloadDocuments, s.Wallpaper,
 	)
 	return err
 }
@@ -977,7 +996,7 @@ func GetChannels() ([]model.Channel, error) {
 	return channels, rows.Err()
 }
 
-func GetConversations() ([]model.Conversation, error) {
+func GetConversations(userID string) ([]model.Conversation, error) {
 	rows, err := db.QueryContext(context.Background(), `
 SELECT id, name, type, channel_id, member_ids, COALESCE(category, ''), COALESCE(latest_preview, ''), latest_message_at, COALESCE(attachment_count, 0), COALESCE(unread_count, 0)
 FROM (
@@ -990,10 +1009,9 @@ FROM (
            FROM messages unread_m
            WHERE unread_m.conversation_id = c.id
              AND unread_m.status != 'deleted'
-             AND unread_m.sender != 'StatChat User'
              AND NOT EXISTS (
                SELECT 1 FROM read_receipts rr
-               WHERE rr.message_id = unread_m.id AND rr.user_id = 'user-001'
+               WHERE rr.message_id = unread_m.id AND rr.user_id = $1
              )
          ) AS unread_count
   FROM conversations c

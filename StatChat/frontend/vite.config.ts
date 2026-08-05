@@ -1,7 +1,12 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Resolve root explicitly so builds/dev work regardless of the process cwd.
+const root = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
+  root,
   plugins: [react()],
   server: {
     port: 3009,

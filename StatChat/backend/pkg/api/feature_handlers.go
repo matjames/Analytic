@@ -10,6 +10,41 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// ── Knowledge Hub interactions ──
+
+func upvoteKnowledgeIdeaHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ideaID := vars["id"]
+	votes, err := store.UpvoteKnowledgeIdea(ideaID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to upvote idea")
+		return
+	}
+	writeJSON(w, map[string]int{"votes": votes})
+}
+
+func followKnowledgeExpertHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	expertID := vars["id"]
+	followers, err := store.FollowKnowledgeExpert(expertID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to follow expert")
+		return
+	}
+	writeJSON(w, map[string]int{"followers": followers})
+}
+
+func sharePostHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	postID := vars["id"]
+	shares, err := store.SharePost(postID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to share post")
+		return
+	}
+	writeJSON(w, map[string]int{"shares": shares})
+}
+
 // ── Message Reactions ──
 
 type reactionRequest struct {
@@ -31,7 +66,7 @@ func addReactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = "user-001"
+		req.UserID = requestUserID(r)
 	}
 
 	reaction, err := store.AddReaction(messageID, req.UserID, req.Emoji)
@@ -56,7 +91,7 @@ func removeReactionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = "user-001"
+		req.UserID = requestUserID(r)
 	}
 
 	if err := store.RemoveReaction(messageID, req.UserID, req.Emoji); err != nil {
@@ -80,7 +115,7 @@ func togglePostLikeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = "user-001"
+		req.UserID = requestUserID(r)
 	}
 
 	liked, err := store.TogglePostLike(postID, req.UserID)
@@ -153,7 +188,7 @@ func markMessageReadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = "user-001"
+		req.UserID = requestUserID(r)
 	}
 
 	if err := store.MarkMessageRead(messageID, req.UserID); err != nil {
@@ -196,7 +231,7 @@ func pinMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.PinnedBy == "" {
-		req.PinnedBy = "user-001"
+		req.PinnedBy = requestUserID(r)
 	}
 
 	pin, err := store.PinMessage(conversationID, req.MessageID, req.PinnedBy)
@@ -260,7 +295,7 @@ func createTaskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.CreatedBy == "" {
-		req.CreatedBy = "user-001"
+		req.CreatedBy = requestUserID(r)
 	}
 
 	task, err := store.CreateTask(req)
@@ -298,7 +333,7 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 // ── Notifications ──
 
 func notificationsHandler(w http.ResponseWriter, r *http.Request) {
-	notifications, err := store.GetNotifications("user-001")
+	notifications, err := store.GetNotifications(requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load notifications")
 		return
@@ -318,7 +353,7 @@ func markNotificationReadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func markAllNotificationsReadHandler(w http.ResponseWriter, r *http.Request) {
-	if err := store.MarkAllNotificationsRead("user-001"); err != nil {
+	if err := store.MarkAllNotificationsRead(requestUserID(r)); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark all notifications as read")
 		return
 	}
@@ -361,7 +396,7 @@ func updatePresenceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.UserID == "" {
-		req.UserID = "user-001"
+		req.UserID = requestUserID(r)
 	}
 
 	if err := store.UpdatePresence(req.UserID, req.Status); err != nil {

@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
-import type { User } from '../types';
+import type { User, CallSession, CallRecording } from '../types';
 import type { CalendarSubView } from '../App';
 import {
   fetchMeetings,
   fetchMeetingRooms,
   fetchMeetingRecordings,
+  fetchMeetingCallSession,
+  fetchCallRecordings,
+  createCallSession,
   type Meeting,
   type MeetingRoom,
   type MeetingRecording,
 } from '../api/client';
+import { useCall } from '../hooks/useCall';
+import CallOverlay from './CallOverlay';
+import RecordingPlayer from './RecordingPlayer';
 import styles from './CalendarPanel.module.css';
 
 interface Props {
@@ -17,29 +23,112 @@ interface Props {
   isMobile: boolean;
   activeCalendarView: CalendarSubView;
   nativeMode: boolean;
+  onJoinMeeting?: (meetingId: string) => Promise<void>;
 }
 
-type NativeMeeting = Meeting;
-type MeetingRoomItem = MeetingRoom;
-
-const seedMeetings: NativeMeeting[] = [];
-const seedRooms: MeetingRoomItem[] = [];
-const seedRecordings: MeetingRecording[] = [];
-
-export default function CalendarPanel({ user, theme, isMobile, activeCalendarView, nativeMode }: Props) {
-  const [meetings, setMeetings] = useState<NativeMeeting[]>([]);
-  const [rooms, setRooms] = useState<MeetingRoomItem[]>([]);
+export default function CalendarPanel({ user, theme, isMobile, activeCalendarView, nativeMode, onJoinMeeting }: Props) {
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [rooms, setRooms] = useState<MeetingRoom[]>([]);
   const [recordings, setRecordings] = useState<MeetingRecording[]>([]);
+  const [callActive, setCallActive] = useState(false);
+  const [activeSession, setActiveSession] = useState<CallSession | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [sessionRecordings, setSessionRecordings] = useState<CallRecording[]>([]);
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [joined, setJoined] = useState(false);
   const isDark = theme === 'dark';
   const bg = isDark ? '#0a2b45' : '#ffffff';
   const textColor = isDark ? '#e8eef4' : '#1a1a1a';
   const borderColor = isDark ? '#6b7280' : '#e5e7eb';
+
+  const {
+    session,
+    participants,
+    localStream,
+    micMuted,
+    cameraOff,
+    connecting,
+    joinCall,
+    toggleMute,
+    toggleCamera,
+    hangUp,
+    endCall,
+  } = useCall({
+    user,
+    onIncomingRemoteStream: (stream, userId) => {
+      setRemoteStreams((prev) => ({ ...prev, [userId]: stream }));
+    },
+    onRemoteLeave: (userId) => {
+      setRemoteStreams((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    },
+    onCallEnded: () => {
+      setCallActive(false);
+      setRemoteStreams({});
+      setActiveSession(null);
+      setJoined(false);
+    },
+  });
 
   useEffect(() => {
     fetchMeetings().then(setMeetings).catch(() => {});
     fetchMeetingRooms().then(setRooms).catch(() => {});
     fetchMeetingRecordings().then(setRecordings).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (session && joined && session.id) {
+      fetchCallRecordings(session.id)
+        .then((recs) => setSessionRecordings(recs))
+        .catch(() => {});
+    }
+  }, [session, joined]);
+
+  const handleJoinMeeting = async (meeting: Meeting) => {
+    try {
+      setPlaybackUrl(null);
+      if (onJoinMeeting) {
+        await onJoinMeeting(meeting.id);
+        return;
+      }
+      const callSession = await fetchMeetingCallSession(meeting.id);
+      const joinedSession = await joinCall(callSession.id);
+      setActiveSession(joinedSession);
+      setJoined(true);
+      setCallActive(true);
+    } catch {
+      setCallActive(false);
+      setJoined(false);
+    }
+  };
+
+  const handleJoinRoom = async (room: MeetingRoom) => {
+    try {
+      setPlaybackUrl(null);
+      const callSession = await createCallSession({
+        kind: 'video',
+        roomName: room.name,
+      });
+      const joinedSession = await joinCall(callSession.id);
+      setActiveSession(joinedSession);
+      setJoined(true);
+      setCallActive(true);
+    } catch {
+      setCallActive(false);
+      setJoined(false);
+    }
+  };
+
+  const handlePlayRecording = (url?: string) => {
+    if (url) {
+      setPlaybackUrl(url);
+    } else if (sessionRecordings.length > 0) {
+      setPlaybackUrl(sessionRecordings[0].url);
+    }
+  };
 
   const renderOverview = () => (
     <div>
@@ -74,7 +163,14 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
               <span>Host: {meeting.host}</span>
             </div>
           </div>
-          <button type="button" className={styles.joinBtn}>Join Now</button>
+          <button
+            type="button"
+            className={styles.joinBtn}
+            onClick={() => handleJoinMeeting(meeting)}
+            disabled={connecting}
+          >
+            {connecting ? 'Joining…' : 'Join'}
+          </button>
         </div>
       ))}
 
@@ -88,7 +184,9 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
               <span>👥 {meeting.participants}</span>
             </div>
           </div>
-          <button type="button" className={styles.scheduleBtn}>View</button>
+          <button type="button" className={styles.scheduleBtn} onClick={() => handleJoinMeeting(meeting)} disabled={connecting}>
+            {connecting ? 'Joining…' : 'Join Now'}
+          </button>
         </div>
       ))}
     </div>
@@ -98,7 +196,6 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 className={styles.sectionHeader} style={{ margin: 0 }}>Upcoming Meetings</h2>
-        <button type="button" className={styles.primaryBtn}>+ Schedule Meeting</button>
       </div>
       <p className={styles.subheader}>Native StatChat meetings — no external accounts needed</p>
       {meetings.map((meeting) => (
@@ -119,7 +216,14 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
               <span>Host: {meeting.host}</span>
             </div>
           </div>
-          <button type="button" className={styles.joinBtn}>{meeting.status === 'live' ? 'Join' : 'Join'}</button>
+          <button
+            type="button"
+            className={styles.joinBtn}
+            onClick={() => handleJoinMeeting(meeting)}
+            disabled={connecting}
+          >
+            {connecting ? 'Joining…' : meeting.status === 'live' ? 'Join Live' : 'Join Now'}
+          </button>
         </div>
       ))}
     </div>
@@ -140,10 +244,10 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
             <button
               type="button"
               className={styles.joinBtn}
-              disabled={room.status === 'in-use'}
-              style={{ opacity: room.status === 'in-use' ? 0.5 : 1 }}
+              onClick={() => handleJoinRoom(room)}
+              disabled={connecting}
             >
-              {room.status === 'in-use' ? 'In Use' : 'Enter Room'}
+              {connecting ? 'Joining…' : 'Join Room'}
             </button>
           </div>
         ))}
@@ -155,6 +259,9 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
     <div>
       <h2 className={styles.sectionHeader}>Recordings</h2>
       <p className={styles.subheader}>Access your past StatChat meeting recordings</p>
+      {playbackUrl && (
+        <RecordingPlayer url={playbackUrl} onClose={() => setPlaybackUrl(null)} />
+      )}
       {recordings.map((rec) => (
         <div key={rec.id} className={styles.meetingCard} style={{ background: bg, borderColor }}>
           <div style={{ fontSize: 28, marginRight: 16 }}>🎬</div>
@@ -166,7 +273,26 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
               <span>💾 {rec.size}</span>
             </div>
           </div>
-          <button type="button" className={styles.scheduleBtn}>Play</button>
+          <button type="button" className={styles.scheduleBtn} onClick={() => handlePlayRecording(rec.url)}>
+            Play
+          </button>
+        </div>
+      ))}
+      {sessionRecordings.length > 0 && (
+        <h3 className={styles.sectionHeader} style={{ marginTop: 24 }}>This Call's Recordings</h3>
+      )}
+      {sessionRecordings.map((rec) => (
+        <div key={rec.id} className={styles.meetingCard} style={{ background: bg, borderColor }}>
+          <div style={{ fontSize: 28, marginRight: 16 }}>🎬</div>
+          <div style={{ flex: 1 }}>
+            <div className={styles.meetingTitle}>{rec.title}</div>
+            <div className={styles.meetingMeta}>
+              <span>💾 {rec.size} bytes</span>
+            </div>
+          </div>
+          <button type="button" className={styles.scheduleBtn} onClick={() => setPlaybackUrl(rec.url)}>
+            Play
+          </button>
         </div>
       ))}
     </div>
@@ -182,11 +308,49 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
     }
   };
 
+  // Force-refresh session recordings while in a live call
+  useEffect(() => {
+    if (!callActive || !session?.id) return;
+    const interval = setInterval(() => {
+      fetchCallRecordings(session.id)
+        .then((recs) => setSessionRecordings(recs))
+        .catch(() => {});
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [callActive, session?.id]);
+
   return (
     <section className={styles.calendarShell} style={{ color: textColor }}>
       <div className={styles.calendarScroll}>
         {renderContent()}
       </div>
+
+      {callActive && session && (
+        <CallOverlay
+          session={session}
+          participants={participants}
+          localStream={localStream}
+          remoteStreams={remoteStreams}
+          micMuted={micMuted}
+          cameraOff={cameraOff}
+          connecting={connecting}
+          currentUserName={user?.name}
+          onToggleMute={toggleMute}
+          onToggleCamera={toggleCamera}
+          onHangUp={() => {
+            setCallActive(false);
+            setJoined(false);
+            setRemoteStreams({});
+            hangUp();
+          }}
+          onEndCall={() => {
+            setCallActive(false);
+            setJoined(false);
+            setRemoteStreams({});
+            endCall();
+          }}
+        />
+      )}
     </section>
   );
 }
