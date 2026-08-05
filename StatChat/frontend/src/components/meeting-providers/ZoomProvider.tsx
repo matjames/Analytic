@@ -12,14 +12,20 @@ export default function ZoomProvider({ connected, onConnect, theme }: Props) {
     <div className={styles.providerCard} style={{ background: isDark ? '#0f3f5f' : '#ffffff', borderColor: isDark ? '#6b7280' : '#e5e7eb' }}>
       <div className={styles.providerIcon}>📹</div>
       <div className={styles.providerName}>Zoom</div>
-      <div className={styles.providerStatus} style={{ background: connected ? '#dcfce7' : '#fee2e2', color: connected ? '#166534' : '#991b1b' }}>
-        {connected ? '✓ Connected' : 'Not Connected'}
+      <div
+        className={styles.providerStatus}
+        style={{ background: connected ? '#d1fae5' : '#fef3c7', color: connected ? '#166534' : '#92400e' }}
+      >
+        {connected ? 'Connected' : 'Connect to use'}
       </div>
-      {!connected && (
-        <button type="button" className={styles.connectBtn} onClick={onConnect}>
-          Connect Zoom
-        </button>
-      )}
+      <button
+        type="button"
+        className={styles.connectBtn}
+        onClick={onConnect}
+        title={connected ? 'Disconnect Zoom' : 'Connect Zoom'}
+      >
+        {connected ? 'Disconnect' : 'Connect Zoom'}
+      </button>
     </div>
   );
 }

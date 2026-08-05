@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import type { SidebarView } from '../App';
 import { Conversation } from '../types';
+import GoogleMeetProvider from './meeting-providers/GoogleMeetProvider';
+import TeamsProvider from './meeting-providers/TeamsProvider';
+import ZoomProvider from './meeting-providers/ZoomProvider';
 
 interface Props {
   activeView: SidebarView;
-  activeSubView?: string;
   conversation?: Conversation;
   conversations: Conversation[];
   theme: 'light' | 'dark';
@@ -84,11 +87,51 @@ const contentByView: Record<SidebarView, { title: string; description: string; a
   },
 };
 
-export default function IntegrationPanel({ activeView, activeSubView = 'home', conversation, conversations, theme, isMobile, onSelectConversation }: Props) {
+export default function IntegrationPanel({ activeView, conversation, conversations, theme, isMobile, onSelectConversation }: Props) {
   const content = contentByView[activeView];
   const panelBackground = theme === 'dark' ? '#0f3f5f' : '#ffffff';
   const borderColor = theme === 'dark' ? '#6b7280' : '#e5e7eb';
   const textColor = theme === 'dark' ? '#e8eef4' : '#1a1a1a';
+  const subViewLabel = content.actionLabel ? content.actionLabel.replace(/^(Open|View)\s+/i, '') : content.title;
+  const [connectedProviders, setConnectedProviders] = useState({
+    meet: false,
+    teams: false,
+    zoom: false,
+  });
+
+  const handleProviderToggle = (provider: 'meet' | 'teams' | 'zoom') => {
+    setConnectedProviders((prev) => ({ ...prev, [provider]: !prev[provider] }));
+  };
+
+  const providerPanel = (
+    <div style={{ display: 'grid', gap: 14, marginTop: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div>
+          <h3 style={{ margin: '0 0 8px', color: textColor }}>Connect meeting services</h3>
+          <p style={{ margin: 0, color: theme === 'dark' ? '#9bc4d8' : '#6b7280' }}>
+            Enable one-click provider access for Google Meet, Teams, and Zoom.
+          </p>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+        <GoogleMeetProvider
+          connected={connectedProviders.meet}
+          onConnect={() => handleProviderToggle('meet')}
+          theme={theme}
+        />
+        <TeamsProvider
+          connected={connectedProviders.teams}
+          onConnect={() => handleProviderToggle('teams')}
+          theme={theme}
+        />
+        <ZoomProvider
+          connected={connectedProviders.zoom}
+          onConnect={() => handleProviderToggle('zoom')}
+          theme={theme}
+        />
+      </div>
+    </div>
+  );
 
   if (['directMessages', 'teams', 'channels'].includes(activeView)) {
     return (
@@ -109,7 +152,7 @@ export default function IntegrationPanel({ activeView, activeSubView = 'home', c
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 8 }}>
             <h2 style={{ margin: 0, color: textColor }}>{content.title}</h2>
             <span style={{ padding: '6px 10px', borderRadius: 999, background: theme === 'dark' ? '#0a2b45' : '#f0f7fb', color: theme === 'dark' ? '#6ba3c3' : '#165c92', fontSize: 12, fontWeight: 700 }}>
-            {activeSubView === 'connect' ? 'Connect' : activeSubView === 'opportunities' ? 'Opportunities' : activeSubView === 'network' ? 'My Network' : activeSubView === 'jobs' ? 'Jobs' : 'Home'}
+            {subViewLabel}
           </span>
         </div>
         <p style={{ margin: '10px 0 0', color: theme === 'dark' ? '#9bc4d8' : '#6b7280' }}>{content.description}</p>
@@ -160,7 +203,7 @@ export default function IntegrationPanel({ activeView, activeSubView = 'home', c
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 8 }}>
           <h2 style={{ margin: 0, color: textColor }}>{content.title}</h2>
           <span style={{ padding: '6px 10px', borderRadius: 999, background: theme === 'dark' ? '#0a2b45' : '#f0f7fb', color: theme === 'dark' ? '#6ba3c3' : '#165c92', fontSize: 12, fontWeight: 700 }}>
-            {activeSubView === 'connect' ? 'Connect' : activeSubView === 'opportunities' ? 'Opportunities' : activeSubView === 'network' ? 'My Network' : activeSubView === 'jobs' ? 'Jobs' : 'Home'}
+            {subViewLabel}
           </span>
         </div>
         <p style={{ margin: '10px 0 0', color: theme === 'dark' ? '#9bc4d8' : '#6b7280' }}>{content.description}</p>
@@ -211,6 +254,7 @@ export default function IntegrationPanel({ activeView, activeSubView = 'home', c
                 </a>
               ))}
           </div>
+          {providerPanel}
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 14 }}>

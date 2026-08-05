@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, WS_URL } from './api/client';
+import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, fetchUserSettings, fetchMeetingCallSession, WS_URL } from './api/client';
 import { Conversation, Message, User, Notification } from './types';
 import ChatSidebarList from './components/ChatSidebarList';
 import ChatWorkspace from './components/ChatWorkspace';
@@ -8,6 +8,8 @@ import IntegrationPanel from './components/IntegrationPanel';
 import SettingsPanel from './components/SettingsPanel';
 import CollaborationPanel from './components/CollaborationPanel';
 import CalendarPanel from './components/CalendarPanel';
+import CallOverlay from './components/CallOverlay';
+import { useCall } from './hooks/useCall';
 import WellnessPanel from './components/WellnessPanel';
 import KnowledgePanel from './components/KnowledgePanel';
 import LegalPanel, { LegalTab } from './components/LegalPanel';
@@ -69,6 +71,7 @@ export default function App() {
 const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [meetingCallRemoteStreams, setMeetingCallRemoteStreams] = useState<Record<string, MediaStream>>({});
   const currentConversationRef = useRef(currentConversation);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,6 +79,37 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     () => conversations.find((conversation) => conversation.id === currentConversation),
     [conversations, currentConversation]
   );
+
+  const {
+    session: meetingSession,
+    participants: meetingParticipants,
+    localStream: meetingLocalStream,
+    micMuted: meetingMicMuted,
+    cameraOff: meetingCameraOff,
+    connecting: meetingConnecting,
+    error: meetingError,
+    startCall: startMeetingCall,
+    joinCall: joinMeetingCall,
+    toggleMute: toggleMeetingMute,
+    toggleCamera: toggleMeetingCamera,
+    hangUp: hangUpMeeting,
+    endCall: endMeeting,
+  } = useCall({
+    user: user ? { id: user.id, name: user.name } : null,
+    onIncomingRemoteStream: (stream, userId) => {
+      setMeetingCallRemoteStreams((prev) => ({ ...prev, [userId]: stream }));
+    },
+    onRemoteLeave: (userId) => {
+      setMeetingCallRemoteStreams((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    },
+    onCallEnded: () => {
+      setMeetingCallRemoteStreams({});
+    },
+  });
 
   const handleSelectConversation = (conversationId: string) => {
     setCurrentConversation(conversationId);
@@ -91,6 +125,17 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       if (prev.some((c) => c.id === conv.id)) return prev;
       return [...prev, conv];
     });
+  };
+
+  const handleJoinMeeting = async (meetingId: string) => {
+    try {
+      const session = await fetchMeetingCallSession(meetingId);
+      await joinMeetingCall(session.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to join meeting';
+      setError(`Meeting join failed: ${message}`);
+      throw error;
+    }
   };
 
   const isChatWorkspace = ['directMessages', 'teams'].includes(activeSidebarView);
@@ -112,13 +157,17 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
 
     async function loadInitialData() {
       try {
-        const [currentUser, conversationList, initialMessages] = await Promise.all([
+        const [currentUser, conversationList, initialMessages, userSettings] = await Promise.all([
           fetchCurrentUser(),
           fetchConversations(),
           fetchMessages(currentConversation),
+          fetchUserSettings(),
         ]);
         setUser(currentUser);
         setConversations(conversationList);
+        if (userSettings.theme === 'dark' || userSettings.theme === 'light') {
+          setTheme(userSettings.theme);
+        }
         if (!conversationList.some((conversation: Conversation) => conversation.id === currentConversation)) {
           setCurrentConversation(conversationList[0]?.id ?? currentConversation);
         }
@@ -147,9 +196,26 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     ws.addEventListener('close', () => setConnected(false));
     ws.addEventListener('error', () => setError('Live connection dropped. The UI will retry when the backend is reachable again.'));
     ws.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data) as Message;
+      let data: unknown;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      // GatewayEnvelope events (typing, presence, call state, etc.) carry an
+      // `event` field and must NOT be treated as chat messages.
+      if (data && typeof data === 'object' && 'event' in (data as Record<string, unknown>)) {
+        return;
+      }
+      const message = data as Message;
+      if (!message || typeof message.id !== 'string' || typeof message.conversationId !== 'string') {
+        return;
+      }
       setMessages((prev) => {
         if (message.conversationId !== currentConversationRef.current) {
+          return prev;
+        }
+        if (prev.some((m) => m.id === message.id)) {
           return prev;
         }
         return [...prev, message];
@@ -226,7 +292,10 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     };
   }, [currentConversation, socket]);
 
-  const sendMessage = async (textOverride?: string) => {
+  const sendMessage = async (
+    textOverride?: string,
+    replyContext?: { parentMessageId?: string; threadRootId?: string }
+  ) => {
     const messageText = (textOverride ?? draft).trim();
     if (!messageText) return;
 
@@ -237,6 +306,8 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       sender: user?.name ?? 'StatChat User',
       text: messageText,
       tenantId: user?.organizationId ?? 'statgate-uganda',
+      parentMessageId: replyContext?.parentMessageId,
+      threadRootId: replyContext?.threadRootId,
     };
 
     setDraft('');
@@ -254,7 +325,7 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to send message', error);
       setError(`Unable to send message: ${message}`);
-if (socket?.readyState === WebSocket.OPEN) {
+      if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ action: 'send-message', ...payload }));
       }
     }
@@ -565,6 +636,7 @@ const handleMessageUpdate = (updated: Message) => {
                   theme={theme}
                   isMobile={isMobile}
                   currentUserName={user?.name}
+                  currentUserId={user?.id}
                   onDraftChange={setDraft}
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
@@ -594,6 +666,7 @@ const handleMessageUpdate = (updated: Message) => {
                   theme={theme}
                   isMobile={isMobile}
                   currentUserName={user?.name}
+                  currentUserId={user?.id}
                   onDraftChange={setDraft}
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
@@ -624,6 +697,7 @@ const handleMessageUpdate = (updated: Message) => {
               isMobile={isMobile}
               activeCalendarView={activeCalendarView}
               nativeMode={isNativeMeetingView}
+              onJoinMeeting={handleJoinMeeting}
             />
           ) : isWellnessView ? (
             <WellnessPanel
@@ -640,7 +714,6 @@ const handleMessageUpdate = (updated: Message) => {
           ) : (
             <IntegrationPanel
               activeView={activeSidebarView}
-              activeSubView={activeSubView}
               conversation={activeConversation}
               conversations={conversations}
               theme={theme}
@@ -650,6 +723,23 @@ const handleMessageUpdate = (updated: Message) => {
           )}
         </div>
       </main>
+
+      {meetingSession && (
+        <CallOverlay
+          session={meetingSession}
+          participants={meetingParticipants}
+          localStream={meetingLocalStream}
+          remoteStreams={meetingCallRemoteStreams}
+          micMuted={meetingMicMuted}
+          cameraOff={meetingCameraOff}
+          connecting={meetingConnecting}
+          currentUserName={user?.name}
+          onToggleMute={toggleMeetingMute}
+          onToggleCamera={toggleMeetingCamera}
+          onHangUp={hangUpMeeting}
+          onEndCall={endMeeting}
+        />
+      )}
 
       {/* ── Footer (StatGate brand style) ── */}
       <footer className={styles.footer}>
