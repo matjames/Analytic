@@ -110,8 +110,9 @@ The backend auto-creates and seeds the following tables on first run:
 - `DATABASE_URL` — full Postgres DSN (takes precedence)
 - `STATCHAT_DB_HOST` / `STATCHAT_DB_PORT` / `STATCHAT_DB_USER` / `STATCHAT_DB_PASSWORD` / `STATCHAT_DB_NAME` / `STATCHAT_DB_SSLMODE`
 - `BACKEND_PORT` — HTTP listen port (default `4000`)
-- `STATCHAT_AUTH_REQUIRED` — set `true` to enforce JWT auth
-- `STATCHAT_JWT_SECRET` — JWT signing secret
+- `STATCHAT_AUTH_REQUIRED` — set `true` to enforce JWT auth on all protected routes, including WebSocket `/ws`
+- `STATCHAT_JWT_SECRET` — JWT signing secret; required when `STATCHAT_AUTH_REQUIRED=true` and must not remain the default development value
+- `STATCHAT_CORS_ALLOWED_ORIGINS` — comma-separated list of allowed browser origins for CORS; if unset, only same-origin and localhost origins are accepted
 - `STATCHAT_UPLOAD_DIR` — upload directory (default `uploads`)
 
 ### Frontend (`frontend/.env`)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Conversation, Message, User } from '../types';
-import { fetchAllUsers, createDM, createGroup, fetchGroupTemplates, fetchPresence, type GroupCategory } from '../api/client';
+import { fetchAllUsers, createDM, createGroup, fetchGroupTemplates, fetchPresence, fetchFavouriteIds, type GroupCategory } from '../api/client';
 import styles from './ChatSidebarList.module.css';
 
 interface Props {
@@ -90,6 +90,7 @@ export default function ChatSidebarList({
 const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const [favouriteIds, setFavouriteIds] = useState<Set<string>>(new Set());
 
   // Reset filter when view type changes
   useEffect(() => {
@@ -113,6 +114,20 @@ const [groupCategories, setGroupCategories] = useState<GroupCategory[]>([]);
       cancelled = true;
     };
   }, []);
+
+  // Fetch real favourites from the backend — refetch whenever the
+  // user opens the Favourites filter so toggles appear immediately.
+  useEffect(() => {
+    let cancelled = false;
+    fetchFavouriteIds()
+      .then((ids) => {
+        if (!cancelled) setFavouriteIds(new Set(ids));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter]);
 
   // Fetch group templates when in groups view
   useEffect(() => {
@@ -151,7 +166,7 @@ const filteredConversations = useMemo(() => {
           if (getUnreadCount(conversation, false) === 0) return false;
         }
         if (activeFilter === 'Favourites') {
-          return conversation.id === 'general' || conversation.type === 'direct';
+          return favouriteIds.has(conversation.id);
         }
         return true;
       })
@@ -175,7 +190,7 @@ const filteredConversations = useMemo(() => {
         if (b.id === activeConversationId) return 1;
         return a.name.localeCompare(b.name);
       });
-  }, [conversations, activeConversationId, activeFilter, search, viewType, activeCategory, externalSearch]);
+  }, [conversations, activeConversationId, activeFilter, search, viewType, activeCategory, externalSearch, favouriteIds]);
 
   const filteredUsers = useMemo(() => {
     const lowercaseSearch = search.trim().toLowerCase();

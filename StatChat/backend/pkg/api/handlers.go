@@ -1,14 +1,19 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"statchat/pkg/model"
@@ -21,7 +26,32 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		return origin == "" || allowedOrigin(origin, r)
+	},
+}
+
+func authRequired() bool {
+	return strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true")
+}
+
+func requestCurrentUser(r *http.Request) (model.User, error) {
+	userID := requestUserID(r)
+	if strings.TrimSpace(userID) == "" {
+		if !authRequired() {
+			return model.User{ID: "user-001", Name: "StatChat User"}, nil
+		}
+		return model.User{}, fmt.Errorf("missing user identity")
+	}
+	user, err := store.GetUserByID(userID)
+	if err != nil {
+		if !authRequired() {
+			return model.User{ID: userID, Name: "StatChat User"}, nil
+		}
+		return model.User{}, err
+	}
+	return user, nil
 }
 
 type sendMessageRequest struct {
@@ -44,9 +74,28 @@ type updateProfileRequest struct {
 	AvatarURL string `json:"avatarUrl"`
 }
 
+type contextKey string
+
+const requestUserIDKey contextKey = "requestUserID"
+
+func requestUserID(r *http.Request) string {
+	if userID, ok := r.Context().Value(requestUserIDKey).(string); ok && strings.TrimSpace(userID) != "" {
+		return userID
+	}
+	return "user-001"
+}
+
+func requestUserName(r *http.Request) string {
+	if user, err := requestCurrentUser(r); err == nil && strings.TrimSpace(user.Name) != "" {
+		return user.Name
+	}
+	return "StatChat User"
+}
+
 func RegisterRoutes(router *mux.Router) {
 	router.Use(corsMiddleware)
 	router.Use(authMiddleware)
+	router.Use(rateLimitMiddleware)
 	router.HandleFunc("/health", healthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/readyz", healthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users", allUsersHandler).Methods(http.MethodGet)
@@ -78,6 +127,8 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/knowledge/ideas", knowledgeIdeasHandler).Methods(http.MethodGet)
 	router.HandleFunc("/knowledge/posts", knowledgePostsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/knowledge/posts", createKnowledgePostHandler).Methods(http.MethodPost)
+	router.HandleFunc("/knowledge/ideas/{id}/upvote", upvoteKnowledgeIdeaHandler).Methods(http.MethodPost)
+	router.HandleFunc("/knowledge/experts/{id}/follow", followKnowledgeExpertHandler).Methods(http.MethodPost)
 	router.HandleFunc("/channels", channelsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/conversations", conversationsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/messages", messagesHandler).Methods(http.MethodGet)
@@ -101,6 +152,25 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/v1/notifications/read-all", markAllNotificationsReadHandler).Methods(http.MethodPost)
 	router.HandleFunc("/api/v1/presence", presenceHandler).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/presence", updatePresenceHandler).Methods(http.MethodPut)
+	router.HandleFunc("/search", searchHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/search", searchHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/chat/conversations/{id}/favourite", toggleFavouriteHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/chat/conversations/{id}/favourite", favouriteStatusHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/chat/favourites", favouriteIdsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/chat/conversations/{id}/mute", muteConversationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/chat/conversations/{id}/mute", unmuteConversationHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/api/v1/chat/muted", mutedIdsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/chat/conversations/{id}/messages", clearConversationHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/api/v1/calls", createCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/calls", listCallSessionsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/calls/{id}", getCallSessionHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/calls/{id}/join", joinCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/calls/{id}/leave", leaveCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/calls/{id}/end", endCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/calls/{id}/participants", getCallParticipantsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/calls/{id}/recordings", uploadCallRecordingHandler).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/calls/{id}/recordings", listCallRecordingsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/meetings/{id}/session", getMeetingSessionHandler).Methods(http.MethodGet)
 	router.HandleFunc("/ws", wsHandler)
 	router.HandleFunc("/ws/chat", wsHandler)
 	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir(ensureUploadDir()))))
@@ -111,12 +181,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"status":       "ok",
 		"service":      "statchat",
+		"ready":        store.IsReady(),
 		"authRequired": strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true"),
 	})
 }
 
 func currentUserHandler(w http.ResponseWriter, r *http.Request) {
-	user, err := store.GetCurrentUser()
+	userID := requestUserID(r)
+	user, err := store.GetUserByID(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load current user")
 		return
@@ -134,11 +206,12 @@ func updateProfileHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if err := store.UpdateUserProfile("user-001", req.Name, req.About, req.AvatarURL); err != nil {
+	userID := requestUserID(r)
+	if err := store.UpdateUserProfile(userID, req.Name, req.About, req.AvatarURL); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update profile")
 		return
 	}
-	user, err := store.GetCurrentUser()
+	user, err := store.GetUserByID(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load updated user")
 		return
@@ -147,13 +220,14 @@ func updateProfileHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
-	settings, err := store.GetUserSettings("user-001")
+	userID := requestUserID(r)
+	settings, err := store.GetUserSettings(userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
 	if settings.UserID == "" {
-		settings.UserID = "user-001"
+		settings.UserID = userID
 		settings.Theme = "light"
 		settings.AccentColor = "#0b5fff"
 		settings.FontSize = "medium"
@@ -185,7 +259,7 @@ func updateUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	s.UserID = "user-001"
+	s.UserID = requestUserID(r)
 	if err := store.UpsertUserSettings(s); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save settings")
 		return
@@ -224,7 +298,7 @@ func createGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.MemberIDs) == 0 {
-		req.MemberIDs = []string{"user-001"}
+		req.MemberIDs = []string{requestUserID(r)}
 	}
 	conv, err := store.CreateGroupConversation(req.GroupID, req.Name, req.MemberIDs)
 	if err != nil {
@@ -248,7 +322,7 @@ func createDMHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = req.TargetUserID
 	}
-	conv, err := store.CreateDirectConversation("user-001", req.TargetUserID, name)
+	conv, err := store.CreateDirectConversation(requestUserID(r), req.TargetUserID, name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create conversation")
 		return
@@ -261,7 +335,7 @@ func groupTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func postsHandler(w http.ResponseWriter, r *http.Request) {
-	posts, err := store.GetPosts()
+	posts, err := store.GetPosts(requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load posts")
 		return
@@ -288,7 +362,7 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func connectionsHandler(w http.ResponseWriter, r *http.Request) {
-	connections, err := store.GetConnections("user-001")
+	connections, err := store.GetConnections(requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load connections")
 		return
@@ -308,7 +382,7 @@ func createConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "targetUserId is required")
 		return
 	}
-	conn, err := store.CreateConnection("user-001", req.TargetUserID)
+	conn, err := store.CreateConnection(requestUserID(r), req.TargetUserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create connection")
 		return
@@ -324,7 +398,7 @@ func removeConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if err := store.RemoveConnection("user-001", req.TargetUserID); err != nil {
+	if err := store.RemoveConnection(requestUserID(r), req.TargetUserID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to remove connection")
 		return
 	}
@@ -376,13 +450,31 @@ func createMeetingHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, meeting)
 }
 
+type meetingRoomResponse struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Capacity int    `json:"capacity"`
+	Status   string `json:"status"`
+	URL      string `json:"url"`
+}
+
 func meetingRoomsHandler(w http.ResponseWriter, r *http.Request) {
 	rooms, err := store.GetMeetingRooms()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load meeting rooms")
 		return
 	}
-	writeJSON(w, rooms)
+	responses := make([]meetingRoomResponse, 0, len(rooms))
+	for _, room := range rooms {
+		responses = append(responses, meetingRoomResponse{
+			ID:       room.ID,
+			Name:     room.Name,
+			Capacity: room.Capacity,
+			Status:   room.Status,
+			URL:      room.URL,
+		})
+	}
+	writeJSON(w, responses)
 }
 
 func meetingRecordingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -485,7 +577,7 @@ func channelsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func conversationsHandler(w http.ResponseWriter, r *http.Request) {
-	conversations, err := store.GetConversations()
+	conversations, err := store.GetConversations(requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load conversations")
 		return
@@ -516,18 +608,36 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	sniffBuffer := make([]byte, 512)
+	n, err := io.ReadFull(file, sniffBuffer)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		writeError(w, http.StatusBadRequest, "failed to inspect upload")
+		return
+	}
+	contentType := http.DetectContentType(sniffBuffer[:n])
+	if !isAllowedAttachmentType(contentType) {
+		writeError(w, http.StatusBadRequest, "file type is not allowed")
+		return
+	}
+
 	conversationID := strings.TrimSpace(r.FormValue("conversationId"))
 	if conversationID == "" {
 		conversationID = "general"
 	}
 	text := strings.TrimSpace(r.FormValue("text"))
 	if text == "" {
-		text = "Shared media"
+		switch {
+		case strings.HasPrefix(contentType, "audio/"):
+			text = "Voice note"
+		case strings.HasPrefix(contentType, "image/"):
+			text = "Photo"
+		case strings.HasPrefix(contentType, "video/"):
+			text = "Video"
+		default:
+			text = "Shared media"
+		}
 	}
-	sender := strings.TrimSpace(r.FormValue("sender"))
-	if sender == "" {
-		sender = "StatChat User"
-	}
+	sender := requestUserName(r)
 
 	dir := ensureUploadDir()
 	extension := strings.ToLower(filepath.Ext(header.Filename))
@@ -539,15 +649,12 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer destinationFile.Close()
-	if _, err := io.Copy(destinationFile, file); err != nil {
+
+	if _, err := io.Copy(destinationFile, io.MultiReader(bytes.NewReader(sniffBuffer[:n]), file)); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save upload")
 		return
 	}
 
-	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
 	attachment := model.MessageAttachment{
 		ID:        uuid.NewString(),
 		FileName:  header.Filename,
@@ -605,13 +712,14 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Text == "" || req.Sender == "" {
-		writeError(w, http.StatusBadRequest, "sender and text are required")
+	if req.Text == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
 	if req.ConversationID == "" {
 		req.ConversationID = "general"
 	}
+	sender := requestUserName(r)
 	message := model.Message{
 		ID:              uuid.NewString(),
 		TenantID:        resolveTenantID(req.TenantID),
@@ -619,7 +727,7 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 		ChannelID:       req.ChannelID,
 		ParentMessageID: req.ParentMessageID,
 		ThreadRootID:    req.ThreadRootID,
-		Sender:          req.Sender,
+		Sender:          sender,
 		Text:            req.Text,
 		CreatedAt:       time.Now().UTC(),
 		Status:          "active",
@@ -630,6 +738,7 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store.BroadcastMessage(message)
+	store.NotifyConversationMembers(message.ConversationID, requestUserID(r), message.Text, fmt.Sprintf("/chat/%s", message.ConversationID))
 	writeJSON(w, message)
 }
 
@@ -667,20 +776,36 @@ func editMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update message")
 		return
 	}
+	store.BroadcastMessage(message)
 	writeJSON(w, message)
 }
 
 func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	messageID := vars["id"]
+	message, err := store.GetMessageByID(messageID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
 	if err := store.SoftDeleteMessage(messageID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete message")
 		return
 	}
+	message.Status = "deleted"
+	message.DeletedAt = time.Now().UTC()
+	store.BroadcastMessage(message)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
+	currentUser, err := requestCurrentUser(r)
+	if err != nil {
+		log.Printf("websocket auth failed: %v", err)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket upgrade failed: %v", err)
@@ -710,8 +835,49 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				conversationID = "general"
 			}
 			client.SetConversation(routeConversationKey(tenantID, conversationID))
+		case "typing":
+			conversationID, _ := payload["conversationId"].(string)
+			tenantID, _ := payload["tenantId"].(string)
+			if conversationID == "" {
+				continue
+			}
+			store.BroadcastEnvelope(tenantID, conversationID, "typing", map[string]interface{}{
+				"conversationId": conversationID,
+				"userId":         currentUser.ID,
+				"userName":       currentUser.Name,
+			})
+		case "stop-typing":
+			conversationID, _ := payload["conversationId"].(string)
+			tenantID, _ := payload["tenantId"].(string)
+			if conversationID == "" {
+				continue
+			}
+			store.BroadcastEnvelope(tenantID, conversationID, "stop-typing", map[string]interface{}{
+				"conversationId": conversationID,
+				"userId":         currentUser.ID,
+				"userName":       currentUser.Name,
+			})
+		case "presence-update":
+			status, _ := payload["status"].(string)
+			if status == "" {
+				status = "online"
+			}
+			if err := store.UpdatePresence(currentUser.ID, status); err != nil {
+				log.Printf("failed to update presence: %v", err)
+			}
+			members, err := store.GetConversationMembers("general")
+			if err == nil {
+				for _, memberID := range members {
+					store.BroadcastEnvelope("", "general", "presence-update", map[string]interface{}{
+						"userId":   currentUser.ID,
+						"userName": currentUser.Name,
+						"status":   status,
+						"memberId": memberID,
+					})
+				}
+			}
 		case "send-message":
-			message, err := buildMessageFromPayload(payload)
+			message, err := buildMessageFromPayload(payload, currentUser)
 			if err != nil {
 				log.Printf("invalid websocket chat payload: %v", err)
 				continue
@@ -721,17 +887,58 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			store.BroadcastMessage(message)
+		case "join-call":
+			sessionID, _ := payload["sessionId"].(string)
+			if sessionID == "" {
+				continue
+			}
+			store.SetConnCallIdentity(conn, sessionID, currentUser.ID)
+			store.JoinCallSession(sessionID, currentUser.ID, currentUser.Name)
+			store.BroadcastCallState(sessionID, "call-participant-joined", map[string]string{
+				"userId": currentUser.ID, "userName": currentUser.Name,
+			})
+		case "leave-call":
+			sessionID, _ := payload["sessionId"].(string)
+			if sessionID != "" {
+				store.LeaveCallSession(sessionID, currentUser.ID)
+				store.BroadcastCallState(sessionID, "call-participant-left", map[string]string{"userId": currentUser.ID})
+			}
+			store.ClearConnCallIdentity(conn)
+		case "signal":
+			sessionID, _ := payload["sessionId"].(string)
+			signalType, _ := payload["type"].(string)
+			toUser, _ := payload["to"].(string)
+			signalPayload, _ := payload["payload"].(string)
+			if sessionID == "" {
+				continue
+			}
+			store.SignalRelay(model.CallSignal{
+				Type:      signalType,
+				SessionID: sessionID,
+				From:      currentUser.ID,
+				FromName:  currentUser.Name,
+				To:        toUser,
+				Payload:   signalPayload,
+			})
 		}
 	}
 }
 
-func buildMessageFromPayload(payload map[string]interface{}) (model.Message, error) {
-	var sender string
+func currentUserFallbackName() string {
+	if user, err := store.GetCurrentUser(); err == nil {
+		return user.Name
+	}
+	return "StatChat User"
+}
+
+func buildMessageFromPayload(payload map[string]interface{}, currentUser model.User) (model.Message, error) {
 	var text string
 	var conversationID string
 	var channelID string
 	var tenantID string
 	var topLevelTenant string
+	var parentMessageID string
+	var threadRootID string
 
 	if topTenant, ok := payload["tenantId"].(string); ok {
 		topLevelTenant = topTenant
@@ -746,10 +953,11 @@ func buildMessageFromPayload(payload map[string]interface{}) (model.Message, err
 		payload = nested
 	}
 
-	sender, _ = payload["sender"].(string)
 	text, _ = payload["text"].(string)
 	conversationID, _ = payload["conversationId"].(string)
 	channelID, _ = payload["channelId"].(string)
+	parentMessageID, _ = payload["parentMessageId"].(string)
+	threadRootID, _ = payload["threadRootId"].(string)
 	if tenantID == "" {
 		tenantID, _ = payload["tenantId"].(string)
 	}
@@ -761,15 +969,17 @@ func buildMessageFromPayload(payload map[string]interface{}) (model.Message, err
 		conversationID = "general"
 	}
 	return model.Message{
-		ID:             uuid.NewString(),
-		TenantID:       resolveTenantID(tenantID),
-		ConversationID: conversationID,
-		ChannelID:      channelID,
-		Sender:         sender,
-		Text:           text,
-		CreatedAt:      time.Now().UTC(),
-		Status:         "active",
-		DeliveryStatus: "sent",
+		ID:              uuid.NewString(),
+		TenantID:        resolveTenantID(tenantID),
+		ConversationID:  conversationID,
+		ChannelID:       channelID,
+		ParentMessageID: parentMessageID,
+		ThreadRootID:    threadRootID,
+		Sender:          currentUser.Name,
+		Text:            text,
+		CreatedAt:       time.Now().UTC(),
+		Status:          "active",
+		DeliveryStatus:  "sent",
 	}, nil
 }
 
@@ -786,7 +996,12 @@ func ensureUploadDir() string {
 
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" || r.URL.Path == "/readyz" || strings.HasPrefix(r.URL.Path, "/ws") {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if r.URL.Path == "/health" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -796,8 +1011,14 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true") {
+		if !authRequired() {
 			next.ServeHTTP(w, r)
+			return
+		}
+
+		secret := strings.TrimSpace(os.Getenv("STATCHAT_JWT_SECRET"))
+		if secret == "" || secret == "statchat-dev-secret" {
+			writeError(w, http.StatusInternalServerError, "jwt secret must be configured when auth is enabled")
 			return
 		}
 
@@ -812,10 +1033,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			secret := os.Getenv("STATCHAT_JWT_SECRET")
-			if secret == "" {
-				secret = "statchat-dev-secret"
-			}
+			secret := strings.TrimSpace(os.Getenv("STATCHAT_JWT_SECRET"))
 			return []byte(secret), nil
 		})
 		if err != nil || !token.Valid {
@@ -823,16 +1041,27 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "invalid bearer token")
+			return
+		}
+		userID := strings.TrimSpace(fmt.Sprint(claims["sub"]))
+		if userID == "" {
+			userID = strings.TrimSpace(fmt.Sprint(claims["user_id"]))
+		}
+		if userID == "" {
+			writeError(w, http.StatusUnauthorized, "missing user identity in token")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), requestUserIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("json encode failed: %v", err)
 	}
@@ -845,10 +1074,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		setCORSHeaders(w, r)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -859,4 +1085,156 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func optionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
+}
+
+var allowedAttachmentTypes = map[string]bool{
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"application/pdf": true,
+	"text/plain":      true,
+	"audio/mpeg":      true,
+	"audio/wav":       true,
+	"audio/ogg":       true,
+	"audio/webm":      true,
+	"video/mp4":       true,
+	"video/webm":      true,
+}
+
+func isAllowedAttachmentType(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+	if allowedAttachmentTypes[contentType] {
+		return true
+	}
+	if strings.HasPrefix(contentType, "image/") || strings.HasPrefix(contentType, "audio/") || strings.HasPrefix(contentType, "video/") {
+		return allowedAttachmentTypes[contentType]
+	}
+	return false
+}
+
+func setCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return
+	}
+	if allowedOrigin(origin, r) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+}
+
+func allowedOrigin(origin string, r *http.Request) bool {
+	allowedOrigins := getAllowedOrigins()
+	if len(allowedOrigins) > 0 {
+		for _, candidate := range allowedOrigins {
+			if strings.EqualFold(candidate, origin) {
+				return true
+			}
+		}
+		return false
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if parsed.Host == r.Host {
+		return true
+	}
+	if strings.HasPrefix(parsed.Host, "localhost") || strings.HasPrefix(parsed.Host, "127.0.0.1") || strings.HasPrefix(parsed.Host, "[::1]") {
+		return true
+	}
+	return false
+}
+
+func getAllowedOrigins() []string {
+	raw := strings.TrimSpace(os.Getenv("STATCHAT_CORS_ALLOWED_ORIGINS"))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	allowed := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			allowed = append(allowed, part)
+		}
+	}
+	return allowed
+}
+
+const (
+	defaultRateLimitRequests = 120
+	defaultRateLimitWindow   = time.Minute
+)
+
+type rateLimitEntry struct {
+	count     int
+	lastReset time.Time
+}
+
+var rateLimitStore = struct {
+	sync.Mutex
+	entries map[string]*rateLimitEntry
+}{
+	entries: map[string]*rateLimitEntry{},
+}
+
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" || r.URL.Path == "/readyz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ip := clientIP(r)
+		if ip == "" {
+			ip = "unknown"
+		}
+		if !allowRate(ip) {
+			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func allowRate(ip string) bool {
+	rateLimitStore.Lock()
+	defer rateLimitStore.Unlock()
+
+	entry, ok := rateLimitStore.entries[ip]
+	if !ok {
+		rateLimitStore.entries[ip] = &rateLimitEntry{count: 1, lastReset: time.Now()}
+		return true
+	}
+
+	if time.Since(entry.lastReset) > defaultRateLimitWindow {
+		entry.count = 1
+		entry.lastReset = time.Now()
+		return true
+	}
+
+	if entry.count >= defaultRateLimitRequests {
+		return false
+	}
+
+	entry.count++
+	return true
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return host
 }

@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"testing"
+
+	"statchat/pkg/model"
+)
 
 func TestBuildMessageFromPayloadSupportsGatewayEnvelope(t *testing.T) {
 	message, err := buildMessageFromPayload(map[string]interface{}{
@@ -11,7 +15,7 @@ func TestBuildMessageFromPayloadSupportsGatewayEnvelope(t *testing.T) {
 			"sender":         "Ada",
 			"text":           "Gateway message",
 		},
-	})
+	}, model.User{ID: "user-001", Name: "Ada"})
 	if err != nil {
 		t.Fatalf("expected gateway payload to build, got %v", err)
 	}

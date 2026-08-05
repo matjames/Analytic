@@ -42,6 +42,7 @@ type UserSettings struct {
 	DownloadImages     string `json:"downloadImages"`
 	DownloadVideos     string `json:"downloadVideos"`
 	DownloadDocuments  string `json:"downloadDocuments"`
+	Wallpaper          string `json:"wallpaper,omitempty"`
 }
 
 type ConversationType string
@@ -332,4 +333,64 @@ type Presence struct {
 	UserID    string    `json:"userId"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ── Conferencing (Native WebRTC) ──
+
+type CallKind string
+
+const (
+	CallKindVoice CallKind = "voice"
+	CallKindVideo CallKind = "video"
+)
+
+type CallStatus string
+
+const (
+	CallStatusScheduled CallStatus = "scheduled"
+	CallStatusLive      CallStatus = "live"
+	CallStatusEnded     CallStatus = "ended"
+)
+
+type CallSession struct {
+	ID           string     `json:"id"`
+	RoomID       string     `json:"roomId"`
+	RoomName     string     `json:"roomName"`
+	Kind         CallKind   `json:"kind"`
+	HostID       string     `json:"hostId"`
+	HostName     string     `json:"hostName"`
+	Status       CallStatus `json:"status"`
+	Conversation string     `json:"conversationId,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	EndedAt      time.Time  `json:"endedAt,omitempty"`
+}
+
+type CallParticipant struct {
+	ID        string    `json:"id"`
+	SessionID string    `json:"sessionId"`
+	UserID    string    `json:"userId"`
+	UserName  string    `json:"userName"`
+	Role      string    `json:"role"`
+	JoinedAt  time.Time `json:"joinedAt"`
+	LeftAt    time.Time `json:"leftAt,omitempty"`
+}
+
+type CallRecording struct {
+	ID        string    `json:"id"`
+	SessionID string    `json:"sessionId"`
+	Title     string    `json:"title"`
+	FileName  string    `json:"fileName"`
+	URL       string    `json:"url"`
+	Size      int64     `json:"size"`
+	Duration  string    `json:"duration,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type CallSignal struct {
+	Type      string `json:"type"` // offer | answer | ice-candidate | join | leave
+	SessionID string `json:"sessionId"`
+	From      string `json:"from"`
+	FromName  string `json:"fromName,omitempty"`
+	To        string `json:"to,omitempty"`
+	Payload   string `json:"payload,omitempty"`
 }
