@@ -12,14 +12,20 @@ export default function GoogleMeetProvider({ connected, onConnect, theme }: Prop
     <div className={styles.providerCard} style={{ background: isDark ? '#0f3f5f' : '#ffffff', borderColor: isDark ? '#6b7280' : '#e5e7eb' }}>
       <div className={styles.providerIcon}>🎥</div>
       <div className={styles.providerName}>Google Meet</div>
-      <div className={styles.providerStatus} style={{ background: connected ? '#dcfce7' : '#fee2e2', color: connected ? '#166534' : '#991b1b' }}>
-        {connected ? '✓ Connected' : 'Not Connected'}
+      <div
+        className={styles.providerStatus}
+        style={{ background: connected ? '#d1fae5' : '#fef3c7', color: connected ? '#166534' : '#92400e' }}
+      >
+        {connected ? 'Connected' : 'Connect to use'}
       </div>
-      {!connected && (
-        <button type="button" className={styles.connectBtn} onClick={onConnect}>
-          Connect Google Meet
-        </button>
-      )}
+      <button
+        type="button"
+        className={styles.connectBtn}
+        onClick={onConnect}
+        title={connected ? 'Disconnect Google Meet' : 'Connect Google Meet'}
+      >
+        {connected ? 'Disconnect' : 'Connect Google Meet'}
+      </button>
     </div>
   );
 }
