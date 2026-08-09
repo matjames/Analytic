@@ -1,0 +1,1895 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enterprise Template Builder — StatCollect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #165c92; --primary-light: #1e7fc4; --primary-dark: #0d3d5f;
+      --bg-main: #f0f4f8; --bg-card: #ffffff; --border: #d4dde8;
+      --accent-red: #ef4444; --accent-green: #10b981; --accent-purple: #8b5cf6;
+      --accent-orange: #f59e0b; --accent-teal: #14b8a6;
+      --text-main: #0f172a; --text-muted: #64748b; --text-light: #94a3b8;
+      --font-family: 'Inter', -apple-system, sans-serif;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08); --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+      --radius: 10px; --radius-sm: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-family); background: var(--bg-main); color: var(--text-main); min-height: 100vh; }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0d3d5f 0%, #165c92 60%, #1e7fc4 100%);
+      color: white; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      height: 60px; box-shadow: 0 2px 12px rgba(15,63,95,0.25);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .header-nav { display: flex; gap: 8px; align-items: center; }
+    .header-nav a {
+      color: rgba(255,255,255,0.85); text-decoration: none; font-size: 13px;
+      background: rgba(255,255,255,0.12); padding: 7px 14px; border-radius: var(--radius-sm);
+      font-weight: 500; transition: all 0.2s;
+    }
+    .header-nav a:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+    /* ── Layout ── */
+    .workspace { display: grid; grid-template-columns: 280px 1fr 300px; height: calc(100vh - 60px); overflow: hidden; }
+    .sidebar-left  { background: var(--bg-card); border-right: 1px solid var(--border); overflow-y: auto; }
+    .builder-main  { background: var(--bg-main); overflow-y: auto; padding: 24px; }
+    .sidebar-right { background: var(--bg-card); border-left: 1px solid var(--border); overflow-y: auto; }
+
+    /* ── Sidebar Headers ── */
+    .sidebar-header {
+      padding: 16px; border-bottom: 1px solid var(--border);
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.6px; color: var(--text-muted);
+      display: flex; justify-content: space-between; align-items: center;
+      background: #f8fafc; position: sticky; top: 0; z-index: 5;
+    }
+    .sidebar-section { padding: 12px; }
+    .sidebar-section + .sidebar-section { border-top: 1px solid var(--border); }
+
+    /* ── Question Type Palette ── */
+    .type-group-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--text-light); padding: 8px 4px 4px;
+    }
+    .question-types { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .qtype-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 10px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: white; cursor: pointer; font-size: 11px; font-weight: 600;
+      color: var(--text-muted); transition: all 0.2s; text-align: center;
+      user-select: none;
+    }
+    .qtype-btn:hover { border-color: var(--primary); color: var(--primary); background: #eff8ff; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(22,92,146,0.15); }
+    .qtype-btn .icon { font-size: 20px; }
+
+    /* ── Builder Main ── */
+    .form-header-card {
+      background: white; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    }
+    .form-header-card input, .form-header-card textarea {
+      width: 100%; border: none; outline: none; font-family: var(--font-family);
+      color: var(--text-main);
+    }
+    .form-header-card input[data-field="title"] {
+      font-size: 22px; font-weight: 700; margin-bottom: 8px; background: transparent;
+    }
+    .form-header-card textarea[data-field="description"] {
+      font-size: 14px; color: var(--text-muted); resize: none; background: transparent;
+      height: 48px; line-height: 1.5;
+    }
+    .form-meta { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+    .form-meta select, .form-meta input[type=text] {
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      font-size: 12px; font-family: var(--font-family); background: #f8fafc;
+    }
+
+    /* ── Toolbar ── */
+    .builder-toolbar {
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+    }
+    .btn {
+      padding: 9px 16px; border: none; border-radius: var(--radius-sm); font-size: 13px;
+      font-weight: 600; cursor: pointer; display: inline-flex; align-items: center;
+      gap: 6px; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-primary  { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-outline  { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); background: #eff8ff; }
+    .btn-success  { background: var(--accent-green); color: white; }
+    .btn-danger   { background: var(--accent-red); color: white; }
+    .btn-purple   { background: var(--accent-purple); color: white; }
+    .btn-sm { padding: 6px 11px; font-size: 12px; }
+
+    /* ── MSH Modal Styles ── */
+    .msh-nav-btn {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 10px 14px; border: none; background: transparent;
+      font-size: 12px; font-weight: 500; cursor: pointer; text-align: left;
+      color: var(--text-muted); transition: all 0.15s; border-left: 3px solid transparent;
+    }
+    .msh-nav-btn:hover { background: #e8f4fd; color: var(--primary); }
+    .msh-nav-btn.active { background: #eff8ff; color: var(--primary); border-left-color: var(--primary); font-weight: 700; }
+    .msh-tab-pane { display: none; }
+    .msh-tab-pane.active { display: block; }
+    .msh-section-header { padding: 10px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .msh-toggle-row { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .msh-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px; }
+    .msh-field-list { display: flex; flex-direction: column; gap: 4px; }
+    .msh-field-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 10px; border-radius: 5px; font-size: 12px; background: #f8fafc;
+      border: 1px solid var(--border);
+    }
+    .msh-field-item.req { border-left: 3px solid var(--primary); }
+    .msh-field-item.opt { border-left: 3px solid #9ca3af; opacity: 0.8; }
+    .msh-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+      background: #dbeafe; color: #1e40af;
+    }
+    .msh-badge.auto { background: #d1fae5; color: #065f46; }
+    .msh-badge.opt-badge { background: #f3f4f6; color: #6b7280; }
+    .msh-consent-option {
+      display: flex; align-items: flex-start; gap: 12px; padding: 12px;
+      border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    }
+    .msh-consent-option:hover { background: #f0f9ff; border-color: var(--primary); }
+    .msh-consent-option input[type=checkbox] { margin-top: 2px; accent-color: var(--primary); width: 15px; height: 15px; }
+
+    /* ── Section Card ── */
+    .section-card {
+      background: white; border: 1px solid var(--border); border-radius: var(--radius);
+      margin-bottom: 16px; box-shadow: var(--shadow); overflow: hidden;
+    }
+    .section-header {
+      background: linear-gradient(135deg, #f0f7ff, #e8f4fd);
+      border-bottom: 1px solid #c8dff4;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    }
+    .section-title-input {
+      flex: 1; border: none; background: transparent; font-size: 15px;
+      font-weight: 700; color: var(--primary-dark); outline: none;
+      font-family: var(--font-family);
+    }
+    .section-actions { display: flex; gap: 6px; }
+    .section-action-btn {
+      width: 28px; height: 28px; border: none; border-radius: 6px;
+      background: rgba(22,92,146,0.1); color: var(--primary); cursor: pointer;
+      font-size: 14px; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .section-action-btn:hover { background: var(--primary); color: white; }
+    .section-body { padding: 12px; }
+
+    /* ── Field Card ── */
+    .field-card {
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+      margin-bottom: 8px; background: #fafcff; cursor: grab;
+      transition: all 0.15s; position: relative;
+    }
+    .field-card:hover { border-color: var(--primary-light); box-shadow: 0 2px 8px rgba(22,92,146,0.1); }
+    .field-card.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(22,92,146,0.15); background: #eff8ff; }
+    .field-card.dragging { opacity: 0.4; }
+    .field-row { display: flex; align-items: center; gap: 8px; }
+    .drag-handle { color: var(--text-light); cursor: grab; font-size: 14px; flex-shrink: 0; }
+    .field-type-badge {
+      font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0;
+    }
+    .field-label { flex: 1; font-size: 13px; font-weight: 600; color: var(--text-main); }
+    .field-required-dot { color: var(--accent-red); font-weight: 700; font-size: 16px; }
+    .field-actions { display: flex; gap: 4px; }
+    .field-action-btn {
+      width: 26px; height: 26px; border: none; border-radius: 5px;
+      background: transparent; cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted); transition: all 0.15s;
+    }
+    .field-action-btn:hover { background: #f1f5f9; color: var(--primary); }
+    .field-action-btn.del:hover { background: #fee2e2; color: var(--accent-red); }
+
+    /* type badge colors */
+    .badge-text      { background: #dbeafe; color: #1d4ed8; }
+    .badge-number    { background: #d1fae5; color: #047857; }
+    .badge-select    { background: #ede9fe; color: #6d28d9; }
+    .badge-multiselect { background: #fce7f3; color: #9d174d; }
+    .badge-gps       { background: #d1fae5; color: #065f46; }
+    .badge-photo     { background: #fef3c7; color: #92400e; }
+    .badge-signature { background: #f1f5f9; color: #475569; }
+    .badge-rating    { background: #fff7ed; color: #c2410c; }
+    .badge-date      { background: #e0f2fe; color: #0369a1; }
+    .badge-matrix    { background: #f0fdf4; color: #166534; }
+    .badge-repeat    { background: #fdf4ff; color: #7e22ce; }
+    .badge-calculated { background: #fff1f2; color: #9f1239; }
+    .badge-tel       { background: #ecfdf5; color: #065f46; }
+
+    /* ── Drop Zone ── */
+    .drop-zone {
+      border: 2px dashed #c8dff4; border-radius: 8px;
+      padding: 24px; text-align: center; color: var(--text-light);
+      font-size: 13px; margin-top: 8px; transition: all 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary); color: var(--primary); background: #eff8ff;
+    }
+
+    /* ── Properties Panel ── */
+    .prop-group { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .prop-group:last-child { border-bottom: none; }
+    .prop-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 8px; }
+    .prop-input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px;
+      font-family: var(--font-family); color: var(--text-main);
+      margin-bottom: 8px; transition: border-color 0.15s;
+    }
+    .prop-input:focus { outline: none; border-color: var(--primary); }
+    .prop-checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .prop-checkbox-row label { font-size: 13px; color: var(--text-main); cursor: pointer; }
+    .option-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .option-row input { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; font-family: var(--font-family); }
+    .option-del-btn { width: 24px; height: 24px; border: none; background: #fee2e2; color: var(--accent-red); border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .add-option-btn { font-size: 12px; color: var(--primary); background: none; border: none; cursor: pointer; font-weight: 600; padding: 4px 0; }
+
+    /* Logic editor */
+    .logic-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+    .logic-row select { flex: 1; min-width: 80px; padding: 6px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; }
+    .logic-row input { flex: 1; min-width: 60px; padding: 6px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: white; border-radius: 12px; width: 100%; max-width: 820px;
+      max-height: 88vh; display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .modal-header {
+      padding: 20px 24px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h2 { font-size: 18px; font-weight: 700; }
+    .modal-close { width: 32px; height: 32px; border: none; background: #f1f5f9; border-radius: 8px; font-size: 18px; cursor: pointer; color: var(--text-muted); }
+    .modal-body { overflow-y: auto; padding: 24px; flex: 1; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+    /* Library grid */
+    .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+    .library-card {
+      border: 2px solid var(--border); border-radius: 10px; padding: 16px;
+      cursor: pointer; transition: all 0.2s; background: white;
+    }
+    .library-card:hover { border-color: var(--primary); background: #eff8ff; transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .library-card .cat-badge {
+      font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px;
+      background: #dbeafe; color: #1d4ed8; display: inline-block; margin-bottom: 8px;
+    }
+    .library-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .library-card p { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .library-card .field-count { font-size: 11px; color: var(--text-light); margin-top: 8px; }
+
+    /* Import/Export modal */
+    .tab-bar { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+    .tab-btn { padding: 10px 18px; border: none; background: none; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+    .tab-btn.active { color: var(--primary); border-color: var(--primary); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Forms list panel */
+    .forms-list { }
+    .form-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+      cursor: pointer; transition: all 0.15s; background: white;
+    }
+    .form-item:hover { border-color: var(--primary-light); background: #f0f7ff; }
+    .form-item.active { border-color: var(--primary); background: #eff8ff; }
+    .form-item .fi-name { flex: 1; font-size: 13px; font-weight: 600; }
+    .form-item .fi-badge { font-size: 10px; padding: 2px 7px; border-radius: 8px; font-weight: 700; }
+    .fi-active { background: #d1fae5; color: #065f46; }
+    .fi-draft  { background: #fef3c7; color: #92400e; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: white;
+      padding: 12px 20px; border-radius: 10px; font-size: 13px; z-index: 9999;
+      opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; max-width: 340px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: var(--accent-green); }
+    .toast.error   { background: var(--accent-red); }
+
+    /* Textarea for JSON preview */
+    .code-area { width: 100%; height: 260px; font-family: 'Courier New', monospace; font-size: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; resize: vertical; background: #f8fafc; color: #1e293b; }
+    .upload-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px; text-align: center; color: var(--text-muted); font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    .upload-zone:hover { border-color: var(--primary); color: var(--primary); background: #eff8ff; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📐 StatCollect — Enterprise Template Builder</h1>
+    <div class="header-nav">
+      <a href="index.html">📊 Dashboard</a>
+      <a href="../field/agent.html">📱 Field Agent</a>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:white;border:none;" onclick="openLibraryModal()">📚 Library</button>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:white;border:none;" onclick="openImportExportModal()">⬆⬇ Import/Export</button>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <!-- LEFT SIDEBAR: Question Palette + Forms List -->
+    <div class="sidebar-left">
+      <div class="sidebar-header">
+        <span>📋 Forms</span>
+        <button class="btn btn-sm btn-primary" onclick="createNewForm()" style="padding:4px 10px;font-size:11px">+ New</button>
+      </div>
+      <div class="sidebar-section" id="formsListPanel">
+        <div style="font-size:12px;color:var(--text-muted);padding:8px 0">Loading forms…</div>
+      </div>
+
+      <div class="sidebar-header" style="margin-top:0">
+        <span>🧩 Question Types</span>
+      </div>
+      <div class="sidebar-section">
+        <div class="type-group-label">Basic</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('text')"><span class="icon">Aa</span>Text</button>
+          <button class="qtype-btn" onclick="addField('number')"><span class="icon">🔢</span>Number</button>
+          <button class="qtype-btn" onclick="addField('date')"><span class="icon">📅</span>Date</button>
+          <button class="qtype-btn" onclick="addField('tel')"><span class="icon">📞</span>Phone</button>
+        </div>
+        <div class="type-group-label">Selection</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('select')"><span class="icon">☑</span>Dropdown</button>
+          <button class="qtype-btn" onclick="addField('multiselect')"><span class="icon">☰</span>Multi-select</button>
+        </div>
+        <div class="type-group-label">Rating & Scale</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('rating')"><span class="icon">⭐</span>Rating (1-5)</button>
+          <button class="qtype-btn" onclick="addField('likert')"><span class="icon">↔</span>Likert Scale</button>
+        </div>
+        <div class="type-group-label">Location</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('gps')"><span class="icon">📍</span>GPS Point</button>
+        </div>
+        <div class="type-group-label">Media</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('photo')"><span class="icon">📷</span>Photo</button>
+          <button class="qtype-btn" onclick="addField('signature')"><span class="icon">✍</span>Signature</button>
+          <button class="qtype-btn" onclick="addField('barcode')"><span class="icon">▦</span>Barcode/QR</button>
+        </div>
+        <div class="type-group-label">Advanced</div>
+        <div class="question-types">
+          <button class="qtype-btn" onclick="addField('matrix')"><span class="icon">⊞</span>Matrix Grid</button>
+          <button class="qtype-btn" onclick="addField('repeat')"><span class="icon">🔁</span>Repeat Group</button>
+          <button class="qtype-btn" onclick="addField('calculated')"><span class="icon">∑</span>Calculated</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUILDER MAIN -->
+    <div class="builder-main" id="builderMain">
+      <!-- Form header -->
+      <div class="form-header-card">
+        <input type="text" data-field="title" placeholder="Enter form title…" id="formTitle" value="New Enterprise Survey" />
+        <textarea data-field="description" placeholder="Form description / instructions for enumerators…" id="formDescription">Describe this survey…</textarea>
+        <div class="form-meta">
+          <select id="formCategory">
+            <option value="">— Category —</option>
+            <option>Health</option><option>Nutrition</option><option>Demographics</option>
+            <option>Education</option><option>Agriculture</option><option>WASH</option>
+            <option>Markets</option><option>Infrastructure</option><option>Other</option>
+          </select>
+          <input type="text" id="formVersion" value="1.0" placeholder="Version" style="width:80px" />
+          <input type="text" id="formId" placeholder="form-id (slug)" style="width:160px" />
+        </div>
+      </div>
+
+      <div class="builder-toolbar">
+        <button class="btn btn-outline" onclick="addSection()">➕ Add Section</button>
+        <button class="btn btn-primary" onclick="saveForm()">💾 Save Form</button>
+        <button class="btn btn-success" onclick="publishForm()">🚀 Publish</button>
+        <button class="btn btn-outline" onclick="previewJSON()">{ } JSON Preview</button>
+        <button class="btn btn-outline" onclick="openImportExportModal()">⬆⬇ Export</button>
+        <button class="btn btn-outline" onclick="openLibraryModal()">📚 Templates</button>
+        <button class="btn btn-purple" onclick="openRollbackModal()">🔄 Rollback</button>
+        <button class="btn" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff" onclick="openMSHModal()">🗂️ Survey Header (MSH)</button>
+        <div style="flex:1"></div>
+        <span id="saveStatus" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+
+      <div id="sectionsContainer">
+        <!-- Sections rendered here -->
+      </div>
+    </div>
+
+    <!-- RIGHT SIDEBAR: Properties Panel -->
+    <div class="sidebar-right">
+      <div class="sidebar-header">⚙️ Field Properties</div>
+      <div id="propsPanel">
+        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;margin-top:30px">
+          <div style="font-size:40px;margin-bottom:10px">🖱</div>
+          <div style="font-weight:600;margin-bottom:4px">No field selected</div>
+          <div>Click on any field to edit its properties</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Template Library Modal ── -->
+  <div class="modal-overlay hidden" id="libraryModal">
+    <div class="modal" style="max-width: 900px">
+      <div class="modal-header">
+        <h2>📚 Enterprise Template Library & Marketplace</h2>
+        <button class="modal-close" onclick="closeModal('libraryModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tab-bar">
+          <button class="tab-btn active" id="btnLibDefault" onclick="switchLibTab(this,'libDefault')">StatGate Library</button>
+          <button class="tab-btn" id="btnLibMarket" onclick="switchLibTab(this,'libMarket')">Global Marketplace</button>
+        </div>
+
+        <div class="tab-pane active" id="libDefault">
+          <div style="margin-bottom:16px;display:flex;gap:10px">
+            <input id="libSearch" class="prop-input" style="flex:1;margin:0" placeholder="Search templates…" oninput="filterLibrary()" />
+            <select id="libCategoryFilter" onchange="filterLibrary()" style="padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+              <option value="">All Categories</option>
+              <option>Health</option><option>Nutrition</option><option>Demographics</option>
+              <option>Education</option><option>Agriculture</option><option>WASH</option>
+              <option>Markets</option><option>Infrastructure</option>
+            </select>
+          </div>
+          <div class="library-grid" id="libraryGrid">Loading…</div>
+        </div>
+
+        <div class="tab-pane" id="libMarket" style="display:none">
+          <div style="margin-bottom:16px;display:flex;gap:10px">
+            <input id="marketSearch" class="prop-input" style="flex:1;margin:0" placeholder="Search global marketplace…" oninput="filterMarketplace()" />
+            <select id="marketCategoryFilter" onchange="filterMarketplace()" style="padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+              <option value="">All Categories</option>
+              <option>Health</option><option>Census</option><option>Agriculture</option>
+              <option>Education</option><option>Water/Sanitation</option><option>General</option>
+            </select>
+          </div>
+          <div class="library-grid" id="marketGrid">Loading marketplace…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('libraryModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Import / Export Modal ── -->
+  <div class="modal-overlay hidden" id="importExportModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⬆⬇ Import / Export Templates</h2>
+        <button class="modal-close" onclick="closeModal('importExportModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="switchTab(this,'ieExport')">Export</button>
+          <button class="tab-btn" onclick="switchTab(this,'ieImportJSON')">Import JSON</button>
+          <button class="tab-btn" onclick="switchTab(this,'ieImportFile')">Import File</button>
+        </div>
+
+        <div class="tab-pane active" id="ieExport">
+          <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted)">Export the current form in your preferred format.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-outline" onclick="exportAs('json')">📄 JSON Schema</button>
+            <button class="btn btn-outline" onclick="exportAs('xlsform')">📊 XLSForm (TSV)</button>
+            <button class="btn btn-outline" onclick="exportAs('odkxml')">🗂 ODK XML</button>
+          </div>
+          <div style="margin-top:16px">
+            <p style="font-size:12px;margin-bottom:6px;color:var(--text-muted)">Preview JSON:</p>
+            <textarea class="code-area" id="exportPreview" readonly></textarea>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="ieImportJSON">
+          <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted)">Paste a StatCollect JSON schema to import it as a new template.</p>
+          <input class="prop-input" id="importId" placeholder="Template ID (slug)" />
+          <input class="prop-input" id="importName" placeholder="Template Name" />
+          <textarea class="code-area" id="importJsonBody" placeholder='{"sections": [{"id": "s1", "title": "Section 1", "fields": []}]}'></textarea>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="importJSON()">Import & Load</button>
+            <button class="btn btn-outline" onclick="importJSONToServer()">Import to Server</button>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="ieImportFile">
+          <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted)">Upload a JSON schema file from your device.</p>
+          <div class="upload-zone" onclick="document.getElementById('schemaFileInput').click()">
+            📂 Click to upload JSON schema file<br/>
+            <span style="font-size:12px">.json files supported</span>
+          </div>
+          <input type="file" id="schemaFileInput" accept=".json,application/json" style="display:none" onchange="handleFileImport(this)" />
+          <div id="fileImportStatus" style="margin-top:10px;font-size:13px;color:var(--text-muted)"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('importExportModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── JSON Preview Modal ── -->
+  <div class="modal-overlay hidden" id="jsonPreviewModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>{ } JSON Schema Preview</h2>
+        <button class="modal-close" onclick="closeModal('jsonPreviewModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <textarea class="code-area" id="jsonPreviewArea" readonly style="height:420px"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="copyJSON()">📋 Copy</button>
+        <button class="btn btn-outline" onclick="closeModal('jsonPreviewModal')">Close</button>
+      </div>
+    </div>
+  <!-- ── Rollback Modal ── -->
+  <div class="modal-overlay hidden" id="rollbackModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🔄 Rollback Questionnaire Version</h2>
+        <button class="modal-close" onclick="closeModal('rollbackModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted)">
+          Restore the current questionnaire design to a previously saved or published version. Previously submitted data remains linked to the version under which it was collected.
+        </p>
+        <div class="prop-group" style="padding:0;border:none">
+          <label class="prop-label">Select Target Version</label>
+          <select id="rollbackVersionSelect" class="prop-input" style="background:white">
+            <option value="">— Select Version —</option>
+          </select>
+          <label class="prop-label">Reason / Change Note</label>
+          <textarea class="prop-input" id="rollbackReason" placeholder="Reason for rollback..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="submitRollback()">Apply Rollback</button>
+        <button class="btn btn-outline" onclick="closeModal('rollbackModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MSH Configuration Modal ── -->
+  <div class="modal-overlay hidden" id="mshModal">
+    <div class="modal" style="max-width:900px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <div class="modal-header" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;border-radius:8px 8px 0 0">
+        <h2 style="color:#fff">🗂️ Mandatory Survey Header (MSH) Configuration</h2>
+        <button class="modal-close" onclick="closeModal('mshModal')" style="color:#fff">✕</button>
+      </div>
+      <div class="modal-body" style="overflow:auto;flex:1;padding:0">
+        <!-- MSH Info Banner -->
+        <div style="background:linear-gradient(135deg,#eff6ff,#f0f9ff);border-bottom:1px solid #bae6fd;padding:12px 20px;font-size:12px;color:#0369a1;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📋</span>
+          <div>
+            <strong>Directive 21 — Mandatory Survey Header</strong><br>
+            Every survey shall begin with this standardised header before any survey-specific questions. The header ensures consistency, improves data quality, strengthens auditability, and eliminates repeated manual setup.
+          </div>
+          <label style="margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="mshEnabled" checked style="accent-color:#0ea5e9;width:16px;height:16px">
+            <span style="font-weight:700">MSH Enabled</span>
+          </label>
+        </div>
+        <!-- MSH Section Tabs -->
+        <div style="display:flex;border-bottom:1px solid var(--border)">
+          <div style="width:200px;border-right:1px solid var(--border);background:#f8fafc;padding:12px 0;overflow-y:auto;min-height:420px">
+            <div style="padding:0 12px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted)">MSH Sections</div>
+            <button class="msh-nav-btn active" onclick="switchMSHTab(this,'msh-metadata')" id="mshNavMetadata">
+              <span>📝</span> Survey Metadata
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-assignment')" id="mshNavAssignment">
+              <span>👤</span> Assignment Info
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-respondent')" id="mshNavRespondent">
+              <span>🧑‍🤝‍🧑</span> Respondent Info
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-geography')" id="mshNavGeography">
+              <span>🌍</span> Geographic Info
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-collection')" id="mshNavCollection">
+              <span>📡</span> Collection Metadata
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-consent')" id="mshNavConsent">
+              <span>✅</span> Consent
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-attachments')" id="mshNavAttachments">
+              <span>📎</span> Attachments
+            </button>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-audit')" id="mshNavAudit">
+              <span>🔒</span> Audit Metadata
+            </button>
+            <div style="border-top:1px solid var(--border);margin:8px 12px;padding-top:8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted)">Platform</div>
+            <button class="msh-nav-btn" onclick="switchMSHTab(this,'msh-platform')" id="mshNavPlatform">
+              <span>🔗</span> Platform Integration
+            </button>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:20px;max-height:500px">
+            <!-- Survey Metadata Tab -->
+            <div class="msh-tab-pane active" id="msh-metadata">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_metadata" checked> Include Survey Metadata Section
+                </label>
+              </div>
+              <p class="msh-desc">Captures the survey's identification, classification, and organizational context. These fields are automatically pre-filled from the template configuration.</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item req">Survey Title <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item req">Survey Code</div>
+                <div class="msh-field-item req">Survey Version <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item req">Organization</div>
+                <div class="msh-field-item">Project</div>
+                <div class="msh-field-item">Programme</div>
+                <div class="msh-field-item">Department</div>
+                <div class="msh-field-item opt">Funding Partner <span class="msh-badge opt-badge">Optional</span></div>
+                <div class="msh-field-item req">Survey Category</div>
+                <div class="msh-field-item req">Survey Type (Baseline/Midline/Endline etc.)</div>
+                <div class="msh-field-item">Survey Description</div>
+              </div>
+            </div>
+            <!-- Assignment Tab -->
+            <div class="msh-tab-pane" id="msh-assignment">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_assignment" checked> Include Assignment Information Section
+                </label>
+              </div>
+              <p class="msh-desc">Automatically populated from the enumerator's active assignment. Fields are pre-filled where available and cannot be falsified.</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item req">Enumerator Name <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item req">Enumerator ID <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Supervisor <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Team <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Organization <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Assigned Area <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Assigned Facility <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Assigned Household ID <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Assigned Target <span class="msh-badge auto">Auto</span></div>
+              </div>
+            </div>
+            <!-- Respondent Tab -->
+            <div class="msh-tab-pane" id="msh-respondent">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_respondent" checked> Include Respondent Information Section
+                </label>
+              </div>
+              <p class="msh-desc">Configure which respondent types are applicable for this survey. The enumerator will select the respondent type at the start of each interview.</p>
+              <div style="margin-bottom:16px">
+                <div class="prop-label" style="margin-bottom:8px">Active Respondent Types</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px" id="mshRespondentTypesList">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+              <p class="msh-desc" style="margin-top:12px">Common fields collected for all respondent types:</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item req">Respondent Type <span class="msh-badge auto">Configurable</span></div>
+                <div class="msh-field-item">Respondent Identifier (ID/Registration No.)</div>
+                <div class="msh-field-item">Respondent Name <span class="msh-badge opt-badge">Where Permitted</span></div>
+                <div class="msh-field-item">Sex / Gender <span class="msh-badge auto">Individual</span></div>
+                <div class="msh-field-item">Date of Birth / Age <span class="msh-badge auto">Individual</span></div>
+                <div class="msh-field-item opt">Contact Information <span class="msh-badge opt-badge">Optional</span></div>
+                <div class="msh-field-item req">Consent Status</div>
+              </div>
+            </div>
+            <!-- Geography Tab -->
+            <div class="msh-tab-pane" id="msh-geography">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_geography" checked> Include Geographic Information Section
+                </label>
+              </div>
+              <p class="msh-desc">Geographic fields adapt to the selected country's administrative hierarchy. GPS is auto-captured from the device.</p>
+              <div style="margin-bottom:16px">
+                <div class="prop-label">Country Configuration</div>
+                <select id="mshCountryCode" class="prop-input" onchange="loadAdminLevels(this.value)" style="background:white;margin-top:6px">
+                  <option value="UGA">🇺🇬 Uganda</option>
+                  <option value="KEN">🇰🇪 Kenya</option>
+                  <option value="TZA">🇹🇿 Tanzania</option>
+                  <option value="RWA">🇷🇼 Rwanda</option>
+                  <option value="ETH">🇪🇹 Ethiopia</option>
+                  <option value="NGA">🇳🇬 Nigeria</option>
+                  <option value="GHA">🇬🇭 Ghana</option>
+                  <option value="ZAF">🇿🇦 South Africa</option>
+                  <option value="OTHER">🌍 Other</option>
+                </select>
+              </div>
+              <div id="adminLevelsPreview">
+                <div class="prop-label" style="margin-bottom:8px">Administrative Levels</div>
+                <div id="adminLevelsList" class="msh-field-list"><!-- Populated by JS --></div>
+              </div>
+              <div class="msh-field-list" style="margin-top:8px">
+                <div class="msh-field-item">Facility / Venue Name</div>
+                <div class="msh-field-item req">GPS Coordinates <span class="msh-badge auto">Auto-captured</span></div>
+                <div class="msh-field-item">Location Accuracy (m) <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Administrative Boundary <span class="msh-badge auto">Auto</span></div>
+              </div>
+            </div>
+            <!-- Collection Metadata Tab -->
+            <div class="msh-tab-pane" id="msh-collection">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_collection" checked> Include Collection Metadata Section
+                </label>
+              </div>
+              <p class="msh-desc">All collection metadata fields are automatically captured by the system. No manual entry is ever required or permitted.</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item req">Interview Date <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item req">Interview Start Time <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Interview End Time <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Duration (seconds) <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Device ID <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Application Version <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Survey Version at Collection <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Enumerator ID <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Network Status <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Offline / Online Mode <span class="msh-badge auto">Auto</span></div>
+                <div class="msh-field-item">Synchronization Status <span class="msh-badge auto">Auto</span></div>
+              </div>
+              <div style="background:#fef9c3;border:1px solid #fbbf24;border-radius:6px;padding:10px;font-size:12px;margin-top:12px">
+                ⚠️ <strong>Protected Section</strong> — These fields are read-only on the enumerator device and are set by the system automatically.
+              </div>
+            </div>
+            <!-- Consent Tab -->
+            <div class="msh-tab-pane" id="msh-consent">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_consent" checked> Include Consent Section
+                </label>
+              </div>
+              <p class="msh-desc">Configure which consent steps are required for this survey. No survey shall proceed where consent is mandatory but has not been obtained.</p>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+                <label class="msh-consent-option">
+                  <input type="checkbox" id="msh_consent_verbal" checked>
+                  <div><strong>Verbal Consent</strong><div style="font-size:11px;color:var(--text-muted)">Participant verbally agrees to participate</div></div>
+                </label>
+                <label class="msh-consent-option">
+                  <input type="checkbox" id="msh_consent_written">
+                  <div><strong>Written Consent</strong><div style="font-size:11px;color:var(--text-muted)">Signed consent form required</div></div>
+                </label>
+                <label class="msh-consent-option">
+                  <input type="checkbox" id="msh_consent_guardian">
+                  <div><strong>Guardian / Parent Consent</strong><div style="font-size:11px;color:var(--text-muted)">Required for respondents under 18</div></div>
+                </label>
+                <label class="msh-consent-option">
+                  <input type="checkbox" id="msh_consent_signature" checked>
+                  <div><strong>Digital Signature</strong><div style="font-size:11px;color:var(--text-muted)">Enumerator or respondent signs digitally</div></div>
+                </label>
+                <label class="msh-consent-option">
+                  <input type="checkbox" id="msh_consent_audio">
+                  <div><strong>Audio Consent Recording</strong><div style="font-size:11px;color:var(--text-muted)">Record verbal consent for documentation</div></div>
+                </label>
+              </div>
+              <div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px;font-size:12px">
+                ✅ A <strong>Consent Timestamp</strong> and <strong>Participant Information confirmation</strong> are always included automatically.
+              </div>
+            </div>
+            <!-- Attachments Tab -->
+            <div class="msh-tab-pane" id="msh-attachments">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_attachments"> Include Attachments Section
+                  <span style="font-size:11px;color:var(--text-muted);font-weight:400">(Optional — disabled by default)</span>
+                </label>
+              </div>
+              <p class="msh-desc">Enable optional attachment capture before, during, or after the interview. Useful for surveys requiring identity verification or site documentation.</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item opt">Participant Photo <span class="msh-badge opt-badge">Optional</span></div>
+                <div class="msh-field-item opt">Identification Document Photo <span class="msh-badge opt-badge">Optional</span></div>
+                <div class="msh-field-item opt">Supporting Document <span class="msh-badge opt-badge">Optional</span></div>
+                <div class="msh-field-item opt">Facility / Site Photo <span class="msh-badge opt-badge">Optional</span></div>
+              </div>
+            </div>
+            <!-- Audit Metadata Tab -->
+            <div class="msh-tab-pane" id="msh-audit">
+              <div class="msh-section-header">
+                <label class="msh-toggle-row">
+                  <input type="checkbox" id="msh_include_audit" checked> Include Audit Metadata Section
+                </label>
+              </div>
+              <p class="msh-desc">All audit metadata fields are maintained exclusively by the platform. They are protected from unauthorized editing on all interfaces.</p>
+              <div class="msh-field-list">
+                <div class="msh-field-item req">Created By <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Created Date <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Modified By <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Modified Date <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Approved By <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Approval Date <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Submission Status <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Review Status <span class="msh-badge auto">🔒 System</span></div>
+                <div class="msh-field-item req">Quality Score <span class="msh-badge auto">🔒 System</span></div>
+              </div>
+              <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:10px;font-size:12px;margin-top:12px">
+                🔒 <strong>Protected Section</strong> — Audit fields are read-only and set exclusively by the platform. No enumerator or supervisor can edit these values.
+              </div>
+            </div>
+            <!-- Platform Integration Tab -->
+            <div class="msh-tab-pane" id="msh-platform">
+              <p class="msh-desc" style="margin-bottom:16px">
+                <strong>Directive 22 — Unified Platform Integration.</strong><br>
+                Configure which StatGate modules automatically receive data from this survey upon submission and approval.
+                Once enabled, data flows automatically — no manual import, export, or transfer is required.
+              </p>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <label class="msh-consent-option" style="border-color:#3b82f6">
+                  <input type="checkbox" id="msh_pub_research" checked>
+                  <div><strong>🔬 Research Module</strong><div style="font-size:11px;color:var(--text-muted)">Survey data becomes available for research analysis, publications, and outputs</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#8b5cf6">
+                  <input type="checkbox" id="msh_pub_projects" checked>
+                  <div><strong>📋 Projects Module</strong><div style="font-size:11px;color:var(--text-muted)">Linked projects refresh dashboards and activity indicators in real-time</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#10b981">
+                  <input type="checkbox" id="msh_pub_statistics" checked>
+                  <div><strong>📊 Statistics & Analytics</strong><div style="font-size:11px;color:var(--text-muted)">Approved submissions flow to statistical datasets — no duplicate import required</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#f59e0b">
+                  <input type="checkbox" id="msh_pub_gis" checked>
+                  <div><strong>🗺️ GIS Module</strong><div style="font-size:11px;color:var(--text-muted)">GPS coordinates are synchronized to map layers immediately after approval</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#ef4444">
+                  <input type="checkbox" id="msh_pub_reporting" checked>
+                  <div><strong>📄 Reporting Module</strong><div style="font-size:11px;color:var(--text-muted)">Reports update dynamically as new validated data becomes available</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#64748b">
+                  <input type="checkbox" id="msh_pub_documents">
+                  <div><strong>🗄️ Document Management</strong><div style="font-size:11px;color:var(--text-muted)">Attach submissions, consent forms, and exports to the Document Management System</div></div>
+                </label>
+                <label class="msh-consent-option" style="border-color:#0ea5e9">
+                  <input type="checkbox" id="msh_auto_tasks" checked>
+                  <div><strong>✅ Auto-Generate Workflow Tasks</strong><div style="font-size:11px;color:var(--text-muted)">Survey events automatically create review, validation, and approval tasks</div></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--border)">
+        <button class="btn btn-primary" onclick="saveMSHConfig()">💾 Save MSH Configuration</button>
+        <button class="btn" style="background:#6366f1;color:#fff" onclick="previewMSH()">👁️ Preview MSH Schema</button>
+        <button class="btn btn-outline" onclick="closeModal('mshModal')">Cancel</button>
+        <span id="mshSaveStatus" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  /* ════════════════════════════════════════════════
+     STATE
+  ═══════════════════════════════════════════════ */
+  let apiKey = localStorage.getItem('statcollect_api_key') || '';
+  let currentFormId = null;
+  let selectedFieldId = null;
+
+  // Form data model
+  let formData = {
+    id: '',
+    name: 'New Enterprise Survey',
+    description: 'Describe this survey…',
+    version: '1.0',
+    category: '',
+    sections: []
+  };
+
+  /* ════════════════════════════════════════════════
+     UTILITY
+  ═══════════════════════════════════════════════ */
+  function uid() { return 'fld_' + Math.random().toString(36).slice(2, 9); }
+  function secUID() { return 'sec_' + Math.random().toString(36).slice(2, 9); }
+  function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+
+  function showToast(msg, type='') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    setTimeout(() => t.className = 'toast', 3500);
+  }
+
+  function setSaveStatus(msg) {
+    document.getElementById('saveStatus').textContent = msg;
+  }
+
+  /* ════════════════════════════════════════════════
+     MODAL HELPERS
+  ═══════════════════════════════════════════════ */
+  function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+  function switchTab(btn, paneId) {
+    btn.closest('.modal-body').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.closest('.modal-body').querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(paneId).classList.add('active');
+  }
+
+  /* ════════════════════════════════════════════════
+     FORMS LIST
+  ═══════════════════════════════════════════════ */
+  async function loadFormsList() {
+    const panel = document.getElementById('formsListPanel');
+    try {
+      const res = await fetch('/templates', { headers: { 'X-API-Key': apiKey } });
+      const data = await res.json();
+      const items = data.templates || [];
+      if (!items.length) {
+        panel.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No forms yet. Click + New to start.</div>';
+        return;
+      }
+      panel.innerHTML = items.map(t => `
+        <div class="form-item ${t.id === currentFormId ? 'active' : ''}" onclick="loadForm('${t.id}')">
+          <span class="fi-name">${t.name}</span>
+          <span class="fi-badge ${t.status === 'active' ? 'fi-active' : 'fi-draft'}">${t.status}</span>
+        </div>
+      `).join('');
+    } catch(e) {
+      panel.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Unable to load forms</div>';
+    }
+  }
+
+  async function loadForm(id) {
+    try {
+      const res = await fetch(`/templates/${id}`, { headers: { 'X-API-Key': apiKey } });
+      const t = await res.json();
+      currentFormId = t.id;
+      document.getElementById('formTitle').value = t.name;
+      document.getElementById('formDescription').value = t.description || '';
+      document.getElementById('formVersion').value = t.version || '1.0';
+      document.getElementById('formId').value = t.id;
+      document.getElementById('formCategory').value = t.category || '';
+      const schema = typeof t.schema === 'string' ? JSON.parse(t.schema) : t.schema;
+      formData = {
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        version: t.version,
+        category: t.category || '',
+        sections: schema.sections || []
+      };
+      renderAllSections();
+      loadFormsList();
+      showToast(`Loaded: ${t.name}`, 'success');
+    } catch(e) {
+      showToast('Failed to load form', 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════
+     FORM CREATION & SAVING
+  ═══════════════════════════════════════════════ */
+  function createNewForm() {
+    currentFormId = null;
+    formData = {
+      id: '',
+      name: 'New Enterprise Survey',
+      description: 'Describe your survey…',
+      version: '1.0',
+      category: '',
+      sections: [{ id: secUID(), title: 'Section 1', fields: [] }]
+    };
+    document.getElementById('formTitle').value = formData.name;
+    document.getElementById('formDescription').value = formData.description;
+    document.getElementById('formVersion').value = '1.0';
+    document.getElementById('formId').value = '';
+    document.getElementById('formCategory').value = '';
+    renderAllSections();
+    showToast('New form started');
+  }
+
+  function collectFormData() {
+    formData.name = document.getElementById('formTitle').value.trim() || 'Untitled Survey';
+    formData.description = document.getElementById('formDescription').value.trim();
+    formData.version = document.getElementById('formVersion').value.trim() || '1.0';
+    formData.category = document.getElementById('formCategory').value;
+    let id = document.getElementById('formId').value.trim();
+    if (!id) id = slugify(formData.name) || 'form_' + Date.now();
+    formData.id = id;
+    return formData;
+  }
+
+  function buildSchemaPayload() {
+    const fd = collectFormData();
+    return {
+      id: fd.id,
+      name: fd.name,
+      description: fd.description,
+      version: fd.version,
+      category: fd.category,
+      status: 'draft',
+      schema: { sections: fd.sections }
+    };
+  }
+
+  async function saveForm() {
+    setSaveStatus('Saving…');
+    const payload = buildSchemaPayload();
+    payload.schema = JSON.stringify(payload.schema);
+    const method = currentFormId ? 'PUT' : 'POST';
+    const url = currentFormId ? `/templates/${currentFormId}` : '/templates';
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const saved = await res.json();
+      currentFormId = saved.id;
+      document.getElementById('formId').value = saved.id;
+      setSaveStatus('Saved ✔ ' + new Date().toLocaleTimeString());
+      showToast('Form saved!', 'success');
+      loadFormsList();
+    } catch(e) {
+      setSaveStatus('Save failed');
+      showToast('Save failed: ' + e.message, 'error');
+    }
+  }
+
+  async function publishForm() {
+    await saveForm();
+    if (!currentFormId) return;
+    try {
+      await fetch(`/templates/${currentFormId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ status: 'active' })
+      });
+      // Also update via status endpoint
+      await fetch(`/templates/${currentFormId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ status: 'active' })
+      });
+      showToast('Form published! Field agents can now access it.', 'success');
+      loadFormsList();
+    } catch(e) {
+      showToast('Publish error: ' + e.message, 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════
+     SECTION MANAGEMENT
+  ═══════════════════════════════════════════════ */
+  function addSection() {
+    formData.sections.push({ id: secUID(), title: 'New Section', fields: [] });
+    renderAllSections();
+  }
+
+  function deleteSection(secId) {
+    if (!confirm('Delete this section and all its fields?')) return;
+    formData.sections = formData.sections.filter(s => s.id !== secId);
+    renderAllSections();
+  }
+
+  function moveSection(secId, dir) {
+    const idx = formData.sections.findIndex(s => s.id === secId);
+    if (dir === -1 && idx === 0) return;
+    if (dir === 1 && idx === formData.sections.length - 1) return;
+    const arr = formData.sections;
+    [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]];
+    renderAllSections();
+  }
+
+  function renderAllSections() {
+    const container = document.getElementById('sectionsContainer');
+    if (!formData.sections.length) {
+      container.innerHTML = `<div class="drop-zone" onclick="addSection()">
+        ➕ Click to add your first section</div>`;
+      return;
+    }
+    container.innerHTML = formData.sections.map((sec, si) => `
+      <div class="section-card" id="section_${sec.id}">
+        <div class="section-header">
+          <span style="font-size:16px;margin-right:4px">📑</span>
+          <input class="section-title-input" value="${escHtml(sec.title)}"
+            oninput="updateSectionTitle('${sec.id}', this.value)" placeholder="Section title…" />
+          <div class="section-actions">
+            <button class="section-action-btn" onclick="moveSection('${sec.id}',-1)" title="Move up">▲</button>
+            <button class="section-action-btn" onclick="moveSection('${sec.id}',1)" title="Move down">▼</button>
+            <button class="section-action-btn" onclick="deleteSection('${sec.id}')" title="Delete section" style="background:rgba(239,68,68,0.1);color:#ef4444">🗑</button>
+          </div>
+        </div>
+        <div class="section-body" id="fields_${sec.id}">
+          ${sec.fields.map(f => renderFieldCard(f, sec.id)).join('')}
+          <div class="drop-zone" onclick="addFieldToSection('${sec.id}','text')" style="margin-top:8px">
+            Click to add field — or drag from the question type palette
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Re-attach drag handlers
+    setupDragAndDrop();
+  }
+
+  function updateSectionTitle(secId, val) {
+    const s = formData.sections.find(s => s.id === secId);
+    if (s) s.title = val;
+  }
+
+  /* ════════════════════════════════════════════════
+     FIELD RENDERING
+  ═══════════════════════════════════════════════ */
+  const TYPE_LABELS = {
+    text:'Text', number:'Number', date:'Date', tel:'Phone', select:'Dropdown',
+    multiselect:'Multi-select', rating:'Rating', likert:'Likert', gps:'GPS',
+    photo:'Photo', signature:'Signature', barcode:'Barcode', matrix:'Matrix',
+    repeat:'Repeat', calculated:'Calculated'
+  };
+
+  function renderFieldCard(f, secId) {
+    const label = f.label || '(unlabeled)';
+    const typeClass = `badge-${f.type}`;
+    const typeLabel = TYPE_LABELS[f.type] || f.type;
+    return `
+      <div class="field-card" id="field_${f.key}" draggable="true"
+        data-key="${f.key}" data-sec="${secId}"
+        onclick="selectField('${f.key}','${secId}')">
+        <div class="field-row">
+          <span class="drag-handle">⠿</span>
+          <span class="field-type-badge ${typeClass}">${typeLabel}</span>
+          <span class="field-label">${escHtml(label)}</span>
+          ${f.required ? '<span class="field-required-dot" title="Required">*</span>' : ''}
+          ${f.showWhen ? '<span title="Has skip logic" style="font-size:13px">🔀</span>' : ''}
+          <div class="field-actions">
+            <button class="field-action-btn" onclick="event.stopPropagation();duplicateField('${f.key}','${secId}')" title="Duplicate">⧉</button>
+            <button class="field-action-btn del" onclick="event.stopPropagation();deleteField('${f.key}','${secId}')" title="Delete">🗑</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ════════════════════════════════════════════════
+     FIELD MANAGEMENT
+  ═══════════════════════════════════════════════ */
+  // Add field to the currently visible section (first one) or prompt
+  function addField(type) {
+    if (!formData.sections.length) {
+      formData.sections.push({ id: secUID(), title: 'Section 1', fields: [] });
+    }
+    // Add to last section if none selected, else first section
+    const secId = formData.sections[formData.sections.length - 1].id;
+    addFieldToSection(secId, type);
+  }
+
+  function addFieldToSection(secId, type) {
+    const sec = formData.sections.find(s => s.id === secId);
+    if (!sec) return;
+    const key = type + '_' + Math.random().toString(36).slice(2, 7);
+    const newField = {
+      key,
+      label: TYPE_LABELS[type] || type,
+      type,
+      required: false,
+      options: (type === 'select' || type === 'multiselect' || type === 'likert') ? [
+        { value: 'option1', label: 'Option 1' },
+        { value: 'option2', label: 'Option 2' }
+      ] : undefined,
+      rows: type === 'matrix' ? [{ label: 'Row 1' }] : undefined,
+      cols: type === 'matrix' ? [{ label: 'Col 1' }, { label: 'Col 2' }] : undefined
+    };
+    if (type === 'calculated') newField.expression = '${field_a} + ${field_b}';
+    sec.fields.push(newField);
+    renderAllSections();
+    selectField(key, secId);
+  }
+
+  function deleteField(key, secId) {
+    if (!confirm('Delete this field?')) return;
+    const sec = formData.sections.find(s => s.id === secId);
+    if (sec) sec.fields = sec.fields.filter(f => f.key !== key);
+    if (selectedFieldId === key) {
+      selectedFieldId = null;
+      renderPropsPanel(null, null);
+    }
+    renderAllSections();
+  }
+
+  function duplicateField(key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    if (!sec) return;
+    const orig = sec.fields.find(f => f.key === key);
+    if (!orig) return;
+    const clone = JSON.parse(JSON.stringify(orig));
+    clone.key = orig.type + '_' + Math.random().toString(36).slice(2, 7);
+    clone.label = orig.label + ' (Copy)';
+    sec.fields.splice(sec.fields.indexOf(orig) + 1, 0, clone);
+    renderAllSections();
+  }
+
+  /* ════════════════════════════════════════════════
+     FIELD SELECTION & PROPERTIES PANEL
+  ═══════════════════════════════════════════════ */
+  function selectField(key, secId) {
+    selectedFieldId = key;
+    // Highlight card
+    document.querySelectorAll('.field-card').forEach(c => c.classList.remove('selected'));
+    const card = document.getElementById('field_' + key);
+    if (card) card.classList.add('selected');
+    const sec = formData.sections.find(s => s.id === secId);
+    if (!sec) return;
+    const field = sec.fields.find(f => f.key === key);
+    if (!field) return;
+    renderPropsPanel(field, secId);
+  }
+
+  function renderPropsPanel(field, secId) {
+    const panel = document.getElementById('propsPanel');
+    if (!field) {
+      panel.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;margin-top:30px">
+        <div style="font-size:40px;margin-bottom:10px">🖱</div>
+        <div style="font-weight:600;margin-bottom:4px">No field selected</div>
+        <div>Click on any field to edit its properties</div>
+      </div>`;
+      return;
+    }
+
+    const hasOptions = ['select', 'multiselect', 'likert'].includes(field.type);
+    const hasMatrix  = field.type === 'matrix';
+    const hasCalc    = field.type === 'calculated';
+
+    // Build all section fields for logic editor
+    const allFields = formData.sections.flatMap(s => s.fields).filter(f => f.key !== field.key);
+
+    panel.innerHTML = `
+      <div class="prop-group">
+        <div class="prop-label">Field Label</div>
+        <input class="prop-input" id="pp_label" value="${escHtml(field.label)}" placeholder="Question label" />
+        <div class="prop-label">Field Key (ID)</div>
+        <input class="prop-input" id="pp_key" value="${escHtml(field.key)}" placeholder="field_key" />
+        <div class="prop-label">Hint / Help text</div>
+        <input class="prop-input" id="pp_hint" value="${escHtml(field.hint||'')}" placeholder="Hint for enumerator…" />
+      </div>
+
+      <div class="prop-group">
+        <div class="prop-label">Constraints</div>
+        <div class="prop-checkbox-row">
+          <input type="checkbox" id="pp_required" ${field.required ? 'checked' : ''} />
+          <label for="pp_required">Required field</label>
+        </div>
+        ${(field.type === 'number') ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><div class="prop-label" style="font-size:10px">Min</div>
+            <input class="prop-input" id="pp_min" type="number" value="${field.min ?? ''}" placeholder="Min" style="margin:0" /></div>
+          <div><div class="prop-label" style="font-size:10px">Max</div>
+            <input class="prop-input" id="pp_max" type="number" value="${field.max ?? ''}" placeholder="Max" style="margin:0" /></div>
+        </div>` : ''}
+        <div class="prop-label" style="margin-top:8px">Validation Regex</div>
+        <input class="prop-input" id="pp_regex" value="${escHtml(field.regex||'')}" placeholder="^[A-Za-z]+$" />
+      </div>
+
+      ${hasOptions ? `
+      <div class="prop-group">
+        <div class="prop-label">Answer Options</div>
+        <div id="optionsList">
+          ${(field.options||[]).map((o,i) => `
+            <div class="option-row" id="opt_row_${i}">
+              <input value="${escHtml(o.value)}" onchange="updateOption(${i},'value',this.value,'${field.key}','${secId}')" placeholder="value" />
+              <input value="${escHtml(o.label)}" onchange="updateOption(${i},'label',this.value,'${field.key}','${secId}')" placeholder="Label" />
+              <button class="option-del-btn" onclick="removeOption(${i},'${field.key}','${secId}')">✕</button>
+            </div>
+          `).join('')}
+        </div>
+        <button class="add-option-btn" onclick="addOption('${field.key}','${secId}')">+ Add option</button>
+      </div>` : ''}
+
+      ${hasCalc ? `
+      <div class="prop-group">
+        <div class="prop-label">Expression</div>
+        <input class="prop-input" id="pp_expression" value="${escHtml(field.expression||'')}" placeholder="\${field1} + \${field2}" />
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Use \${key} to reference other fields</div>
+      </div>` : ''}
+
+      <div class="prop-group">
+        <div class="prop-label">🔀 Skip Logic (Show When)</div>
+        <div class="logic-row">
+          <select id="pp_logic_field" onchange="updateLogic('${field.key}','${secId}')">
+            <option value="">— Always show —</option>
+            ${allFields.map(f => `<option value="${f.key}" ${(field.showWhen?.field === f.key) ? 'selected' : ''}>${f.label}</option>`).join('')}
+          </select>
+          <select id="pp_logic_op" onchange="updateLogic('${field.key}','${secId}')">
+            <option value="eq" ${!field.showWhen?.op || field.showWhen?.op === 'eq' ? 'selected' : ''}>=</option>
+            <option value="neq" ${field.showWhen?.op === 'neq' ? 'selected' : ''}>≠</option>
+            <option value="gt" ${field.showWhen?.op === 'gt' ? 'selected' : ''}>></option>
+            <option value="lt" ${field.showWhen?.op === 'lt' ? 'selected' : ''}><</option>
+          </select>
+          <input id="pp_logic_value" value="${escHtml(field.showWhen?.value||'')}" placeholder="value"
+            oninput="updateLogic('${field.key}','${secId}')" />
+        </div>
+      </div>
+
+      <div class="prop-group" style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="applyProps('${field.key}','${secId}')">✔ Apply</button>
+        <button class="btn btn-outline btn-sm" onclick="cancelProps()">Cancel</button>
+      </div>
+    `;
+  }
+
+  function applyProps(key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    if (!sec) return;
+    const field = sec.fields.find(f => f.key === key);
+    if (!field) return;
+
+    field.label    = document.getElementById('pp_label').value.trim();
+    field.hint     = document.getElementById('pp_hint').value.trim();
+    field.required = document.getElementById('pp_required').checked;
+    field.regex    = document.getElementById('pp_regex').value.trim() || undefined;
+
+    const minEl = document.getElementById('pp_min');
+    const maxEl = document.getElementById('pp_max');
+    if (minEl) { const v = parseFloat(minEl.value); field.min = isNaN(v) ? undefined : v; }
+    if (maxEl) { const v = parseFloat(maxEl.value); field.max = isNaN(v) ? undefined : v; }
+
+    const exprEl = document.getElementById('pp_expression');
+    if (exprEl) field.expression = exprEl.value.trim();
+
+    renderAllSections();
+    selectField(key, secId);
+    showToast('Properties updated');
+  }
+
+  function cancelProps() {
+    selectedFieldId = null;
+    renderPropsPanel(null, null);
+    document.querySelectorAll('.field-card').forEach(c => c.classList.remove('selected'));
+  }
+
+  function updateOption(idx, prop, val, key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    const field = sec?.fields.find(f => f.key === key);
+    if (field?.options?.[idx]) field.options[idx][prop] = val;
+  }
+
+  function removeOption(idx, key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    const field = sec?.fields.find(f => f.key === key);
+    if (field?.options) {
+      field.options.splice(idx, 1);
+      renderPropsPanel(field, secId);
+    }
+  }
+
+  function addOption(key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    const field = sec?.fields.find(f => f.key === key);
+    if (field) {
+      if (!field.options) field.options = [];
+      const n = field.options.length + 1;
+      field.options.push({ value: 'option' + n, label: 'Option ' + n });
+      renderPropsPanel(field, secId);
+    }
+  }
+
+  function updateLogic(key, secId) {
+    const sec = formData.sections.find(s => s.id === secId);
+    const field = sec?.fields.find(f => f.key === key);
+    if (!field) return;
+    const logicField = document.getElementById('pp_logic_field').value;
+    if (!logicField) { delete field.showWhen; return; }
+    field.showWhen = {
+      field: logicField,
+      op:    document.getElementById('pp_logic_op').value,
+      value: document.getElementById('pp_logic_value').value
+    };
+  }
+
+  /* ════════════════════════════════════════════════
+     DRAG & DROP
+  ═══════════════════════════════════════════════ */
+  let dragKey = null, dragSecId = null;
+
+  function setupDragAndDrop() {
+    document.querySelectorAll('.field-card').forEach(card => {
+      card.addEventListener('dragstart', e => {
+        dragKey   = card.dataset.key;
+        dragSecId = card.dataset.sec;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (card.dataset.key === dragKey) return;
+        const sec = formData.sections.find(s => s.id === card.dataset.sec);
+        if (!sec) return;
+        const fromSec = formData.sections.find(s => s.id === dragSecId);
+        if (!fromSec) return;
+        const fi = fromSec.fields.findIndex(f => f.key === dragKey);
+        const ti = sec.fields.findIndex(f => f.key === card.dataset.key);
+        if (fi < 0 || ti < 0) return;
+        const [moved] = fromSec.fields.splice(fi, 1);
+        sec.fields.splice(ti, 0, moved);
+        dragSecId = sec.id;
+        renderAllSections();
+      });
+    });
+  }
+
+  /* ════════════════════════════════════════════════
+     TEMPLATE LIBRARY
+  ═══════════════════════════════════════════════ */
+  let allLibraryEntries = [];
+
+  async function openLibraryModal() {
+    openModal('libraryModal');
+    if (!allLibraryEntries.length) {
+      try {
+        const res = await fetch('/templates/library', { headers: { 'X-API-Key': apiKey } });
+        const data = await res.json();
+        allLibraryEntries = data.library || [];
+      } catch(e) {
+        allLibraryEntries = [];
+      }
+    }
+    renderLibraryGrid(allLibraryEntries);
+  }
+
+  function filterLibrary() {
+    const q = document.getElementById('libSearch').value.toLowerCase();
+    const cat = document.getElementById('libCategoryFilter').value;
+    const filtered = allLibraryEntries.filter(e =>
+      (!q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)) &&
+      (!cat || e.category === cat)
+    );
+    renderLibraryGrid(filtered);
+  }
+
+  function renderLibraryGrid(items) {
+    const grid = document.getElementById('libraryGrid');
+    if (!items.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px">No templates found.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(e => `
+      <div class="library-card" onclick="loadLibraryTemplate('${e.id}')">
+        <div class="cat-badge">${e.category}</div>
+        <h4>${e.name}</h4>
+        <p>${e.description}</p>
+        <div class="field-count">📋 ${e.field_count} fields · v${e.version}</div>
+      </div>
+    `).join('');
+  }
+
+  async function loadLibraryTemplate(id) {
+    closeModal('libraryModal');
+    await loadForm(id);
+    showToast('Template loaded — customize and save as your own form', 'success');
+  }
+
+  /* ── Marketplace Logic ── */
+  let allMarketEntries = [];
+  function switchLibTab(btn, tabId) {
+    document.querySelectorAll('#libraryModal .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('libDefault').style.display = tabId === 'libDefault' ? 'block' : 'none';
+    document.getElementById('libMarket').style.display = tabId === 'libMarket' ? 'block' : 'none';
+    if (tabId === 'libMarket') {
+      loadMarketplace();
+    }
+  }
+
+  async function loadMarketplace() {
+    const grid = document.getElementById('marketGrid');
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px">Querying global marketplace registry…</div>';
+    try {
+      const res = await fetch('/templates', { headers: { 'X-API-Key': apiKey } });
+      const data = await res.json();
+      allMarketEntries = data.templates || [];
+      renderMarketplaceGrid(allMarketEntries);
+    } catch(e) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--accent-red);padding:30px">Error loading marketplace: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function filterMarketplace() {
+    const q = document.getElementById('marketSearch').value.toLowerCase();
+    const cat = document.getElementById('marketCategoryFilter').value;
+    const filtered = allMarketEntries.filter(e =>
+      (!q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)) &&
+      (!cat || e.category === cat)
+    );
+    renderMarketplaceGrid(filtered);
+  }
+
+  function renderMarketplaceGrid(items) {
+    const grid = document.getElementById('marketGrid');
+    if (!items.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px">No marketplace templates found.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(e => {
+      const stars = '⭐'.repeat(e.rating || 4);
+      return `
+        <div class="library-card" style="position:relative">
+          <div class="cat-badge" style="background:#f3e8ff;color:#6b21a8">${escHtml(e.category || 'General')}</div>
+          <h4>${escHtml(e.name)}</h4>
+          <p>${escHtml(e.description || 'Enterprise ready data collection template')}</p>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;display:flex;justify-content:between;align-items:center">
+            <span>${stars}</span>
+            <span style="margin-left:auto">📥 ${e.download_count || 12} pulls</span>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="cloneMarketTemplate('${e.id}')" style="margin-top:10px;width:100%;justify-content:center">📥 Clone Template</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function cloneMarketTemplate(id) {
+    if (!confirm('Clone this public template into your workspace library?')) return;
+    try {
+      const res = await fetch('/templates/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ source_id: id, new_id: id + '_clone_' + Math.floor(Math.random()*100), name: 'Copy of ' + id })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      showToast('Template cloned successfully!', 'success');
+      closeModal('libraryModal');
+      loadFormsList();
+    } catch(e) {
+      showToast('Cloning failed: ' + e.message, 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════
+     IMPORT / EXPORT
+  ═══════════════════════════════════════════════ */
+  function openImportExportModal() {
+    openModal('importExportModal');
+    const preview = JSON.stringify(buildSchemaPayload().schema, null, 2);
+    document.getElementById('exportPreview').value = preview;
+  }
+
+  async function exportAs(format) {
+    if (!currentFormId) {
+      showToast('Save the form first before exporting', 'error');
+      return;
+    }
+    const url = `/templates/export?id=${currentFormId}&format=${format}`;
+    try {
+      const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const cd = res.headers.get('Content-Disposition') || '';
+      a.download = cd.match(/filename="([^"]+)"/)?.[1] || `${currentFormId}.${format}`;
+      a.click();
+      showToast(`Exported as ${format.toUpperCase()}`, 'success');
+    } catch(e) {
+      showToast('Export failed: ' + e.message, 'error');
+    }
+  }
+
+  function importJSON() {
+    const body = document.getElementById('importJsonBody').value.trim();
+    if (!body) { showToast('Paste a JSON schema first', 'error'); return; }
+    try {
+      const schema = JSON.parse(body);
+      formData.sections = schema.sections || [];
+      const id = document.getElementById('importId').value.trim() || 'imported_form';
+      const name = document.getElementById('importName').value.trim() || 'Imported Form';
+      formData.id = id;
+      formData.name = name;
+      document.getElementById('formId').value = id;
+      document.getElementById('formTitle').value = name;
+      renderAllSections();
+      closeModal('importExportModal');
+      showToast('Schema imported — review and save', 'success');
+    } catch(e) {
+      showToast('Invalid JSON: ' + e.message, 'error');
+    }
+  }
+
+  async function importJSONToServer() {
+    const body = document.getElementById('importJsonBody').value.trim();
+    const id   = document.getElementById('importId').value.trim();
+    const name = document.getElementById('importName').value.trim();
+    if (!id || !name || !body) { showToast('Fill in ID, Name, and JSON schema', 'error'); return; }
+    try {
+      const schema = JSON.parse(body);
+      const res = await fetch('/templates/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ id, name, description: '', schema })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      showToast('Imported to server!', 'success');
+      closeModal('importExportModal');
+      loadFormsList();
+    } catch(e) {
+      showToast('Import failed: ' + e.message, 'error');
+    }
+  }
+
+  function handleFileImport(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const schema = JSON.parse(e.target.result);
+        formData.sections = schema.sections || [];
+        formData.name = schema.name || file.name.replace('.json','');
+        document.getElementById('formTitle').value = formData.name;
+        renderAllSections();
+        document.getElementById('fileImportStatus').textContent = '✔ File imported — review and save your form.';
+        document.getElementById('fileImportStatus').style.color = 'var(--accent-green)';
+      } catch(err) {
+        document.getElementById('fileImportStatus').textContent = '⚠ Invalid JSON file: ' + err.message;
+        document.getElementById('fileImportStatus').style.color = 'var(--accent-red)';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function previewJSON() {
+    const schema = buildSchemaPayload().schema;
+    document.getElementById('jsonPreviewArea').value = JSON.stringify(schema, null, 2);
+    openModal('jsonPreviewModal');
+  }
+
+  function copyJSON() {
+    const text = document.getElementById('jsonPreviewArea').value;
+    navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!', 'success'));
+  }
+
+  /* ── Version Rollback Logic ── */
+  async function openRollbackModal() {
+    if (!currentFormId) {
+      showToast('Please load/save a survey template first before managing versions.', 'error');
+      return;
+    }
+    openModal('rollbackModal');
+    const select = document.getElementById('rollbackVersionSelect');
+    select.innerHTML = '<option value="">— Loading Versions… —</option>';
+    try {
+      const res = await fetch(`/templates/versions?template_id=${encodeURIComponent(currentFormId)}`, {
+        headers: { 'X-API-Key': apiKey }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const list = data.versions || [];
+      if (!list.length) {
+        select.innerHTML = '<option value="">No previous versions archived.</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">— Select Target Version —</option>' +
+        list.map(v => `<option value="${escHtml(v.version)}">v${escHtml(v.version)} (${new Date(v.created_at).toLocaleDateString()}) - ${escHtml(v.change_note || 'Auto-save')}</option>`).join('');
+    } catch(e) {
+      select.innerHTML = '<option value="">Failed to load versions.</option>';
+      showToast('Error loading version history: ' + e.message, 'error');
+    }
+  }
+
+  async function submitRollback() {
+    const version = document.getElementById('rollbackVersionSelect').value;
+    const reason = document.getElementById('rollbackReason').value.trim();
+    if (!version) {
+      showToast('Please select a target version to restore.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/templates/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ template_id: currentFormId, version, changed_by: 'admin', change_note: reason })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      showToast('Version successfully restored!', 'success');
+      closeModal('rollbackModal');
+      await loadForm(currentFormId);
+    } catch(e) {
+      showToast('Rollback failed: ' + e.message, 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════
+     UTILS
+  ═══════════════════════════════════════════════ */
+  function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ════════════════════════════════════════════════
+     DIRECTIVE 21 — MSH CONFIGURATION
+  ═══════════════════════════════════════════════ */
+  function switchMSHTab(btn, tabId) {
+    document.querySelectorAll('.msh-nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.msh-tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+  }
+
+  async function openMSHModal() {
+    openModal('mshModal');
+    // Load existing MSH config if we have a current form
+    if (currentFormId) {
+      try {
+        const res = await fetch(`/admin/msh?template_id=${encodeURIComponent(currentFormId)}`, {
+          headers: { 'X-API-Key': apiKey }
+        });
+        if (res.ok) {
+          const sh = await res.json();
+          applyMSHConfig(sh);
+        }
+      } catch(e) { /* use defaults */ }
+    }
+    // Load respondent types
+    loadRespondentTypes();
+    // Load admin levels for default country
+    loadAdminLevels(document.getElementById('mshCountryCode').value);
+  }
+
+  function applyMSHConfig(sh) {
+    const setChk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+    setChk('mshEnabled', sh.enabled !== false);
+    setChk('msh_include_metadata', sh.include_metadata !== false);
+    setChk('msh_include_assignment', sh.include_assignment !== false);
+    setChk('msh_include_respondent', sh.include_respondent !== false);
+    setChk('msh_include_geography', sh.include_geography !== false);
+    setChk('msh_include_collection', sh.include_collection !== false);
+    setChk('msh_include_consent', sh.include_consent !== false);
+    setChk('msh_include_attachments', sh.include_attachments === true);
+    setChk('msh_include_audit', sh.include_audit !== false);
+    setChk('msh_pub_research', sh.publish_to_research !== false);
+    setChk('msh_pub_projects', sh.publish_to_projects !== false);
+    setChk('msh_pub_statistics', sh.publish_to_statistics !== false);
+    setChk('msh_pub_gis', sh.publish_to_gis !== false);
+    setChk('msh_pub_reporting', sh.publish_to_reporting !== false);
+    setChk('msh_pub_documents', sh.publish_to_documents === true);
+    setChk('msh_auto_tasks', sh.auto_create_tasks !== false);
+    if (sh.country_code) {
+      const sel = document.getElementById('mshCountryCode');
+      if (sel) sel.value = sh.country_code;
+    }
+    // Consent config
+    if (sh.consent_config) {
+      const cc = typeof sh.consent_config === 'string' ? JSON.parse(sh.consent_config) : sh.consent_config;
+      setChk('msh_consent_verbal', cc.verbal !== false);
+      setChk('msh_consent_written', cc.written === true);
+      setChk('msh_consent_guardian', cc.guardian === true);
+      setChk('msh_consent_signature', cc.digital_signature !== false);
+      setChk('msh_consent_audio', cc.audio === true);
+    }
+  }
+
+  async function loadRespondentTypes() {
+    const container = document.getElementById('mshRespondentTypesList');
+    if (!container) return;
+    const defaultTypes = [
+      {id:'individual',label:'Individual'},{id:'household',label:'Household'},
+      {id:'facility',label:'Health Facility'},{id:'school',label:'School'},
+      {id:'business',label:'Business'},{id:'farm',label:'Farm'},
+      {id:'community',label:'Community'},{id:'institution',label:'Institution'}
+    ];
+    let types = defaultTypes;
+    try {
+      const res = await fetch('/admin/respondent-types', { headers: { 'X-API-Key': apiKey } });
+      if (res.ok) types = await res.json();
+    } catch(e) {}
+    container.innerHTML = types.map(t => `
+      <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px">
+        <input type="checkbox" name="msh_respondent_type" value="${escHtml(t.id)}" checked style="accent-color:var(--primary)">
+        ${escHtml(t.label)}
+      </label>
+    `).join('');
+  }
+
+  async function loadAdminLevels(countryCode) {
+    const container = document.getElementById('adminLevelsList');
+    if (!container) return;
+    const defaultLevels = {
+      UGA: [{level_number:2,level_name:'Region',required:true},{level_number:3,level_name:'District',required:true},{level_number:4,level_name:'County',required:false},{level_number:5,level_name:'Sub-county',required:false},{level_number:6,level_name:'Parish',required:false},{level_number:7,level_name:'Village',required:false}],
+      KEN: [{level_number:2,level_name:'County',required:true},{level_number:3,level_name:'Sub-County',required:true},{level_number:4,level_name:'Ward',required:false},{level_number:5,level_name:'Village',required:false}],
+      TZA: [{level_number:2,level_name:'Region',required:true},{level_number:3,level_name:'District',required:true},{level_number:4,level_name:'Division',required:false},{level_number:5,level_name:'Ward',required:false},{level_number:6,level_name:'Village',required:false}],
+    };
+    let levels = defaultLevels[countryCode] || [{level_number:2,level_name:'Province/State',required:true},{level_number:3,level_name:'District',required:false},{level_number:4,level_name:'Sub-district',required:false}];
+    try {
+      const res = await fetch(`/admin/admin-levels?country=${encodeURIComponent(countryCode)}`, { headers: { 'X-API-Key': apiKey } });
+      if (res.ok) { const data = await res.json(); if (data && data.length) levels = data; }
+    } catch(e) {}
+    container.innerHTML = levels.map(l => `
+      <div class="msh-field-item${l.required ? ' req' : ''}">
+        Level ${l.level_number}: ${escHtml(l.level_name)}
+        ${l.required ? '<span class="msh-badge">Required</span>' : '<span class="msh-badge opt-badge">Optional</span>'}
+      </div>
+    `).join('');
+  }
+
+  async function saveMSHConfig() {
+    if (!currentFormId) { showToast('Please save the form first to configure MSH', 'error'); return; }
+    const getChk = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
+    const respondentTypes = Array.from(document.querySelectorAll('input[name="msh_respondent_type"]:checked')).map(cb => cb.value);
+    const sh = {
+      template_id: currentFormId,
+      enabled: getChk('mshEnabled'),
+      include_metadata: getChk('msh_include_metadata'),
+      include_assignment: getChk('msh_include_assignment'),
+      include_respondent: getChk('msh_include_respondent'),
+      include_geography: getChk('msh_include_geography'),
+      include_collection: getChk('msh_include_collection'),
+      include_consent: getChk('msh_include_consent'),
+      include_attachments: getChk('msh_include_attachments'),
+      include_audit: getChk('msh_include_audit'),
+      respondent_types: respondentTypes,
+      country_code: document.getElementById('mshCountryCode').value || 'UGA',
+      consent_config: {
+        verbal: getChk('msh_consent_verbal'),
+        written: getChk('msh_consent_written'),
+        guardian: getChk('msh_consent_guardian'),
+        digital_signature: getChk('msh_consent_signature'),
+        audio: getChk('msh_consent_audio')
+      },
+      publish_to_research: getChk('msh_pub_research'),
+      publish_to_projects: getChk('msh_pub_projects'),
+      publish_to_statistics: getChk('msh_pub_statistics'),
+      publish_to_gis: getChk('msh_pub_gis'),
+      publish_to_reporting: getChk('msh_pub_reporting'),
+      publish_to_documents: getChk('msh_pub_documents'),
+      auto_create_tasks: getChk('msh_auto_tasks')
+    };
+    try {
+      const res = await fetch('/admin/msh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify(sh)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const status = document.getElementById('mshSaveStatus');
+      if (status) { status.textContent = '✅ Saved at ' + new Date().toLocaleTimeString(); status.style.color = '#10b981'; }
+      showToast('MSH configuration saved successfully', 'success');
+    } catch(e) {
+      showToast('Failed to save MSH config: ' + e.message, 'error');
+    }
+  }
+
+  async function previewMSH() {
+    const templateId = currentFormId || '';
+    try {
+      const res = await fetch(`/admin/msh/preview?template_id=${encodeURIComponent(templateId)}`, {
+        headers: { 'X-API-Key': apiKey }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const schema = await res.json();
+      const preview = document.getElementById('jsonPreviewContent');
+      if (preview) preview.textContent = JSON.stringify(schema, null, 2);
+      openModal('jsonPreviewModal');
+    } catch(e) {
+      showToast('Could not preview MSH: ' + e.message, 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════
+     INIT
+  ═══════════════════════════════════════════════ */
+  createNewForm();
+  loadFormsList();
+  </script>
+</body>
+</html>

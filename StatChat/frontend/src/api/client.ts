@@ -30,6 +30,28 @@ export const WS_URL = import.meta.env.VITE_WS_URL ?? (() => {
   return `${protocol}://${host}/ws`;
 })();
 
+export function getWebSocketURL(): string {
+  const token = getStoredToken();
+  if (!token || typeof window === 'undefined') return WS_URL;
+  const url = new URL(WS_URL, window.location.origin);
+  url.searchParams.set('access_token', token);
+  return url.toString();
+}
+
+// A launcher may hand a Registry-issued token to StatChat once. Remove it from
+// the address immediately so it is not retained in browser history or copied
+// when a user shares a link.
+export function bootstrapSharedSignOn(): void {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get('statgate_token') ?? url.searchParams.get('access_token');
+  if (!token) return;
+  window.localStorage.setItem('statchat_token', token);
+  url.searchParams.delete('statgate_token');
+  url.searchParams.delete('access_token');
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
 export async function fetchCurrentUser(): Promise<User> {
   const response = await apiFetch(`${BASE_URL}/users/me`);
   if (!response.ok) {
@@ -280,6 +302,14 @@ export async function togglePostLike(postId: string, userId?: string): Promise<{
     body: JSON.stringify({ userId }),
   });
   if (!response.ok) throw new Error(`Failed to toggle post like: ${response.status}`);
+  return response.json();
+}
+
+export async function sharePost(postId: string): Promise<{ shares: number }> {
+  const response = await apiFetch(`${BASE_URL}/collaboration/posts/${encodeURIComponent(postId)}/share`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error(`Failed to share post: ${response.status}`);
   return response.json();
 }
 

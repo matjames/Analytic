@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
 	"statchat/pkg/api"
 	"statchat/pkg/store"
@@ -14,10 +19,10 @@ import (
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		// Try common paths relative to backend/cmd/server
-		_ = godotenv.Load("../.env", "../../.env", "../../../.env")
-	}
+	// Load service settings first, then fill any missing shared StatGate values
+	// (Registry URL, shared SSO secret, service credential) from the workspace.
+	_ = godotenv.Load()
+	loadWorkspaceEnvironment("../.env", "../../.env", "../../../.env")
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -60,8 +65,41 @@ func main() {
 		port = "4000"
 	}
 
-	log.Printf("StatChat Go backend running on :%s", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatalf("server failed: %v", err)
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	go func() {
+		log.Printf("StatChat Go backend running on :%s", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	shutdownSignal := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
+	<-shutdownSignal
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+	}
+}
+
+func loadWorkspaceEnvironment(paths ...string) {
+	for _, path := range paths {
+		values, err := godotenv.Read(path)
+		if err != nil {
+			continue
+		}
+		for key, value := range values {
+			if strings.TrimSpace(os.Getenv(key)) == "" && strings.TrimSpace(value) != "" {
+				_ = os.Setenv(key, value)
+			}
+		}
 	}
 }

@@ -64,6 +64,10 @@ logs/
 tmp/
 *.sqlite3
 *.db
+.gocache/
+*.exe
+**/uploads/
+phaseV_complete.txt
 
 # Project-specific local/generated content
 backend/bin/

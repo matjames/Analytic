@@ -1,11 +1,13 @@
-import React from 'react';
-import { Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Bell } from 'lucide-react';
+import { EnterpriseSearch } from './EnterpriseSearch';
 
 interface HeaderProps {
   onAppLauncherClick?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick }) => {
+  const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 border-b-0 shadow-md" style={{ background: 'linear-gradient(135deg, #165c92 0%, #1a7ab5 100%)', boxShadow: '0 2px 8px rgba(22, 92, 146, 0.15)' }}>
@@ -27,20 +29,37 @@ export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick }) => {
             </div>
           </div>
 
-          {/* Search Bar - Desktop Only */}
-          <div className="hidden sm:flex flex-1 max-w-md mx-8">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search applications..."
-                className="w-full pl-10 pr-4 py-2 border border-white/50 rounded-md focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent text-gray-900 bg-white"
-              />
-            </div>
+          {/* Enterprise Search - Desktop Only */}
+          <div className="hidden sm:flex flex-1 max-w-xl mx-8 relative">
+            <button
+              onClick={() => setSearchOpen(!searchOpen)}
+              className="w-full"
+            >
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <div className="w-full pl-10 pr-4 py-2 border border-white/50 rounded-md focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent text-gray-900 bg-white text-left text-sm text-gray-500">
+                  Search the enterprise...
+                </div>
+              </div>
+            </button>
+            {searchOpen && (
+              <div className="relative z-50 pt-2">
+                <EnterpriseSearch onClose={() => setSearchOpen(false)} />
+              </div>
+            )}
           </div>
 
           {/* Right Navigation */}
           <div className="flex items-center space-x-4">
+            {/* Notifications */}
+            <button
+              className="p-2 hover:bg-white/15 rounded-md transition-colors relative"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5 text-white" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+            </button>
+
             {/* App Launcher Button */}
             <button
               onClick={onAppLauncherClick}

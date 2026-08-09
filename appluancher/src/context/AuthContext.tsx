@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, useEffect } from 'react';
 import { User, UserRole, AuthContext as AuthContextType } from '@typings/index';
-import { MOCK_USER } from '@utils/mockData';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const REGISTRY_LOGIN_URL = 'http://localhost:9090/api/users/login';
+const REGISTRY_ME_URL = 'http://localhost:9090/api/users/me';
 
 export interface AuthProviderProps {
   children: React.ReactNode;
@@ -11,40 +13,86 @@ export interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
   children,
-  mockMode = true,
+  mockMode = false,
 }) => {
-  const [user, setUser] = React.useState<User | null>(
-    mockMode ? MOCK_USER : null
-  );
+  const [user, setUser] = React.useState<User | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
 
-  const login = useCallback(async (email: string, _password: string) => {
+  useEffect(() => {
+    if (mockMode) {
+      return;
+    }
+    const token = localStorage.getItem('registry_jwt');
+    if (!token) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(REGISTRY_ME_URL, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          localStorage.removeItem('registry_jwt');
+          return;
+        }
+        const data = await res.json();
+        const u = data.user ?? data;
+        if (!cancelled) {
+          setUser({
+            id: u.id?.toString() ?? u.userId?.toString() ?? token,
+            name: u.name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() ?? u.username ?? 'Registry User',
+            email: u.email ?? '',
+            role: (u.role as UserRole) ?? UserRole.ANALYST,
+            permissions: u.permissions ?? [],
+            department: u.department ?? '',
+            lastLogin: new Date(),
+          });
+        }
+      } catch {
+        localStorage.removeItem('registry_jwt');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mockMode]);
+
+  const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const res = await fetch(REGISTRY_LOGIN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailOrUsername: email, password }),
+      });
+      if (!res.ok) {
+        throw new Error('Registry login failed');
+      }
+      const data = await res.json();
+      const token = data.token ?? data.access_token;
+      if (!token) {
+        throw new Error('Missing token');
+      }
+      localStorage.setItem('registry_jwt', token);
+      const u = data.user ?? data;
       setUser({
-        ...MOCK_USER,
-        email,
+        id: u.id?.toString() ?? u.userId?.toString() ?? 'user-001',
+        name: u.name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() ?? u.username ?? 'Registry User',
+        email: u.email ?? email,
+        role: (u.role as UserRole) ?? UserRole.ANALYST,
+        permissions: u.permissions ?? [],
+        department: u.department ?? '',
         lastLogin: new Date(),
       });
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const logout = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
+    localStorage.removeItem('registry_jwt');
+    setUser(null);
   }, []);
 
   const hasPermission = useCallback(

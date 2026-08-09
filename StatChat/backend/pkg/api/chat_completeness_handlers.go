@@ -29,6 +29,15 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to run search")
 		return
 	}
+	if users, directoryErr := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization"))); directoryErr == nil {
+		needle := strings.ToLower(query)
+		result.Users = result.Users[:0]
+		for _, user := range users {
+			if strings.Contains(strings.ToLower(user.Name), needle) || strings.Contains(strings.ToLower(user.Email), needle) {
+				result.Users = append(result.Users, user)
+			}
+		}
+	}
 	writeJSON(w, result)
 }
 

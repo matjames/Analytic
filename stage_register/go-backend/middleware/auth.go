@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"strconv"
@@ -9,6 +10,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// InternalServiceRequired protects server-to-server endpoints. It is separate
+// from user JWT authentication so a StatChat directory refresh never depends
+// on a browser session, while the endpoint remains inaccessible to clients.
+func InternalServiceRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		expected := strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY"))
+		provided := strings.TrimSpace(c.GetHeader("X-StatGate-Internal-Key"))
+		if expected == "" || provided == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid internal service credential"})
+			return
+		}
+		c.Next()
+	}
+}
 
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -36,7 +52,7 @@ func AuthRequired() gin.HandlerFunc {
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
-		
+
 		// Extract userId, role, and districtId from token (matching Node.js)
 		if userId, ok := claims["userId"].(float64); ok {
 			c.Set("user_id", int64(userId))

@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<data id="community_health_survey" version="2026.08.05">
+  <meta><instanceID>uuid:health-survey-001-kampala</instanceID></meta>
+  <respondent_info>
+    <respondent_name>Sarah Nakato</respondent_name>
+    <respondent_age>34</respondent_age>
+    <respondent_gender>female</respondent_gender>
+    <respondent_phone>+256701234567</respondent_phone>
+    <household_size>5</household_size>
+    <district>kampala</district>
+    <village>Kawempe</village>
+    <gps_location>0.3476 32.5825 1180.0 5.0</gps_location>
+  </respondent_info>
+  <health_status>
+    <has_chronic_condition>yes</has_chronic_condition>
+    <chronic_conditions>hypertension</chronic_conditions>
+    <has_insurance>yes</has_insurance>
+    <insurance_type>national</insurance_type>
+    <last_hospital_visit>2026-07-15</last_hospital_visit>
+    <visit_reason>followup</visit_reason>
+    <medication_count>2</medication_count>
+    <medication_list>Amlodipine 5mg, Hydrochlorothiazide 25mg</medication_list>
+  </health_status>
+  <water_sanitation>
+    <water_source>piped</water_source>
+    <water_treatment>boiling</water_treatment>
+    <has_toilet>yes</has_toilet>
+    <toilet_type>flush</toilet_type>
+    <handwashing_facility>yes_soap</handwashing_facility>
+  </water_sanitation>
+  <child_health>
+    <has_children_under_5>yes</has_children_under_5>
+    <children_under_5_count>2</children_under_5_count>
+    <vaccination_complete>yes</vaccination_complete>
+  </child_health>
+  <feedback>
+    <satisfaction_rating>4</satisfaction_rating>
+    <comments>Good services but long waiting times at the clinic.</comments>
+    <consent>yes</consent>
+  </feedback>
+</data>

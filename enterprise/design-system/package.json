@@ -1,0 +1,35 @@
+{
+  "name": "@statgate/design-system",
+  "version": "1.0.0",
+  "description": "StatGate Enterprise Shared Design System - Centralized UI library for all applications",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "peerDependencies": {
+    "react": ">=17.0.0",
+    "react-dom": ">=17.0.0"
+  },
+  "dependencies": {
+    "clsx": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "statgate",
+    "design-system",
+    "ui",
+    "components",
+    "enterprise"
+  ]
+}

@@ -58,6 +58,30 @@ func TestAuthMiddlewareAcceptsValidToken(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAcceptsWebSocketQueryToken(t *testing.T) {
+	t.Setenv("STATCHAT_AUTH_REQUIRED", "true")
+	t.Setenv("STATCHAT_JWT_SECRET", "test-secret")
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-001", "exp": time.Now().Add(time.Hour).Unix()})
+	encoded, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/ws?access_token="+encoded, nil)
+	rr := httptest.NewRecorder()
+	authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rr.Code)
+	}
+}
+
+func TestReadinessHandlerRejectsTrafficWhenDatabaseIsUnavailable(t *testing.T) {
+	rr := httptest.NewRecorder()
+	readinessHandler(rr, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rr.Code)
+	}
+}
+
 func TestAuthMiddlewarePopulatesRequestUserIDFromTokenSubject(t *testing.T) {
 	t.Setenv("STATCHAT_AUTH_REQUIRED", "true")
 	t.Setenv("STATCHAT_JWT_SECRET", "test-secret")

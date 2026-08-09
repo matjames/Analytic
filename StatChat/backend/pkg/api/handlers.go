@@ -46,6 +46,12 @@ func requestCurrentUser(r *http.Request) (model.User, error) {
 	}
 	user, err := store.GetUserByID(userID)
 	if err != nil {
+		if identity, ok := r.Context().Value(requestIdentityKey).(model.User); ok {
+			if syncErr := store.UpsertTrustedUser(identity); syncErr != nil {
+				return model.User{}, syncErr
+			}
+			return identity, nil
+		}
 		if !authRequired() {
 			return model.User{ID: userID, Name: "StatChat User"}, nil
 		}
@@ -77,6 +83,47 @@ type updateProfileRequest struct {
 type contextKey string
 
 const requestUserIDKey contextKey = "requestUserID"
+const requestIdentityKey contextKey = "requestIdentity"
+
+func sharedJWTSecret() string {
+	if secret := strings.TrimSpace(os.Getenv("STATGATE_REGISTRY_JWT_SECRET")); secret != "" {
+		return secret
+	}
+	return strings.TrimSpace(os.Getenv("STATCHAT_JWT_SECRET"))
+}
+
+func claimString(claims jwt.MapClaims, names ...string) string {
+	for _, name := range names {
+		if value, ok := claims[name]; ok {
+			text := strings.TrimSpace(fmt.Sprint(value))
+			if text != "" && text != "<nil>" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func sharedIdentityFromClaims(claims jwt.MapClaims, userID string) model.User {
+	name := claimString(claims, "name", "preferred_username", "username")
+	if name == "" {
+		name = "StatGate member " + userID
+	}
+	role := claimString(claims, "role", "userRole")
+	roles := []string{}
+	if role != "" {
+		roles = append(roles, role)
+	}
+	return model.User{
+		ID:             userID,
+		Name:           name,
+		Email:          claimString(claims, "email"),
+		OrganizationID: claimString(claims, "tenantId", "tenant_id", "organizationId", "organization_id"),
+		Roles:          roles,
+		AvatarURL:      claimString(claims, "avatarUrl", "avatar_url"),
+		Presence:       "online",
+	}
+}
 
 func requestUserID(r *http.Request) string {
 	if userID, ok := r.Context().Value(requestUserIDKey).(string); ok && strings.TrimSpace(userID) != "" {
@@ -97,7 +144,7 @@ func RegisterRoutes(router *mux.Router) {
 	router.Use(authMiddleware)
 	router.Use(rateLimitMiddleware)
 	router.HandleFunc("/health", healthHandler).Methods(http.MethodGet)
-	router.HandleFunc("/readyz", healthHandler).Methods(http.MethodGet)
+	router.HandleFunc("/readyz", readinessHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users", allUsersHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users/me", currentUserHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users/me/profile", updateProfileHandler).Methods(http.MethodPut)
@@ -109,6 +156,7 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/collaboration/posts", postsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/posts", createPostHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/posts/{id}/like", togglePostLikeHandler).Methods(http.MethodPost)
+	router.HandleFunc("/collaboration/posts/{id}/share", sharePostHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/posts/{id}/comments", postCommentsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/posts/{id}/comments", addPostCommentHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/connections", connectionsHandler).Methods(http.MethodGet)
@@ -132,48 +180,48 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/channels", channelsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/conversations", conversationsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/messages", messagesHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/conversations", conversationsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/messages", createMessageHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/attachments", uploadAttachmentHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/messages", conversationMessagesHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/messages/{id}", editMessageHandler).Methods(http.MethodPut)
-	router.HandleFunc("/api/v1/chat/messages/{id}", deleteMessageHandler).Methods(http.MethodDelete)
-	router.HandleFunc("/api/v1/chat/messages/{id}/reactions", addReactionHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/messages/{id}/reactions", removeReactionHandler).Methods(http.MethodDelete)
-	router.HandleFunc("/api/v1/chat/messages/{id}/read", markMessageReadHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/pinned", pinnedMessagesHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/pinned", pinMessageHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/pinned", unpinMessageHandler).Methods(http.MethodDelete)
-	router.HandleFunc("/api/v1/tasks", tasksHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/tasks", createTaskHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/tasks/{id}/status", updateTaskStatusHandler).Methods(http.MethodPut)
-	router.HandleFunc("/api/v1/notifications", notificationsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/notifications/{id}/read", markNotificationReadHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/notifications/read-all", markAllNotificationsReadHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/presence", presenceHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/presence", updatePresenceHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/chat/conversations", conversationsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/messages", createMessageHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/attachments", uploadAttachmentHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/messages", conversationMessagesHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/messages/{id}", editMessageHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/chat/messages/{id}", deleteMessageHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/messages/{id}/reactions", addReactionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/messages/{id}/reactions", removeReactionHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/messages/{id}/read", markMessageReadHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/pinned", pinnedMessagesHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/pinned", pinMessageHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/pinned", unpinMessageHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/tasks", tasksHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/tasks", createTaskHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/tasks/{id}/status", updateTaskStatusHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/notifications", notificationsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/notifications/{id}/read", markNotificationReadHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/notifications/read-all", markAllNotificationsReadHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/presence", presenceHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/presence", updatePresenceHandler).Methods(http.MethodPut)
 	router.HandleFunc("/search", searchHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/search", searchHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/favourite", toggleFavouriteHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/favourite", favouriteStatusHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/favourites", favouriteIdsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/mute", muteConversationHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/mute", unmuteConversationHandler).Methods(http.MethodDelete)
-	router.HandleFunc("/api/v1/chat/muted", mutedIdsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/chat/conversations/{id}/messages", clearConversationHandler).Methods(http.MethodDelete)
-	router.HandleFunc("/api/v1/calls", createCallSessionHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/calls", listCallSessionsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/calls/{id}", getCallSessionHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/calls/{id}/join", joinCallSessionHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/calls/{id}/leave", leaveCallSessionHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/calls/{id}/end", endCallSessionHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/calls/{id}/participants", getCallParticipantsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/calls/{id}/recordings", uploadCallRecordingHandler).Methods(http.MethodPost)
-	router.HandleFunc("/api/v1/calls/{id}/recordings", listCallRecordingsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/api/v1/meetings/{id}/session", getMeetingSessionHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/search", searchHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/favourite", toggleFavouriteHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/favourite", favouriteStatusHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/favourites", favouriteIdsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/mute", muteConversationHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/mute", unmuteConversationHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/muted", mutedIdsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/messages", clearConversationHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/calls", createCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls", listCallSessionsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/calls/{id}", getCallSessionHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/calls/{id}/join", joinCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/leave", leaveCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/end", endCallSessionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/participants", getCallParticipantsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/calls/{id}/recordings", uploadCallRecordingHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/recordings", listCallRecordingsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/meetings/{id}/session", getMeetingSessionHandler).Methods(http.MethodGet)
 	router.HandleFunc("/ws", wsHandler)
 	router.HandleFunc("/ws/chat", wsHandler)
-	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir(ensureUploadDir()))))
+	router.HandleFunc("/uploads/{name}", uploadedFileHandler).Methods(http.MethodGet, http.MethodHead)
 	router.PathPrefix("/").Methods(http.MethodOptions).HandlerFunc(optionsHandler)
 }
 
@@ -184,6 +232,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		"ready":        store.IsReady(),
 		"authRequired": strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true"),
 	})
+}
+
+func readinessHandler(w http.ResponseWriter, r *http.Request) {
+	if !store.IsReady() {
+		writeError(w, http.StatusServiceUnavailable, "database is not ready")
+		return
+	}
+	writeJSON(w, map[string]interface{}{"status": "ok", "service": "statchat", "ready": true})
 }
 
 func currentUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -268,10 +324,16 @@ func updateUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func allUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := store.GetAllUsers()
+	users, err := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load users")
-		return
+		// A short Registry outage must not make active conversations unusable.
+		// Return the collaboration cache while recording the degraded directory.
+		log.Printf("registry directory unavailable: %v", err)
+		users, err = store.GetAllUsers()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load users")
+			return
+		}
 	}
 	writeJSON(w, users)
 }
@@ -615,6 +677,13 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentType := http.DetectContentType(sniffBuffer[:n])
+	// WebM is a container and can be detected as video/webm even when
+	// MediaRecorder created an audio-only voice note. Preserve a valid declared
+	// audio type so it is rendered and served as playable audio.
+	declaredType := strings.ToLower(strings.TrimSpace(strings.Split(header.Header.Get("Content-Type"), ";")[0]))
+	if strings.HasPrefix(declaredType, "audio/") && isAllowedAttachmentType(declaredType) {
+		contentType = declaredType
+	}
 	if !isAllowedAttachmentType(contentType) {
 		writeError(w, http.StatusBadRequest, "file type is not allowed")
 		return
@@ -638,6 +707,7 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sender := requestUserName(r)
+	tenantID := resolveTenantID(r.FormValue("tenantId"))
 
 	dir := ensureUploadDir()
 	extension := strings.ToLower(filepath.Ext(header.Filename))
@@ -665,11 +735,14 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	message := model.Message{
 		ID:             uuid.NewString(),
+		TenantID:       tenantID,
 		ConversationID: conversationID,
+		SenderID:       requestUserID(r),
 		Sender:         sender,
 		Text:           text,
 		CreatedAt:      time.Now().UTC(),
 		Status:         "active",
+		DeliveryStatus: "sent",
 		Attachments:    []model.MessageAttachment{attachment},
 	}
 	attachment.MessageID = message.ID
@@ -684,6 +757,19 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	store.BroadcastMessage(message)
 	writeJSON(w, message)
+}
+
+func uploadedFileHandler(w http.ResponseWriter, r *http.Request) {
+	name := filepath.Base(mux.Vars(r)["name"])
+	if name == "." || name == "" {
+		http.NotFound(w, r)
+		return
+	}
+	publicURL := "/uploads/" + name
+	if attachment, err := store.GetMessageAttachmentByURL(publicURL); err == nil && attachment.MimeType != "" {
+		w.Header().Set("Content-Type", attachment.MimeType)
+	}
+	http.ServeFile(w, r, filepath.Join(ensureUploadDir(), name))
 }
 
 func createMessageHandler(w http.ResponseWriter, r *http.Request) {
@@ -727,6 +813,7 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 		ChannelID:       req.ChannelID,
 		ParentMessageID: req.ParentMessageID,
 		ThreadRootID:    req.ThreadRootID,
+		SenderID:        requestUserID(r),
 		Sender:          sender,
 		Text:            req.Text,
 		CreatedAt:       time.Now().UTC(),
@@ -771,12 +858,23 @@ func editMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	allowed, err := store.CanModifyMessage(requestUserID(r), message)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check message permissions")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "you do not have permission to edit this message")
+		return
+	}
 	message.Text = req.Text
 	if err := store.UpdateMessage(message); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update message")
 		return
 	}
-	store.BroadcastMessage(message)
+	store.BroadcastEnvelope(message.TenantID, message.ConversationID, "message.update", map[string]interface{}{
+		"id": message.ID, "conversationId": message.ConversationID, "text": message.Text, "updatedAt": message.UpdatedAt,
+	})
 	writeJSON(w, message)
 }
 
@@ -788,13 +886,24 @@ func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	allowed, err := store.CanModifyMessage(requestUserID(r), message)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check message permissions")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "you do not have permission to delete this message")
+		return
+	}
 	if err := store.SoftDeleteMessage(messageID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete message")
 		return
 	}
 	message.Status = "deleted"
 	message.DeletedAt = time.Now().UTC()
-	store.BroadcastMessage(message)
+	store.BroadcastEnvelope(message.TenantID, message.ConversationID, "message.delete", map[string]interface{}{
+		"id": message.ID, "conversationId": message.ConversationID,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -975,6 +1084,7 @@ func buildMessageFromPayload(payload map[string]interface{}, currentUser model.U
 		ChannelID:       channelID,
 		ParentMessageID: parentMessageID,
 		ThreadRootID:    threadRootID,
+		SenderID:        currentUser.ID,
 		Sender:          currentUser.Name,
 		Text:            text,
 		CreatedAt:       time.Now().UTC(),
@@ -1016,25 +1126,26 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		secret := strings.TrimSpace(os.Getenv("STATCHAT_JWT_SECRET"))
+		secret := sharedJWTSecret()
 		if secret == "" || secret == "statchat-dev-secret" {
 			writeError(w, http.StatusInternalServerError, "jwt secret must be configured when auth is enabled")
 			return
 		}
 
 		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		if tokenString == "" && (r.URL.Path == "/ws" || r.URL.Path == "/ws/chat") {
+			tokenString = strings.TrimSpace(r.URL.Query().Get("access_token"))
+		}
+		if tokenString == "" {
 			writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 			return
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			secret := strings.TrimSpace(os.Getenv("STATCHAT_JWT_SECRET"))
-			return []byte(secret), nil
+			return []byte(sharedJWTSecret()), nil
 		})
 		if err != nil || !token.Valid {
 			writeError(w, http.StatusUnauthorized, "invalid bearer token")
@@ -1056,6 +1167,7 @@ func authMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), requestUserIDKey, userID)
+		ctx = context.WithValue(ctx, requestIdentityKey, sharedIdentityFromClaims(claims, userID))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -1095,10 +1207,16 @@ var allowedAttachmentTypes = map[string]bool{
 	"application/pdf": true,
 	"text/plain":      true,
 	"audio/mpeg":      true,
+	"audio/mp4":       true,
+	"audio/x-m4a":     true,
+	"audio/aac":       true,
+	"audio/flac":      true,
 	"audio/wav":       true,
 	"audio/ogg":       true,
 	"audio/webm":      true,
 	"video/mp4":       true,
+	"video/quicktime": true,
+	"video/x-msvideo": true,
 	"video/webm":      true,
 }
 

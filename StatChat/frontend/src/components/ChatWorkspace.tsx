@@ -14,6 +14,7 @@ interface Props {
   isMobile: boolean;
   currentUserName?: string;
   currentUserId?: string;
+  typingUsers?: string[];
   onDraftChange: (value: string) => void;
   onSend: (textOverride?: string, replyContext?: { parentMessageId?: string; threadRootId?: string }) => void;
   onUploadAttachment?: (file: File, text?: string) => Promise<void> | void;
@@ -60,6 +61,7 @@ export default function ChatWorkspace({
   isMobile,
   currentUserName,
   currentUserId,
+  typingUsers = [],
   onDraftChange,
   onSend,
   onUploadAttachment,
@@ -114,12 +116,11 @@ export default function ChatWorkspace({
   const [recording, setRecording] = useState(false);
   const [attachmentNote, setAttachmentNote] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [typing, setTyping] = useState(false);
   const [reactions, setReactions] = useState<Record<string, Reaction[]>>({});
   const [activeQuickReactions, setActiveQuickReactions] = useState<string | null>(null);
   const [activeMessageActions, setActiveMessageActions] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
-  const [pendingVoiceNote, setPendingVoiceNote] = useState<{ blob: Blob; url: string } | null>(null);
+  const [pendingVoiceNote, setPendingVoiceNote] = useState<{ blob: Blob; url: string; mimeType: string } | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -202,16 +203,7 @@ export default function ChatWorkspace({
     };
   }, [pendingVoiceNote]);
 
-  // Simulate typing indicator
-  useEffect(() => {
-    if (messages.length === 0) return;
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage.sender !== currentUserName && lastMessage.sender !== 'StatChat User') {
-      setTyping(true);
-      const timer = setTimeout(() => setTyping(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [messages, currentUserName]);
+  const activeTypingUsers = typingUsers.filter((name) => name !== currentUserName);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -261,7 +253,8 @@ export default function ChatWorkspace({
 
   const sendPendingVoiceNote = async () => {
     if (!pendingVoiceNote) return;
-    const file = new File([pendingVoiceNote.blob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
+    const extension = pendingVoiceNote.mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const file = new File([pendingVoiceNote.blob], `voice-note-${Date.now()}.${extension}`, { type: pendingVoiceNote.mimeType });
     const noteText = draft.trim() ? draft.trim() : 'Voice note';
     try {
       await onUploadAttachment?.(file, noteText);
@@ -303,7 +296,10 @@ export default function ChatWorkspace({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const voiceMime = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : 'audio/webm;codecs=opus';
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: voiceMime });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -315,9 +311,10 @@ export default function ChatWorkspace({
 
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mimeType = voiceMime.split(';')[0];
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         const url = URL.createObjectURL(blob);
-        setPendingVoiceNote({ blob, url });
+        setPendingVoiceNote({ blob, url, mimeType });
         setRecordingSeconds(0);
       };
 
@@ -541,7 +538,7 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const headerAvatarText = conversation ? getAvatarText(conversation.name) : '?';
 
   const renderAttachment = (attachment: MessageAttachment) => {
-    const isAudio = attachment.mimeType?.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(attachment.fileName);
+    const isAudio = attachment.mimeType?.startsWith('audio/') || attachment.fileName.toLowerCase().startsWith('voice-note') || /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(attachment.fileName);
     const isVideo = attachment.mimeType?.startsWith('video/') || /\.(mp4|mov|avi)$/i.test(attachment.fileName);
     const isImage = attachment.mimeType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(attachment.fileName);
 
@@ -705,7 +702,7 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
                 </span>
               </div>
               {group.messages.map((message, msgIndex) => {
-                const isOwnMessage = message.sender === currentUserName || message.sender === 'StatChat User';
+                const isOwnMessage = Boolean(currentUserId && message.senderId === currentUserId);
                 const prevMessage = msgIndex > 0 ? group.messages[msgIndex - 1] : null;
                 const showSender = !isOwnMessage && (!prevMessage || prevMessage.sender !== message.sender);
                 const msgReactions = reactions[message.id] || [];
@@ -866,7 +863,7 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
         )}
 
         {/* Typing indicator — WhatsApp style */}
-        {typing && (
+        {activeTypingUsers.length > 0 && (
           <div className={styles.messageRowReceived}>
             <div className={`${styles.typingIndicator} ${isDark ? styles.typingIndicatorDark : ''}`}>
               <div className={styles.typingDots}>
@@ -874,7 +871,9 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
                 <span className={styles.typingDot} />
                 <span className={styles.typingDot} />
               </div>
-              <span className={styles.typingText}>typing...</span>
+              <span className={styles.typingText}>
+                {activeTypingUsers.length === 1 ? `${activeTypingUsers[0]} is typing...` : 'Several people are typing...'}
+              </span>
             </div>
           </div>
         )}
@@ -966,7 +965,12 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
             title={recording ? 'Stop recording' : 'Record voice note'}
             onClick={toggleVoiceNote}
           >
-            {recording ? `■ ${recordingSeconds}s` : '🎙️'}
+            {recording ? `■ ${recordingSeconds}s` : (
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="8" y="3" width="8" height="12" rx="4" fill="currentColor" />
+                <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
           </button>
         )}
       </footer>

@@ -18,6 +18,7 @@ export default function AudioAttachment({ attachment }: Props) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -26,15 +27,21 @@ export default function AudioAttachment({ attachment }: Props) {
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleLoadedMetadata = () => setDuration(audio.duration);
     const handleEnded = () => setPlaying(false);
+    const handleError = () => {
+      setPlaying(false);
+      setPlaybackError('This voice note could not be played.');
+    };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
 
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
     };
   }, [attachment.url]);
 
@@ -46,6 +53,7 @@ export default function AudioAttachment({ attachment }: Props) {
       if (playPromise?.catch) {
         playPromise.catch(() => {
           setPlaying(false);
+          setPlaybackError('Playback was blocked or the audio format is unsupported.');
         });
       }
     } else {
@@ -54,6 +62,7 @@ export default function AudioAttachment({ attachment }: Props) {
   }, [playing]);
 
   const togglePlay = () => {
+    setPlaybackError(null);
     setPlaying((prev) => !prev);
   };
 
@@ -83,6 +92,7 @@ export default function AudioAttachment({ attachment }: Props) {
         max={duration || 1}
         value={Math.min(currentTime, duration || 0)}
       />
+      {playbackError && <div className={styles.audioPlaybackError}>{playbackError}</div>}
       <audio ref={audioRef} src={attachment.url} preload="metadata" className={styles.hiddenAudio} />
     </div>
   );

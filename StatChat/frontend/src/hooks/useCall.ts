@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CallParticipant, CallSession, CallSignal } from '../types';
-import { WS_URL, createCallSession, joinCallSession, leaveCallSession, endCallSession, fetchCallSession } from '../api/client';
+import { getWebSocketURL, createCallSession, joinCallSession, leaveCallSession, endCallSession, fetchCallSession } from '../api/client';
 
 export interface CallUser {
   id: string;
@@ -166,7 +166,7 @@ export function useCall({ user, onIncomingRemoteStream, onRemoteLeave, onCallEnd
   }, [createPeerConnection, getUserId, sendSignal]);
 
   const connectWs = useCallback(() => {
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(getWebSocketURL());
     wsRef.current = ws;
     ws.onopen = () => {
       const current = sessionRef.current;

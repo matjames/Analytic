@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"statgate/internal/lakehouse"
 	"statgate/internal/semantic"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -76,10 +78,65 @@ func main() {
 		log.Fatal("STATGATE_INTERNAL_API_KEY must be set when STATGATE_ENV=production")
 	}
 
+	// ── Database & Asset Manager Initialization ──
+	// Connect to PostgreSQL so the Go Core can persist analytical assets
+	// alongside the Flask layer.  The DSN is built from the same env vars
+	// used by docker-compose (KAGGLE_DB_*).
+	var assetMgr *assets.Manager
+	dbDSN := os.Getenv("STATGATE_CORE_DB_DSN")
+	if dbDSN == "" {
+		dbHost := os.Getenv("KAGGLE_DB_HOST")
+		if dbHost == "" {
+			dbHost = "localhost"
+		}
+		dbPort := os.Getenv("KAGGLE_DB_PORT")
+		if dbPort == "" {
+			dbPort = "5432"
+		}
+		dbUser := os.Getenv("KAGGLE_DB_USER")
+		if dbUser == "" {
+			dbUser = "Kaggle"
+		}
+		dbPass := os.Getenv("KAGGLE_DB_PASSWORD")
+		if dbPass == "" {
+			dbPass = "REDACTED_PLACEHOLDER"
+		}
+		dbName := os.Getenv("KAGGLE_DB_NAME")
+		if dbName == "" {
+			dbName = "statgate_ml_staging"
+		}
+		dbSSL := os.Getenv("KAGGLE_DB_SSLMODE")
+		if dbSSL == "" {
+			dbSSL = "disable"
+		}
+		dbDSN = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", dbUser, dbPass, dbHost, dbPort, dbName, dbSSL)
+	}
+
+	sqlDB, err := sql.Open("pgx", dbDSN)
+	if err != nil {
+		log.Printf("[StatGate Core] PostgreSQL connection note: %v (asset persistence disabled)", err)
+	} else {
+		if pingErr := sqlDB.Ping(); pingErr != nil {
+			log.Printf("[StatGate Core] PostgreSQL ping note: %v (asset persistence disabled)", pingErr)
+			sqlDB.Close()
+			sqlDB = nil
+		} else {
+			log.Printf("[StatGate Core] PostgreSQL connected — asset persistence enabled")
+		}
+	}
+
+	if sqlDB != nil {
+		assetMgr, err = assets.NewManager(sqlDB)
+		if err != nil {
+			log.Printf("[StatGate Core] Asset manager init note: %v", err)
+		}
+	}
+
 	srv := &Server{
 		abacEngine:     abac.NewEngine(),
 		storageEngine:  lakehouse.NewStorageEngine(),
 		semRegistry:    semantic.NewRegistry(),
+		assetManager:   assetMgr,
 		startTime:      time.Now(),
 		httpClient:     &http.Client{Timeout: 5 * time.Second},
 		internalAPIKey: internalAPIKey,

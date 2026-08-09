@@ -38,6 +38,30 @@ from services.assets_service import (
 from services.service_health import collect_service_health, list_expected_services
 from services.registry_service import get_registry_identity_from_request
 from services.notebook_service import build_kernel_session_scope, is_notebook_execution_enabled as notebook_exec_enabled, validate_notebook_execution_request
+from services.event_bus import (
+    publish_dataset_imported,
+    publish_anomaly_detected,
+    publish_agent_report_generated,
+    publish_dashboard_saved,
+)
+from services.object_links import create_link, get_links, remove_link
+from services.platform_objects import (
+    create_project, get_project, list_projects, update_project,
+    create_report, get_report, list_reports, update_report,
+    create_research, get_research, list_research, update_research,
+)
+from services.workflow_engine import (
+    start_workflow, get_workflow_instance, get_available_actions,
+    transition, get_transition_history, list_templates,
+)
+from services.dataset_metadata import (
+    upsert_dataset_metadata, get_dataset_metadata, list_dataset_metadata,
+    search_datasets, remove_dataset_metadata,
+)
+from services.command_centre import get_command_centre
+from services.registry_integration import (
+    list_registry_facilities, get_registry_facility, get_registry_summary,
+)
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
@@ -70,6 +94,9 @@ app = Flask(__name__)
 app.secret_key = _read_secret('FLASK_SECRET_KEY') or os.getenv('FLASK_SECRET_KEY', '')
 GO_BACKEND_URL = os.getenv('GO_BACKEND_URL', 'http://localhost:8080')
 GO_REQUEST_TIMEOUT_SECONDS = float(os.getenv('GO_REQUEST_TIMEOUT_SECONDS', '5'))
+STATCHAT_API_URL = os.getenv('STATCHAT_API_URL', 'http://localhost:4000').rstrip('/')
+STATCHAT_UI_URL = os.getenv('STATCHAT_UI_URL', 'http://localhost:3009').rstrip('/')
+STATCHAT_REQUEST_TIMEOUT_SECONDS = float(os.getenv('STATCHAT_REQUEST_TIMEOUT_SECONDS', '5'))
 
 
 def is_notebook_execution_enabled():
@@ -303,6 +330,12 @@ def go_request(method, path, **kwargs):
     prepared = make_go_request(method, path, base_url=GO_BACKEND_URL, **kwargs)
     return requests.Session().send(prepared, timeout=GO_REQUEST_TIMEOUT_SECONDS)
 
+
+def statchat_request(method, path, **kwargs):
+    """Make a bounded request to StatChat (the platform communication backbone)."""
+    timeout = kwargs.pop('timeout', STATCHAT_REQUEST_TIMEOUT_SECONDS)
+    return requests.request(method, f"{STATCHAT_API_URL}{path}", timeout=timeout, **kwargs)
+
 def validate_asset_id(asset_id):
     return validate_asset_id_contract(asset_id)
 
@@ -422,6 +455,10 @@ def refresh_kaggle_datasets():
     try:
         snapshot_results = snapshot_all_tables()
         tables = list_kaggle_tables()
+        # Publish dataset.imported events for each table so other modules
+        # (StatChat, Go Core, Registry) can react to the new data.
+        for table in tables:
+            publish_dataset_imported(table, tenant_id='tenant-alpha')
         return jsonify({
             'schema': os.getenv('KAGGLE_STAGING_SCHEMA', 'ml_staging'),
             'count': len(tables),
@@ -577,11 +614,14 @@ def save_analytical_asset():
     asset_type = data.get('asset_type', 'dashboard')
     content_def = data.get('content_definition', data.get('metadata', {}))
     version_tag = data.get('version_tag', '1.0.0')
-    owner = analytics_context(current_identity())['tenant_id'] if current_identity() else request.headers.get('X-Tenant-ID', 'tenant-alpha')
+    identity = current_identity()
+    owner = analytics_context(identity)['tenant_id'] if identity else request.headers.get('X-Tenant-ID', 'tenant-alpha')
 
     asset_payload = build_asset_payload(dashboard_id, asset_type, content_def, owner, version_tag)
     try:
-        res = save_dashboard_asset(statatgate_engine, asset_payload)
+        res = save_dashboard_asset(statgate_engine, asset_payload)
+        # Publish dashboard.saved event so other modules know about the new asset.
+        publish_dashboard_saved(dashboard_id, tenant_id=owner)
         return jsonify(res), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -593,7 +633,8 @@ def get_analytical_asset(asset_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    owner = analytics_context(current_identity())['tenant_id'] if current_identity() else request.headers.get('X-Tenant-ID', 'tenant-alpha')
+    identity = current_identity()
+    owner = analytics_context(identity)['tenant_id'] if identity else request.headers.get('X-Tenant-ID', 'tenant-alpha')
     try:
         asset = get_dashboard_asset_metadata(statgate_engine, asset_id, owner_id=owner)
         return jsonify(asset), 200
@@ -618,11 +659,14 @@ def save_dashboard():
         return jsonify({'error': str(e)}), 400
 
     metadata = data.get('metadata', {})
-    owner = analytics_context(current_identity())['tenant_id'] if current_identity() else request.headers.get('X-Tenant-ID', 'tenant-alpha')
+    identity = current_identity()
+    owner = analytics_context(identity)['tenant_id'] if identity else request.headers.get('X-Tenant-ID', 'tenant-alpha')
     asset_payload = build_asset_payload(dashboard_id, 'dashboard', metadata, owner)
 
     try:
         res = save_dashboard_asset(statgate_engine, asset_payload)
+        # Publish dashboard.saved event so other modules know about the new asset.
+        publish_dashboard_saved(dashboard_id, tenant_id=owner)
         return jsonify(res), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -634,7 +678,8 @@ def load_dashboard(dashboard_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    owner = analytics_context(current_identity())['tenant_id'] if current_identity() else request.headers.get('X-Tenant-ID', 'tenant-alpha')
+    identity = current_identity()
+    owner = analytics_context(identity)['tenant_id'] if identity else request.headers.get('X-Tenant-ID', 'tenant-alpha')
     try:
         asset = get_dashboard_asset_metadata(statgate_engine, dashboard_id, owner_id=owner)
         return jsonify(asset), 200
@@ -714,6 +759,10 @@ def agent_analyze():
 
     try:
         report = agentic_engine.analyze_intent(goal, tenant_id)
+        # Publish agent.report.generated event so StatChat can notify
+        # relevant teams about the new analytical report.
+        report_id = report.get('generated_at', 'report-unknown')
+        publish_agent_report_generated(report_id, tenant_id=tenant_id, goal=goal)
         return jsonify(report), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -818,6 +867,466 @@ def receive_alert():
         return jsonify({'error': 'invalid payload'}), 400
     root_logger.info('Received Alertmanager webhook', extra={'alert': payload})
     return jsonify({'status': 'received'}), 200
+
+
+# ══════════════════════════════════════════════════════════════
+#  PLATFORM OBJECTS — Projects, Reports, Research
+# ══════════════════════════════════════════════════════════════
+
+# ── Projects ──────────────────────────────────────────────────
+
+@app.route('/api/projects', methods=['POST'])
+def api_create_project():
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'title is required'}), 400
+    identity = current_identity()
+    owner_id = identity.get('userId') if identity else None
+    tenant_id = (data.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    result = create_project(
+        title=title,
+        description=data.get('description', ''),
+        owner_id=owner_id,
+        tenant_id=tenant_id,
+        collaborators=data.get('collaborators'),
+        tags=data.get('tags'),
+        start_date=data.get('start_date'),
+        end_date=data.get('end_date'),
+    )
+    if result is None:
+        return jsonify({'error': 'Failed to create project (DB unavailable)'}), 500
+    # Auto-start the project lifecycle workflow.
+    start_workflow('project', result['id'], initiated_by=owner_id, tenant_id=tenant_id)
+    # Publish event so other modules know about the new project.
+    from services.event_bus import publish_event
+    publish_event('project.created', 'project', result['id'], tenant_id=tenant_id, payload=result)
+    return jsonify(result), 201
+
+
+@app.route('/api/projects', methods=['GET'])
+def api_list_projects():
+    tenant_id = (request.args.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    status = request.args.get('status')
+    projects = list_projects(tenant_id=tenant_id, status=status)
+    return jsonify({'count': len(projects), 'projects': projects}), 200
+
+
+@app.route('/api/projects/<project_id>', methods=['GET'])
+def api_get_project(project_id):
+    result = get_project(project_id)
+    if result is None:
+        return jsonify({'error': 'Project not found'}), 404
+    return jsonify(result), 200
+
+
+@app.route('/api/projects/<project_id>', methods=['PUT'])
+def api_update_project(project_id):
+    data = request.get_json(silent=True) or {}
+    result = update_project(project_id, **data)
+    if result is None:
+        return jsonify({'error': 'Failed to update project'}), 500
+    return jsonify(result), 200
+
+
+# ── Reports ───────────────────────────────────────────────────
+
+@app.route('/api/reports', methods=['POST'])
+def api_create_report():
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'title is required'}), 400
+    identity = current_identity()
+    author_id = identity.get('userId') if identity else None
+    tenant_id = (data.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    result = create_report(
+        title=title,
+        content=data.get('content', ''),
+        summary=data.get('summary', ''),
+        author_id=author_id,
+        tenant_id=tenant_id,
+        project_id=data.get('project_id'),
+        tags=data.get('tags'),
+    )
+    if result is None:
+        return jsonify({'error': 'Failed to create report (DB unavailable)'}), 500
+    # Auto-start the report approval workflow.
+    start_workflow('report', result['id'], initiated_by=author_id, tenant_id=tenant_id)
+    from services.event_bus import publish_event
+    publish_event('report.created', 'report', result['id'], tenant_id=tenant_id, payload=result)
+    return jsonify(result), 201
+
+
+@app.route('/api/reports', methods=['GET'])
+def api_list_reports():
+    tenant_id = (request.args.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    status = request.args.get('status')
+    project_id = request.args.get('project_id')
+    reports = list_reports(tenant_id=tenant_id, status=status, project_id=project_id)
+    return jsonify({'count': len(reports), 'reports': reports}), 200
+
+
+@app.route('/api/reports/<report_id>', methods=['GET'])
+def api_get_report(report_id):
+    result = get_report(report_id)
+    if result is None:
+        return jsonify({'error': 'Report not found'}), 404
+    return jsonify(result), 200
+
+
+@app.route('/api/reports/<report_id>', methods=['PUT'])
+def api_update_report(report_id):
+    data = request.get_json(silent=True) or {}
+    result = update_report(report_id, **data)
+    if result is None:
+        return jsonify({'error': 'Failed to update report'}), 500
+    # If status changed to published, publish an event.
+    if data.get('status') == 'published':
+        from services.event_bus import publish_event
+        publish_event('report.published', 'report', report_id, payload=result)
+    return jsonify(result), 200
+
+
+# ── Research Studies ──────────────────────────────────────────
+
+@app.route('/api/research', methods=['POST'])
+def api_create_research():
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'title is required'}), 400
+    tenant_id = (data.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    result = create_research(
+        title=title,
+        description=data.get('description', ''),
+        protocol=data.get('protocol', ''),
+        principal_investigator=data.get('principal_investigator'),
+        tenant_id=tenant_id,
+        project_id=data.get('project_id'),
+        collaborators=data.get('collaborators'),
+        tags=data.get('tags'),
+        start_date=data.get('start_date'),
+        end_date=data.get('end_date'),
+    )
+    if result is None:
+        return jsonify({'error': 'Failed to create research study (DB unavailable)'}), 500
+    # Auto-start the research lifecycle workflow.
+    start_workflow('research', result['id'], initiated_by=data.get('principal_investigator'), tenant_id=tenant_id)
+    from services.event_bus import publish_event
+    publish_event('research.created', 'research', result['id'], tenant_id=tenant_id, payload=result)
+    return jsonify(result), 201
+
+
+@app.route('/api/research', methods=['GET'])
+def api_list_research():
+    tenant_id = (request.args.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    status = request.args.get('status')
+    studies = list_research(tenant_id=tenant_id, status=status)
+    return jsonify({'count': len(studies), 'research': studies}), 200
+
+
+@app.route('/api/research/<research_id>', methods=['GET'])
+def api_get_research(research_id):
+    result = get_research(research_id)
+    if result is None:
+        return jsonify({'error': 'Research study not found'}), 404
+    return jsonify(result), 200
+
+
+@app.route('/api/research/<research_id>', methods=['PUT'])
+def api_update_research(research_id):
+    data = request.get_json(silent=True) or {}
+    result = update_research(research_id, **data)
+    if result is None:
+        return jsonify({'error': 'Failed to update research study'}), 500
+    return jsonify(result), 200
+
+
+# ══════════════════════════════════════════════════════════════
+#  WORKFLOW ENGINE
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/api/workflows/templates', methods=['GET'])
+def api_list_workflow_templates():
+    """List all workflow templates."""
+    return jsonify({'count': len(list_templates()), 'templates': list_templates()}), 200
+
+
+@app.route('/api/workflows/<object_type>/<object_id>', methods=['GET'])
+def api_get_workflow(object_type, object_id):
+    """Get the workflow status for an object."""
+    instance = get_workflow_instance(object_type, object_id)
+    if instance is None:
+        return jsonify({'error': 'No workflow found for this object'}), 404
+    identity = current_identity()
+    user_role = 'analyst'
+    if identity:
+        ctx = analytics_context(identity)
+        user_role = ctx.get('role', 'analyst')
+    actions = get_available_actions(object_type, object_id, user_role=user_role)
+    history = get_transition_history(object_type, object_id)
+    return jsonify({
+        'instance': instance,
+        'available_actions': actions,
+        'history': history,
+    }), 200
+
+
+@app.route('/api/workflows/<object_type>/<object_id>/transition', methods=['POST'])
+def api_workflow_transition(object_type, object_id):
+    """Execute a workflow transition."""
+    data = request.get_json(silent=True) or {}
+    action = (data.get('action') or '').strip()
+    if not action:
+        return jsonify({'error': 'action is required'}), 400
+    identity = current_identity()
+    performed_by = identity.get('userId') if identity else None
+    tenant_id = (data.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    result = transition(object_type, object_id, action,
+                        performed_by=performed_by, comment=data.get('comment', ''),
+                        tenant_id=tenant_id)
+    if result is None:
+        return jsonify({'error': 'Workflow transition failed (invalid action or DB unavailable)'}), 500
+    return jsonify(result), 200
+
+
+# ══════════════════════════════════════════════════════════════
+#  DATASET METADATA & SEARCH
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/api/datasets/metadata', methods=['POST'])
+def api_upsert_dataset_metadata():
+    """Create or update metadata for a dataset."""
+    data = request.get_json(silent=True) or {}
+    table_name = (data.get('table_name') or '').strip()
+    if not table_name:
+        return jsonify({'error': 'table_name is required'}), 400
+    result = upsert_dataset_metadata(
+        table_name=table_name,
+        owner_id=data.get('owner_id'),
+        steward_id=data.get('steward_id'),
+        description=data.get('description', ''),
+        classification=data.get('classification', 'public'),
+        tags=data.get('tags'),
+        row_count=data.get('row_count', 0),
+        col_count=data.get('col_count', 0),
+    )
+    if result is None:
+        return jsonify({'error': 'Failed to save dataset metadata (DB unavailable)'}), 500
+    return jsonify(result), 200
+
+
+@app.route('/api/datasets/metadata/<table_name>', methods=['GET'])
+def api_get_dataset_metadata(table_name):
+    """Get metadata for a single dataset."""
+    result = get_dataset_metadata(table_name)
+    if result is None:
+        return jsonify({'error': 'No metadata found for this dataset'}), 404
+    return jsonify(result), 200
+
+
+@app.route('/api/datasets/metadata', methods=['GET'])
+def api_list_dataset_metadata():
+    """List all dataset metadata, optionally filtered by classification."""
+    classification = request.args.get('classification')
+    records = list_dataset_metadata(classification=classification)
+    return jsonify({'count': len(records), 'metadata': records}), 200
+
+
+@app.route('/api/datasets/search', methods=['GET'])
+def api_search_datasets():
+    """Full-text search across dataset names, descriptions, tags, owners, stewards."""
+    query = (request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'error': 'q query param is required'}), 400
+    limit = int(request.args.get('limit', '20'))
+    results = search_datasets(query, limit=limit)
+    return jsonify({'count': len(results), 'results': results}), 200
+
+
+@app.route('/api/datasets/metadata/<table_name>', methods=['DELETE'])
+def api_delete_dataset_metadata(table_name):
+    """Remove metadata for a dataset."""
+    ok = remove_dataset_metadata(table_name)
+    if not ok:
+        return jsonify({'error': 'Failed to remove dataset metadata'}), 500
+    return jsonify({'status': 'removed'}), 200
+
+
+# ══════════════════════════════════════════════════════════════
+#  REGISTRY ↔ ANALYTICS INTEGRATION
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/api/registry/facilities', methods=['GET'])
+def api_list_registry_facilities():
+    """
+    List facilities from the Field Operations Registry as analytical
+    objects within the StatGate ecosystem.
+    Query params: limit, offset, district_id?
+    """
+    limit = int(request.args.get('limit', '100'))
+    offset = int(request.args.get('offset', '0'))
+    district_id = request.args.get('district_id')
+    facilities = list_registry_facilities(limit=limit, offset=offset, district_id=district_id)
+    return jsonify({'count': len(facilities), 'facilities': facilities}), 200
+
+
+@app.route('/api/registry/facilities/<facility_id>', methods=['GET'])
+def api_get_registry_facility(facility_id):
+    """Get a single facility from the Registry."""
+    facility = get_registry_facility(facility_id)
+    if facility is None:
+        return jsonify({'error': 'Facility not found in Registry'}), 404
+    return jsonify(facility), 200
+
+
+@app.route('/api/registry/summary', methods=['GET'])
+def api_get_registry_summary():
+    """Return summary counts from the Registry for command centre views."""
+    return jsonify(get_registry_summary()), 200
+
+
+# ══════════════════════════════════════════════════════════════
+#  COMMAND CENTRE — Dashboards That Guide Action
+# ══════════════════════════════════════════════════════════════
+
+@app.route('/api/command-centre', methods=['GET'])
+def api_command_centre():
+    """
+    Return the full command centre payload answering the four questions:
+      1. What is happening?
+      2. What requires my attention?
+      3. What decisions should I make?
+      4. What should I do next?
+    """
+    tenant_id = (request.args.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+    return jsonify(get_command_centre(tenant_id=tenant_id)), 200
+
+
+@app.route('/api/objects/links', methods=['POST'])
+def create_object_link():
+    """
+    Create a link between two platform objects.
+    Body: {source_type, source_id, target_type, target_id, relationship?, tenant_id?}
+    """
+    data = request.get_json(silent=True) or {}
+    source_type = (data.get('source_type') or '').strip()
+    source_id = (data.get('source_id') or '').strip()
+    target_type = (data.get('target_type') or '').strip()
+    target_id = (data.get('target_id') or '').strip()
+    relationship = (data.get('relationship') or 'related').strip()
+    tenant_id = (data.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+
+    if not all([source_type, source_id, target_type, target_id]):
+        return jsonify({'error': 'source_type, source_id, target_type, and target_id are required'}), 400
+
+    ok = create_link(source_type, source_id, target_type, target_id,
+                     relationship=relationship, tenant_id=tenant_id)
+    if not ok:
+        return jsonify({'error': 'Failed to create object link (DB unavailable or link already exists)'}), 500
+    return jsonify({'status': 'linked'}), 201
+
+
+@app.route('/api/objects/links', methods=['GET'])
+def list_object_links():
+    """
+    List all links for a given object.
+    Query params: type, id, tenant_id?
+    """
+    object_type = (request.args.get('type') or '').strip()
+    object_id = (request.args.get('id') or '').strip()
+    tenant_id = (request.args.get('tenant_id') or request.headers.get('X-Tenant-ID', 'tenant-alpha')).strip()
+
+    if not object_type or not object_id:
+        return jsonify({'error': 'type and id query params are required'}), 400
+
+    links = get_links(object_type, object_id, tenant_id=tenant_id)
+    return jsonify({'count': len(links), 'links': links}), 200
+
+
+@app.route('/api/objects/links', methods=['DELETE'])
+def delete_object_link():
+    """
+    Remove a link between two objects.
+    Body: {source_type, source_id, target_type, target_id, relationship?}
+    """
+    data = request.get_json(silent=True) or {}
+    source_type = (data.get('source_type') or '').strip()
+    source_id = (data.get('source_id') or '').strip()
+    target_type = (data.get('target_type') or '').strip()
+    target_id = (data.get('target_id') or '').strip()
+    relationship = (data.get('relationship') or 'related').strip()
+
+    if not all([source_type, source_id, target_type, target_id]):
+        return jsonify({'error': 'source_type, source_id, target_type, and target_id are required'}), 400
+
+    ok = remove_link(source_type, source_id, target_type, target_id, relationship=relationship)
+    if not ok:
+        return jsonify({'error': 'Failed to remove object link'}), 500
+    return jsonify({'status': 'unlinked'}), 200
+
+
+@app.route('/api/objects/discussion', methods=['GET'])
+def get_object_discussion():
+    """
+    Open (creating if needed) the StatChat conversation linked to any
+    platform object.  This is the core of the communication backbone:
+    datasets, reports, projects, dashboards, etc. can all be discussed
+    through StatChat.
+
+    Query params:
+      type: dataset | report | project | dashboard | indicator | ...
+      id:   object identifier (e.g. covid_19_data)
+      name: optional human-friendly conversation name
+    """
+    object_type = (request.args.get('type') or '').strip()
+    object_id = (request.args.get('id') or '').strip()
+    name = (request.args.get('name') or '').strip()
+
+    if not object_type or not object_id:
+        return jsonify({'error': 'type and id query params are required'}), 400
+
+    conv_id = f"obj:{object_type}:{object_id}"
+
+    try:
+        # Always try the StatChat API directly for a live conversation link.
+        params = {}
+        if name:
+            params['name'] = name
+        res = statchat_request('GET', f"/v1/objects/{object_type}/{object_id}/discussion", params=params)
+        if res.status_code == 200:
+            return jsonify({
+                'conversation': res.json(),
+                'conversation_id': conv_id,
+                'statchat_ui_url': f"{STATCHAT_UI_URL}/chat/{conv_id}",
+            }), 200
+        # StatChat reachable but returned an error.
+        return jsonify({'error': f"StatChat returned {res.status_code}: {res.text}"}), res.status_code
+    except requests.RequestException as exc:
+        # StatChat unavailable — fall back to a deterministic deep link.
+        return jsonify({
+            'conversation': None,
+            'conversation_id': conv_id,
+            'statchat_ui_url': f"{STATCHAT_UI_URL}/chat/{conv_id}",
+            'note': f"StatChat is unreachable ({exc}). Deep link provided; StatChat will create the conversation on first open.",
+        }), 200
+
+
+@app.route('/api/objects/discussions', methods=['GET'])
+def list_object_discussions():
+    """List all object-linked discussions from StatChat."""
+    try:
+        object_type = (request.args.get('type') or '').strip()
+        params = {}
+        if object_type:
+            params['type'] = object_type
+        res = statchat_request('GET', '/v1/objects/discussions', params=params)
+        if res.status_code == 200:
+            return jsonify(res.json()), 200
+        return jsonify({'error': f"StatChat returned {res.status_code}: {res.text}"}), res.status_code
+    except requests.RequestException as exc:
+        return jsonify({'error': f"StatChat is unreachable: {exc}"}), 502
 
 
 @app.route('/api/services', methods=['GET'])

@@ -289,9 +289,10 @@
 .messageBubble {
   max-width: 65%;
   padding: 8px 12px 6px;
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: 18px;
   position: relative;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
   cursor: pointer;
   transition: transform 120ms ease;
 }
@@ -322,7 +323,7 @@
     height: 40px;
     border-radius: 50%;
     border: none;
-    background: #165c92;
+    background: #0f766e;
     color: #ffffff;
     font-size: 16px;
     display: inline-flex;
@@ -357,7 +358,7 @@
   }
 
   .audioProgress::-webkit-progress-value {
-    background: #165c92;
+    background: #0f766e;
     border-radius: 999px;
   }
 
@@ -365,28 +366,43 @@
     display: none;
   }
 
+  .audioPlaybackError {
+    color: #b91c1c;
+    font-size: 12px;
+  }
+
 .sent {
-  background: #d9fdd3;
-  color: #1a1a1a;
-  border-radius: 12px 4px 12px 12px;
+  background: linear-gradient(135deg, #1d4ed8, #4338ca 58%, #7c3aed);
+  color: #f8fbff;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-radius: 18px 4px 18px 18px;
   margin-right: 8px;
+  box-shadow: 0 8px 24px rgba(67, 56, 202, 0.22);
+}
+
+.voiceButton svg {
+  width: 22px;
+  height: 22px;
 }
 
 .received {
-  background: #ffffff;
-  color: #1a1a1a;
-  border-radius: 4px 12px 12px 12px;
+  background: rgba(248, 250, 252, 0.94);
+  color: #172033;
+  border-color: rgba(71, 85, 105, 0.16);
+  border-radius: 4px 18px 18px 18px;
   margin-left: 8px;
 }
 
 .sentDark {
-  background: #005c4b;
-  color: #e8eef4;
+  background: linear-gradient(135deg, #2563eb, #4f46e5 58%, #7c3aed);
+  color: #f8fbff;
+  border-color: rgba(191, 219, 254, 0.26);
 }
 
 .receivedDark {
-  background: #0f3f5f;
-  color: #e8eef4;
+  background: rgba(23, 37, 61, 0.94);
+  color: #e7eef9;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .senderName {

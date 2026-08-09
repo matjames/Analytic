@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<data id="community_health_survey" version="2026.08.05">
+  <meta><instanceID>uuid:health-survey-003-gulu</instanceID></meta>
+  <respondent_info>
+    <respondent_name>Grace Auma</respondent_name>
+    <respondent_age>28</respondent_age>
+    <respondent_gender>female</respondent_gender>
+    <respondent_phone>+256783456789</respondent_phone>
+    <household_size>4</household_size>
+    <district>gulu</district>
+    <village>Layibi</village>
+    <gps_location>2.7746 32.2990 1100.0 3.0</gps_location>
+  </respondent_info>
+  <health_status>
+    <has_chronic_condition>no</has_chronic_condition>
+    <has_insurance>no</has_insurance>
+    <last_hospital_visit>2026-08-01</last_hospital_visit>
+    <visit_reason>maternity</visit_reason>
+    <medication_count>0</medication_count>
+  </health_status>
+  <water_sanitation>
+    <water_source>protected_well</water_source>
+    <water_treatment>boiling</water_treatment>
+    <has_toilet>yes</has_toilet>
+    <toilet_type>pit</toilet_type>
+    <handwashing_facility>no</handwashing_facility>
+  </water_sanitation>
+  <child_health>
+    <has_children_under_5>yes</has_children_under_5>
+    <children_under_5_count>1</children_under_5_count>
+    <vaccination_complete>yes</vaccination_complete>
+  </child_health>
+  <feedback>
+    <satisfaction_rating>5</satisfaction_rating>
+    <comments>Very happy with the maternity services at Gulu Regional Hospital.</comments>
+    <consent>yes</consent>
+  </feedback>
+</data>

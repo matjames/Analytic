@@ -42,6 +42,7 @@ export enum AppCategory {
   ADMIN = 'admin',
   TOOLS = 'tools',
   INTEGRATION = 'integration',
+  MANAGEMENT = 'management',
 }
 
 export enum AppStatus {

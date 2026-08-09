@@ -1,0 +1,71 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "StatCollect Enterprise Data Collection API",
+    "description": "Core data collection platform APIs of the StatGate Platform ecosystem.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/templates": {
+      "get": {
+        "summary": "List survey templates",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "List of templates" }
+        }
+      },
+      "post": {
+        "summary": "Create survey template",
+        "responses": {
+          "201": { "description": "Template created" }
+        }
+      }
+    },
+    "/templates/clone": {
+      "post": {
+        "summary": "Clone an existing survey template",
+        "responses": {
+          "201": { "description": "Cloned template created" }
+        }
+      }
+    },
+    "/submission": {
+      "post": {
+        "summary": "Submit collected survey data",
+        "responses": {
+          "200": { "description": "Submission processed" }
+        }
+      }
+    },
+    "/admin/submissions": {
+      "get": {
+        "summary": "List all submissions with status metadata",
+        "responses": {
+          "200": { "description": "Submissions list" }
+        }
+      }
+    },
+    "/admin/submissions/export": {
+      "get": {
+        "summary": "Export submission data in CSV, GeoJSON, or JSON",
+        "parameters": [
+          { "name": "form_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "format", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Export data file stream" }
+        }
+      }
+    },
+    "/admin/submissions/qa": {
+      "get": {
+        "summary": "Run automated Quality Control scan for missing GPS, duplicates, and speed anomalies",
+        "responses": {
+          "200": { "description": "QA Scan results" }
+        }
+      }
+    }
+  }
+}

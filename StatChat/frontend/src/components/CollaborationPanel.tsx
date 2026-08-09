@@ -11,6 +11,7 @@ import {
   fetchOpportunities,
   fetchJobs,
   togglePostLike,
+  sharePost,
   addPostComment,
   fetchPostComments,
   type Post,
@@ -121,6 +122,15 @@ const toggleConnect = async (userId: string) => {
       );
     } catch {
       // ignore
+    }
+  };
+
+  const handleSharePost = async (postId: string) => {
+    try {
+      const { shares } = await sharePost(postId);
+      setPosts((prev) => prev.map((post) => post.id === postId ? { ...post, shares } : post));
+    } catch {
+      // Keep the feed usable if the count update fails.
     }
   };
 
@@ -249,7 +259,9 @@ const toggleConnect = async (userId: string) => {
             <button type="button" className={styles.postAction} onClick={() => toggleComments(post.id)}>
               💬 Comment ({post.comments})
             </button>
-            <button type="button" className={styles.postAction}>↗ Share ({post.shares})</button>
+            <button type="button" className={styles.postAction} onClick={() => handleSharePost(post.id)}>
+              ↗ Share ({post.shares})
+            </button>
           </div>
 
           {expandedComments[post.id] && (

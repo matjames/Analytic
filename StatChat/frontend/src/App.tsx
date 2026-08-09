@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, fetchUserSettings, fetchMeetingCallSession, WS_URL } from './api/client';
-import { Conversation, Message, User, Notification } from './types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, fetchUserSettings, fetchMeetingCallSession, getWebSocketURL, searchAPI } from './api/client';
+import { Conversation, Message, User, Notification, SearchResult } from './types';
 import ChatSidebarList from './components/ChatSidebarList';
 import ChatWorkspace from './components/ChatWorkspace';
 import SidebarRail from './components/SidebarRail';
@@ -71,9 +71,14 @@ export default function App() {
 const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
+  const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
   const [meetingCallRemoteStreams, setMeetingCallRemoteStreams] = useState<Record<string, MediaStream>>({});
   const currentConversationRef = useRef(currentConversation);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
+  const wsRetryTimerRef = useRef<number | null>(null);
+  const wsRetryCountRef = useRef(0);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === currentConversation),
@@ -153,6 +158,24 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
   const sidebarWidth = 68;
 
   useEffect(() => {
+    const query = globalSearch.trim();
+    if (query.length < 2) {
+      setSearchResults(null);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      searchAPI(query)
+        .then((result) => { if (active) setSearchResults(result); })
+        .catch(() => { if (active) setSearchResults(null); });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [globalSearch]);
+
+  useEffect(() => {
     document.body.style.margin = '0';
 
     async function loadInitialData() {
@@ -181,59 +204,87 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
 
     loadInitialData();
 
-    const ws = new WebSocket(WS_URL);
-    const tenantId = 'statgate-uganda';
-    const joinConversation = () => {
-      if (ws.readyState === WebSocket.OPEN) {
+    let destroyed = false;
+    let ws: WebSocket | null = null;
+    const tenantId = user?.organizationId ?? 'default';
+    const connect = () => {
+      if (destroyed) return;
+      ws = new WebSocket(getWebSocketURL());
+      ws.addEventListener('open', () => {
+        if (!ws || destroyed) return;
+        wsRetryCountRef.current = 0;
+        setConnected(true);
+        setError(null);
         ws.send(JSON.stringify({ action: 'join-conversation', conversationId: currentConversationRef.current, tenantId }));
-      }
-    };
-
-    ws.addEventListener('open', () => {
-      setConnected(true);
-      joinConversation();
-    });
-    ws.addEventListener('close', () => setConnected(false));
-    ws.addEventListener('error', () => setError('Live connection dropped. The UI will retry when the backend is reachable again.'));
-    ws.addEventListener('message', (event) => {
-      let data: unknown;
-      try {
-        data = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-      // GatewayEnvelope events (typing, presence, call state, etc.) carry an
-      // `event` field and must NOT be treated as chat messages.
-      if (data && typeof data === 'object' && 'event' in (data as Record<string, unknown>)) {
-        return;
-      }
-      const message = data as Message;
-      if (!message || typeof message.id !== 'string' || typeof message.conversationId !== 'string') {
-        return;
-      }
-      setMessages((prev) => {
-        if (message.conversationId !== currentConversationRef.current) {
-          return prev;
-        }
-        if (prev.some((m) => m.id === message.id)) {
-          return prev;
-        }
-        return [...prev, message];
+        ws.send(JSON.stringify({ action: 'presence-update', status: 'online' }));
       });
-    });
-
-    setSocket(ws);
+      ws.addEventListener('close', () => {
+        setConnected(false);
+        if (destroyed) return;
+        const delay = Math.min(1000 * 2 ** wsRetryCountRef.current, 30000);
+        wsRetryCountRef.current += 1;
+        wsRetryTimerRef.current = window.setTimeout(connect, delay);
+      });
+      ws.addEventListener('error', () => setError('Live connection dropped — reconnecting…'));
+      ws.addEventListener('message', (event) => {
+        let data: unknown;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (!data || typeof data !== 'object') return;
+        const envelope = data as { event?: string; payload?: Record<string, unknown> };
+        const payload = envelope.payload ?? {};
+        const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId : '';
+        if (envelope.event === 'typing' || envelope.event === 'stop-typing') {
+          const userName = typeof payload.userName === 'string' ? payload.userName : '';
+          if (!conversationId || !userName) return;
+          setTypingUsers((previous) => {
+            const names = new Set(previous[conversationId] ?? []);
+            envelope.event === 'typing' ? names.add(userName) : names.delete(userName);
+            return { ...previous, [conversationId]: [...names] };
+          });
+          return;
+        }
+        if (envelope.event === 'message.update' && typeof payload.id === 'string') {
+          setMessages((previous) => previous.map((message) => message.id === payload.id ? { ...message, text: typeof payload.text === 'string' ? payload.text : message.text } : message));
+          return;
+        }
+        if (envelope.event === 'message.delete' && typeof payload.id === 'string') {
+          setMessages((previous) => previous.filter((message) => message.id !== payload.id));
+          return;
+        }
+        if (envelope.event) return;
+        const message = data as Message;
+        if (!message.id || message.conversationId !== currentConversationRef.current) return;
+        setMessages((previous) => previous.some((item) => item.id === message.id) ? previous : [...previous, message]);
+      });
+      setSocket(ws);
+    };
+    connect();
 
     const handleResize = () => setIsMobile(window.innerWidth < 900);
     handleResize();
     window.addEventListener('resize', handleResize);
 
     return () => {
-      ws.close();
+      destroyed = true;
+      if (wsRetryTimerRef.current !== null) window.clearTimeout(wsRetryTimerRef.current);
+      ws?.close();
       window.removeEventListener('resize', handleResize);
       document.body.style.margin = '';
     };
-  }, []);
+  }, [user?.organizationId]);
+
+  const handleDraftChange = useCallback((value: string) => {
+    setDraft(value);
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const tenantId = user?.organizationId ?? 'default';
+    socket.send(JSON.stringify({ action: value.trim() ? 'typing' : 'stop-typing', conversationId: currentConversationRef.current, tenantId }));
+    if (typingTimerRef.current !== null) window.clearTimeout(typingTimerRef.current);
+    if (value.trim()) {
+      typingTimerRef.current = window.setTimeout(() => {
+        socket.send(JSON.stringify({ action: 'stop-typing', conversationId: currentConversationRef.current, tenantId }));
+      }, 2500);
+    }
+  }, [socket, user?.organizationId]);
 
   // Load notifications and set presence on mount
   useEffect(() => {
@@ -273,7 +324,7 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     if (!socket) return;
 
     if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ action: 'join-conversation', conversationId: activeConversationId, tenantId: 'statgate-uganda' }));
+      socket.send(JSON.stringify({ action: 'join-conversation', conversationId: activeConversationId, tenantId: user?.organizationId ?? 'default' }));
     }
 
     let isCancelled = false;
@@ -290,7 +341,7 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     return () => {
       isCancelled = true;
     };
-  }, [currentConversation, socket]);
+  }, [currentConversation, socket, user?.organizationId]);
 
   const sendMessage = async (
     textOverride?: string,
@@ -311,6 +362,13 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     };
 
     setDraft('');
+    if (typingTimerRef.current !== null) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ action: 'stop-typing', conversationId: currentConversation, tenantId: user?.organizationId ?? 'default' }));
+    }
 
     try {
       const createdMessage = await sendChatMessage(payload);
@@ -343,6 +401,7 @@ const handleMessageUpdate = (updated: Message) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('conversationId', currentConversation);
+    formData.append('tenantId', user?.organizationId ?? 'default');
     formData.append('sender', user?.name ?? 'StatChat User');
     if (text) {
       formData.append('text', text);
@@ -431,7 +490,7 @@ const handleMessageUpdate = (updated: Message) => {
           </div>
         </div>
 
-<div className={styles.headerSearch}>
+<div className={styles.headerSearch} style={{ position: 'relative' }}>
           <span style={{ marginRight: 10, opacity: 0.65 }}>🔍</span>
           <input
             type="text"
@@ -440,6 +499,17 @@ const handleMessageUpdate = (updated: Message) => {
             value={globalSearch}
             onChange={(event) => setGlobalSearch(event.target.value)}
           />
+          {searchResults && (
+            <div style={{ position: 'absolute', top: 44, left: 0, width: 'min(420px, 82vw)', maxHeight: 360, overflowY: 'auto', padding: 8, borderRadius: 12, background: theme === 'dark' ? '#0a2b45' : '#ffffff', color: theme === 'dark' ? '#e8eef4' : '#1a1a1a', boxShadow: '0 12px 30px rgba(0,0,0,0.22)', zIndex: 80 }}>
+              {[...searchResults.conversations, ...searchResults.messages.map((message) => ({ id: message.conversationId, name: `${message.sender}: ${message.text}`, type: 'message' as const }))].slice(0, 12).map((result) => (
+                <button key={`${result.type}-${result.id}-${result.name}`} type="button" onClick={() => { setCurrentConversation(result.id); setGlobalSearch(''); setSearchResults(null); }} style={{ display: 'block', width: '100%', padding: '9px 10px', border: 0, borderRadius: 8, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                  <strong style={{ fontSize: 12, opacity: 0.65 }}>{result.type === 'message' ? 'Message' : 'Conversation'}</strong><br />
+                  <span>{result.name}</span>
+                </button>
+              ))}
+              {searchResults.conversations.length + searchResults.messages.length === 0 && <div style={{ padding: 12, opacity: 0.7 }}>No conversations or messages found.</div>}
+            </div>
+          )}
         </div>
 
         <div className={styles.headerActions}>
@@ -637,7 +707,8 @@ const handleMessageUpdate = (updated: Message) => {
                   isMobile={isMobile}
                   currentUserName={user?.name}
                   currentUserId={user?.id}
-                  onDraftChange={setDraft}
+                  typingUsers={typingUsers[currentConversation] ?? []}
+                  onDraftChange={handleDraftChange}
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
                   onCloseMobile={closeMobileChat}
@@ -667,7 +738,8 @@ const handleMessageUpdate = (updated: Message) => {
                   isMobile={isMobile}
                   currentUserName={user?.name}
                   currentUserId={user?.id}
-                  onDraftChange={setDraft}
+                  typingUsers={typingUsers[currentConversation] ?? []}
+                  onDraftChange={handleDraftChange}
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
                   onMessageUpdate={handleMessageUpdate}

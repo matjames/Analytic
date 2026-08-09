@@ -42,6 +42,11 @@ Browser
 
 ## Prerequisites
 
+## Engineering Directive
+
+See the engineering vision and expectations in the directive: [STATGATE_ENGINEERING_DIRECTIVE.md](STATGATE_ENGINEERING_DIRECTIVE.md)
+
+
 - Go 1.22+
 - A complete Python 3.13+ installation with `venv` and `pip`
 - PostgreSQL access to the configured `ml_staging` schema

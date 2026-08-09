@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
   channel_id TEXT,
+  sender_id TEXT,
   sender TEXT NOT NULL,
   text TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
@@ -121,6 +122,7 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS thread_root_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'sent';
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id TEXT;
 
 CREATE TABLE IF NOT EXISTS message_reactions (
   id TEXT PRIMARY KEY,
@@ -833,6 +835,29 @@ func GetUserByID(userID string) (model.User, error) {
 	return user, nil
 }
 
+// UpsertTrustedUser mirrors the minimum profile carried by a validated
+// StatGate Registry token. It is not exposed as a public account-creation API.
+func UpsertTrustedUser(user model.User) error {
+	rolesJSON, err := json.Marshal(user.Roles)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(context.Background(), `
+INSERT INTO users (id, name, email, organization_id, roles, avatar_url, presence)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  email = EXCLUDED.email,
+  organization_id = EXCLUDED.organization_id,
+  roles = EXCLUDED.roles,
+  avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), users.avatar_url),
+  presence = COALESCE(NULLIF(EXCLUDED.presence, ''), users.presence)`,
+		user.ID, user.Name, user.Email, user.OrganizationID, rolesJSON,
+		nullString(user.AvatarURL), nullString(user.Presence),
+	)
+	return err
+}
+
 func UpdateUserProfile(userID string, name string, about string, avatarURL string) error {
 	// Always update all three fields — empty avatarURL means "remove photo"
 	_, err := db.ExecContext(context.Background(), `UPDATE users SET name = $1, about = $2, avatar_url = $3 WHERE id = $4`, name, about, avatarURL, userID)
@@ -1074,9 +1099,9 @@ func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, err
 	var rows *sql.Rows
 	var err error
 	if conversationID == "" {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE status != 'deleted' AND ($1 = '' OR tenant_id = $1) ORDER BY created_at`, tenantID)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE status != 'deleted' AND ($1 = '' OR tenant_id = $1) ORDER BY created_at`, tenantID)
 	} else {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE conversation_id = $1 AND status != 'deleted' AND ($2 = '' OR tenant_id = $2) ORDER BY created_at`, conversationID, tenantID)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE conversation_id = $1 AND status != 'deleted' AND ($2 = '' OR tenant_id = $2) ORDER BY created_at`, conversationID, tenantID)
 	}
 	if err != nil {
 		return nil, err
@@ -1095,6 +1120,7 @@ func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, err
 			&msg.ID,
 			&msg.ConversationID,
 			&channelID,
+			&msg.SenderID,
 			&msg.Sender,
 			&msg.Text,
 			&msg.CreatedAt,
@@ -1154,10 +1180,11 @@ func StoreMessage(message model.Message) error {
 	if message.Status == "" {
 		message.Status = "active"
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		message.ID,
 		message.ConversationID,
 		message.ChannelID,
+		nullString(message.SenderID),
 		message.Sender,
 		message.Text,
 		message.CreatedAt,
@@ -1204,6 +1231,23 @@ func GetMessageAttachments(messageID string) ([]model.MessageAttachment, error) 
 	return attachments, rows.Err()
 }
 
+func GetMessageAttachmentByURL(url string) (model.MessageAttachment, error) {
+	var attachment model.MessageAttachment
+	err := db.QueryRowContext(context.Background(), `SELECT id, message_id, file_name, file_type, url, created_at FROM message_attachments WHERE url = $1`, url).Scan(
+		&attachment.ID,
+		&attachment.MessageID,
+		&attachment.FileName,
+		&attachment.FileType,
+		&attachment.URL,
+		&attachment.CreatedAt,
+	)
+	if err != nil {
+		return attachment, err
+	}
+	attachment.MimeType = attachment.FileType
+	return attachment, nil
+}
+
 func UpdateMessage(message model.Message) error {
 	message.UpdatedAt = time.Now().UTC()
 	_, err := db.ExecContext(context.Background(), `UPDATE messages SET text = $1, updated_at = $2, parent_message_id = $3, thread_root_id = $4 WHERE id = $5`, message.Text, message.UpdatedAt, nullString(message.ParentMessageID), nullString(message.ThreadRootID), message.ID)
@@ -1224,10 +1268,11 @@ func GetMessageByID(messageID string) (model.Message, error) {
 	var threadRootID sql.NullString
 	var status sql.NullString
 
-	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE id = $1`, messageID).Scan(
+	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE id = $1`, messageID).Scan(
 		&msg.ID,
 		&msg.ConversationID,
 		&channelID,
+		&msg.SenderID,
 		&msg.Sender,
 		&msg.Text,
 		&msg.CreatedAt,
@@ -1253,6 +1298,29 @@ func GetMessageByID(messageID string) (model.Message, error) {
 	msg.ThreadRootID = threadRootID.String
 	msg.Status = status.String
 	return msg, nil
+}
+
+// CanModifyMessage permits the original sender or an organization moderator to
+// edit or delete a message. New messages use an immutable account ID; the
+// display-name fallback only supports records created before that migration.
+func CanModifyMessage(userID string, message model.Message) (bool, error) {
+	if message.SenderID != "" && message.SenderID == userID {
+		return true, nil
+	}
+	user, err := GetUserByID(userID)
+	if err != nil {
+		return false, err
+	}
+	if message.SenderID == "" && strings.EqualFold(strings.TrimSpace(user.Name), strings.TrimSpace(message.Sender)) {
+		return true, nil
+	}
+	for _, role := range user.Roles {
+		switch strings.ToLower(strings.TrimSpace(role)) {
+		case "admin", "administrator", "owner", "moderator":
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func nullTime(t time.Time) interface{} {

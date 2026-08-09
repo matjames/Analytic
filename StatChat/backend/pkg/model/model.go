@@ -259,6 +259,7 @@ type Message struct {
 	TenantID        string              `json:"tenantId,omitempty"`
 	ConversationID  string              `json:"conversationId,omitempty"`
 	ChannelID       string              `json:"channelId,omitempty"`
+	SenderID        string              `json:"senderId,omitempty"`
 	Sender          string              `json:"sender"`
 	Text            string              `json:"text"`
 	CreatedAt       time.Time           `json:"createdAt"`

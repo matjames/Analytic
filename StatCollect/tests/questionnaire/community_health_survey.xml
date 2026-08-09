@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <h:title>Community Health Survey</h:title>
+    <model>
+      <instance>
+        <data id="community_health_survey" version="2026.08.05">
+          <meta>
+            <instanceID/>
+          </meta>
+          <respondent_info>
+            <respondent_name/>
+            <respondent_age/>
+            <respondent_gender/>
+            <respondent_phone/>
+            <household_size/>
+            <district/>
+            <village/>
+            <gps_location/>
+          </respondent_info>
+          <health_status>
+            <has_chronic_condition/>
+            <chronic_conditions/>
+            <has_insurance/>
+            <insurance_type/>
+            <last_hospital_visit/>
+            <visit_reason/>
+            <medication_count/>
+            <medication_list/>
+          </health_status>
+          <water_sanitation>
+            <water_source/>
+            <water_treatment/>
+            <has_toilet/>
+            <toilet_type/>
+            <handwashing_facility/>
+          </water_sanitation>
+          <child_health>
+            <has_children_under_5/>
+            <children_under_5_count/>
+            <vaccination_complete/>
+            <vaccination_reason/>
+            <child_photo/>
+          </child_health>
+          <feedback>
+            <satisfaction_rating/>
+            <comments/>
+            <consent/>
+          </feedback>
+        </data>
+      </instance>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+      <bind nodeset="/data/respondent_info/respondent_name" type="string" required="true()"/>
+      <bind nodeset="/data/respondent_info/respondent_age" type="int" constraint=". &gt;= 0 and . &lt;= 120" constraintMessage="Age must be between 0 and 120"/>
+      <bind nodeset="/data/respondent_info/respondent_gender" type="select1" required="true()"/>
+      <bind nodeset="/data/respondent_info/respondent_phone" type="string"/>
+      <bind nodeset="/data/respondent_info/household_size" type="int" constraint=". &gt;= 1 and . &lt;= 30"/>
+      <bind nodeset="/data/respondent_info/district" type="select1" required="true()"/>
+      <bind nodeset="/data/respondent_info/village" type="string"/>
+      <bind nodeset="/data/respondent_info/gps_location" type="geopoint"/>
+      <bind nodeset="/data/health_status/has_chronic_condition" type="select1"/>
+      <bind nodeset="/data/health_status/chronic_conditions" type="select" relevant="/data/health_status/has_chronic_condition = 'yes'"/>
+      <bind nodeset="/data/health_status/has_insurance" type="select1"/>
+      <bind nodeset="/data/health_status/insurance_type" type="select1" relevant="/data/health_status/has_insurance = 'yes'"/>
+      <bind nodeset="/data/health_status/last_hospital_visit" type="date"/>
+      <bind nodeset="/data/health_status/visit_reason" type="select1"/>
+      <bind nodeset="/data/health_status/medication_count" type="int" constraint=". &gt;= 0 and . &lt;= 20"/>
+      <bind nodeset="/data/health_status/medication_list" type="string" relevant="/data/health_status/medication_count &gt; 0"/>
+      <bind nodeset="/data/water_sanitation/water_source" type="select1" required="true()"/>
+      <bind nodeset="/data/water_sanitation/water_treatment" type="select1"/>
+      <bind nodeset="/data/water_sanitation/has_toilet" type="select1" required="true()"/>
+      <bind nodeset="/data/water_sanitation/toilet_type" type="select1" relevant="/data/water_sanitation/has_toilet = 'yes'"/>
+      <bind nodeset="/data/water_sanitation/handwashing_facility" type="select1"/>
+      <bind nodeset="/data/child_health/has_children_under_5" type="select1"/>
+      <bind nodeset="/data/child_health/children_under_5_count" type="int" relevant="/data/child_health/has_children_under_5 = 'yes'" constraint=". &gt;= 1 and . &lt;= 10"/>
+      <bind nodeset="/data/child_health/vaccination_complete" type="select1" relevant="/data/child_health/has_children_under_5 = 'yes'"/>
+      <bind nodeset="/data/child_health/vaccination_reason" type="string" relevant="/data/child_health/vaccination_complete = 'no'"/>
+      <bind nodeset="/data/child_health/child_photo" type="binary"/>
+      <bind nodeset="/data/feedback/satisfaction_rating" type="select1" required="true()"/>
+      <bind nodeset="/data/feedback/comments" type="string"/>
+      <bind nodeset="/data/feedback/consent" type="select1" required="true()"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/respondent_info" appearance="field-list">
+      <label>Respondent Information</label>
+      <input ref="/data/respondent_info/respondent_name">
+        <label>Full Name</label>
+      </input>
+      <input ref="/data/respondent_info/respondent_age">
+        <label>Age (years)</label>
+      </input>
+      <select1 ref="/data/respondent_info/respondent_gender">
+        <label>Gender</label>
+        <item><label>Male</label><value>male</value></item>
+        <item><label>Female</label><value>female</value></item>
+        <item><label>Other</label><value>other</value></item>
+      </select1>
+      <input ref="/data/respondent_info/respondent_phone">
+        <label>Phone Number</label>
+      </input>
+      <input ref="/data/respondent_info/household_size">
+        <label>Household Size</label>
+      </input>
+      <select1 ref="/data/respondent_info/district">
+        <label>District</label>
+        <item><label>Kampala</label><value>kampala</value></item>
+        <item><label>Wakiso</label><value>wakiso</value></item>
+        <item><label>Mukono</label><value>mukono</value></item>
+        <item><label>Jinja</label><value>jinja</value></item>
+        <item><label>Gulu</label><value>gulu</value></item>
+        <item><label>Mbarara</label><value>mbarara</value></item>
+        <item><label>Mbale</label><value>mbale</value></item>
+        <item><label>Fort Portal</label><value>fort_portal</value></item>
+      </select1>
+      <input ref="/data/respondent_info/village">
+        <label>Village/Parish</label>
+      </input>
+      <input ref="/data/respondent_info/gps_location">
+        <label>GPS Location</label>
+      </input>
+    </group>
+    <group ref="/data/health_status">
+      <label>Health Status</label>
+      <select1 ref="/data/health_status/has_chronic_condition">
+        <label>Do you have any chronic condition?</label>
+        <item><label>Yes</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+      <select ref="/data/health_status/chronic_conditions">
+        <label>Which chronic conditions?</label>
+        <item><label>Diabetes</label><value>diabetes</value></item>
+        <item><label>Hypertension</label><value>hypertension</value></item>
+        <item><label>Asthma</label><value>asthma</value></item>
+        <item><label>HIV/AIDS</label><value>hiv_aids</value></item>
+        <item><label>Heart Disease</label><value>heart_disease</value></item>
+        <item><label>Other</label><value>other</value></item>
+      </select>
+      <select1 ref="/data/health_status/has_insurance">
+        <label>Do you have health insurance?</label>
+        <item><label>Yes</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+      <select1 ref="/data/health_status/insurance_type">
+        <label>Insurance type</label>
+        <item><label>National Health Insurance</label><value>national</value></item>
+        <item><label>Private</label><value>private</value></item>
+        <item><label>Employer-provided</label><value>employer</value></item>
+        <item><label>Community-based</label><value>community</value></item>
+      </select1>
+      <input ref="/data/health_status/last_hospital_visit">
+        <label>Last hospital visit date</label>
+      </input>
+      <select1 ref="/data/health_status/visit_reason">
+        <label>Reason for last visit</label>
+        <item><label>Routine checkup</label><value>checkup</value></item>
+        <item><label>Illness</label><value>illness</value></item>
+        <item><label>Injury</label><value>injury</value></item>
+        <item><label>Maternity</label><value>maternity</value></item>
+        <item><label>Follow-up</label><value>followup</value></item>
+      </select1>
+      <input ref="/data/health_status/medication_count">
+        <label>Number of medications currently taking</label>
+      </input>
+      <input ref="/data/health_status/medication_list">
+        <label>List medications</label>
+      </input>
+    </group>
+    <group ref="/data/water_sanitation">
+      <label>Water &amp; Sanitation</label>
+      <select1 ref="/data/water_sanitation/water_source">
+        <label>Primary water source</label>
+        <item><label>Piped water</label><value>piped</value></item>
+        <item><label>Borehole</label><value>borehole</value></item>
+        <item><label>Protected well</label><value>protected_well</value></item>
+        <item><label>Unprotected well</label><value>unprotected_well</value></item>
+        <item><label>Surface water (river/lake)</label><value>surface</value></item>
+        <item><label>Rainwater</label><value>rainwater</value></item>
+      </select1>
+      <select1 ref="/data/water_sanitation/water_treatment">
+        <label>Do you treat water before drinking?</label>
+        <item><label>Yes - Boiling</label><value>boiling</value></item>
+        <item><label>Yes - Chlorine</label><value>chlorine</value></item>
+        <item><label>Yes - Filter</label><value>filter</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+      <select1 ref="/data/water_sanitation/has_toilet">
+        <label>Do you have a toilet facility?</label>
+        <item><label>Yes</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+      <select1 ref="/data/water_sanitation/toilet_type">
+        <label>Toilet type</label>
+        <item><label>Flush toilet</label><value>flush</value></item>
+        <item><label>Ventilated improved pit (VIP)</label><value>vip</value></item>
+        <item><label>Traditional pit latrine</label><value>pit</value></item>
+        <item><label>Composting toilet</label><value>composting</value></item>
+      </select1>
+      <select1 ref="/data/water_sanitation/handwashing_facility">
+        <label>Is there a handwashing facility with soap?</label>
+        <item><label>Yes - with soap</label><value>yes_soap</value></item>
+        <item><label>Yes - without soap</label><value>yes_no_soap</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+    </group>
+    <group ref="/data/child_health">
+      <label>Child Health (Under 5)</label>
+      <select1 ref="/data/child_health/has_children_under_5">
+        <label>Are there children under 5 in the household?</label>
+        <item><label>Yes</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+      <input ref="/data/child_health/children_under_5_count">
+        <label>Number of children under 5</label>
+      </input>
+      <select1 ref="/data/child_health/vaccination_complete">
+        <label>Are all children fully vaccinated?</label>
+        <item><label>Yes</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+        <item><label>Partially</label><value>partial</value></item>
+      </select1>
+      <input ref="/data/child_health/vaccination_reason">
+        <label>Reason for incomplete vaccination</label>
+      </input>
+      <upload ref="/data/child_health/child_photo" mediatype="image/*">
+        <label>Take a photo of the child's health card</label>
+      </upload>
+    </group>
+    <group ref="/data/feedback">
+      <label>Feedback</label>
+      <select1 ref="/data/feedback/satisfaction_rating">
+        <label>Rate your overall satisfaction with health services</label>
+        <item><label>Very satisfied</label><value>5</value></item>
+        <item><label>Satisfied</label><value>4</value></item>
+        <item><label>Neutral</label><value>3</value></item>
+        <item><label>Dissatisfied</label><value>2</value></item>
+        <item><label>Very dissatisfied</label><value>1</value></item>
+      </select1>
+      <input ref="/data/feedback/comments">
+        <label>Additional comments</label>
+      </input>
+      <select1 ref="/data/feedback/consent">
+        <label>Do you consent to this data being used for research?</label>
+        <item><label>Yes, I consent</label><value>yes</value></item>
+        <item><label>No</label><value>no</value></item>
+      </select1>
+    </group>
+  </h:body>
+</h:html>

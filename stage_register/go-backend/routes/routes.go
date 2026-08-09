@@ -15,6 +15,9 @@ func Register(r *gin.Engine) {
 		api.POST("/users/register", handlers.RegisterUser)
 		api.POST("/users/login", handlers.LoginUser)
 		api.POST("/users/change-password", handlers.ChangePassword)
+		// Directory consumers such as StatChat use a service credential, never a
+		// public browser request, to synchronize the authoritative user list.
+		api.GET("/internal/users", middleware.InternalServiceRequired(), handlers.ListUsers)
 
 		// Public endpoints (no auth required)
 		api.GET("/authority", handlers.ListAuthorities)
@@ -155,6 +158,9 @@ func Register(r *gin.Engine) {
 
 			// Dashboard endpoints (require auth)
 			auth.GET("/dashboard/stats", handlers.GetDashboardStats)
+
+			// Enterprise search (require auth)
+			auth.GET("/search", handlers.SearchRegistry)
 		}
 	}
 }

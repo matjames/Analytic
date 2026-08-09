@@ -1,0 +1,1471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StatCollect — Enterprise Intelligence Dashboard | StatGate</title>
+  <meta name="description" content="Real-time enterprise data collection intelligence dashboard for StatGate StatCollect platform." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
+  <!-- StatGate Dashboard Framework -->
+  <script src="dashboard-framework.js"></script>
+  <script src="gis-widget.js"></script>
+  <style>
+    :root {
+      --primary: #0f172a; --primary-dark: #020617; --primary-light: #1e293b;
+      --statgate-blue: #165c92; --statgate-blue-dark: #0d3d5f; --statgate-blue-light: #1e7fc4;
+      --accent: #2563eb; --accent-dark: #1d4ed8; --accent-light: #3b82f6;
+      --bg: #f8fafc; --bg-card: #ffffff; --border: #e2e8f0;
+      --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+      --purple: #8b5cf6; --teal: #14b8a6; --rose: #f43f5e;
+      --text: #0f172a; --text-muted: #475569; --text-light: #94a3b8;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-title: 'Outfit', 'Inter', sans-serif;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.06);
+      --radius: 12px; --radius-sm: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Header — Unified StatGate Ecosystem Palette */
+    .header {
+      background: linear-gradient(135deg, var(--statgate-blue-dark) 0%, var(--statgate-blue) 50%, var(--primary-dark) 100%);
+      color: white; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      height: 64px; box-shadow: 0 2px 12px rgba(13,61,95,0.3);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .header-brand h1 { font-family: var(--font-title); font-size: 20px; font-weight: 800; }
+    .header-brand .badge-live {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3);
+      color: #34d399; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; animation: live-pulse 1.5s infinite; }
+    @keyframes live-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.8); } }
+    .header-nav { display: flex; gap: 6px; align-items: center; }
+    .header-nav a {
+      color: rgba(255,255,255,0.8); text-decoration: none; font-size: 12px;
+      background: rgba(255,255,255,0.07); padding: 7px 14px; border-radius: 7px;
+      font-weight: 500; transition: all 0.2s; white-space: nowrap;
+    }
+    .header-nav a:hover { background: rgba(255,255,255,0.16); color: #fff; }
+
+    /* API Banner */
+    .api-banner {
+      background: white; border-bottom: 1px solid var(--border); padding: 10px 24px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .api-banner label { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+    .api-banner input, .api-banner select {
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 7px;
+      font-size: 13px; font-family: var(--font); background: white;
+    }
+    .api-banner input { flex: 1; min-width: 180px; max-width: 320px; }
+    .api-banner input:focus, .api-banner select:focus { outline: none; border-color: var(--accent); }
+    .api-banner .btn { white-space: nowrap; }
+
+    /* Container */
+    .container { max-width: 1600px; margin: 0 auto; padding: 24px; }
+
+    /* KPI Strip */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 24px;
+    }
+    @media(max-width:1200px) { .kpi-strip { grid-template-columns: repeat(3,1fr); } }
+    @media(max-width:900px)  { .kpi-strip { grid-template-columns: repeat(2,1fr); } }
+    @media(max-width:600px)  { .kpi-strip { grid-template-columns: 1fr; } }
+    .kpi-block { /* populated by DashboardFramework.KPICard */ }
+
+    /* Intelligence Section */
+    .section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: var(--font-title); font-size: 18px; font-weight: 700; color: var(--primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      overflow: hidden; margin-bottom: 20px;
+    }
+    .card-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      background: #fafcff;
+    }
+    .card-header h3 { font-size: 14px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 6px; }
+    .card-body { padding: 18px; }
+
+    /* Layout Grids */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+    @media(max-width:900px) { .grid-2,.grid-3,.grid-2-1,.grid-1-2 { grid-template-columns: 1fr; } }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 18px; background: #fafcff; }
+    .tab-btn {
+      padding: 10px 16px; border: none; background: transparent;
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
+      font-family: var(--font);
+    }
+    .tab-btn:hover { color: var(--accent); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: transparent; }
+    .tab-panel { display: none; padding: 18px; }
+    .tab-panel.active { display: block; }
+
+    /* Submissions Table */
+    .sub-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .sub-table th {
+      padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
+      border-bottom: 2px solid var(--border); background: #f8fafc; position: sticky; top: 0;
+    }
+    .sub-table td { padding: 11px 14px; border-bottom: 1px solid #f0f4f8; vertical-align: middle; }
+    .sub-table tr:hover td { background: #f7fafe; }
+    .sub-table tr:last-child td { border-bottom: none; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+    .badge-received  { background: #dbeafe; color: #1d4ed8; }
+    .badge-approved  { background: #d1fae5; color: #065f46; }
+    .badge-rejected  { background: #fee2e2; color: #991b1b; }
+    .badge-flagged   { background: #fef3c7; color: #92400e; }
+    .badge-in_review { background: #ede9fe; color: #5b21b6; }
+    .badge-pending   { background: #f3f4f6; color: #6b7280; }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px; border: none; border-radius: var(--radius-sm); font-size: 13px;
+      font-weight: 600; cursor: pointer; display: inline-flex; align-items: center;
+      gap: 6px; transition: all 0.15s; font-family: var(--font); white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
+    .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-muted); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-success { background: var(--green); color: white; }
+    .btn-danger  { background: var(--red); color: white; }
+    .btn-amber   { background: var(--amber); color: white; }
+    .btn-sm { padding: 6px 11px; font-size: 12px; }
+
+    /* Chart containers */
+    .chart-container { position: relative; height: 260px; }
+    .chart-container-sm { position: relative; height: 180px; }
+    .chart-container-lg { position: relative; height: 340px; }
+    .map-container { height: 380px; border-radius: var(--radius-sm); overflow: hidden; }
+
+    /* Gauge container */
+    .gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 20px; }
+
+    /* AI Alerts */
+    .ai-alert {
+      display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px;
+      border-radius: var(--radius-sm); margin-bottom: 10px; font-size: 13px;
+    }
+    .ai-alert.critical { background: #fef2f2; border-left: 3px solid var(--red); }
+    .ai-alert.warning  { background: #fffbeb; border-left: 3px solid var(--amber); }
+    .ai-alert.info     { background: #eff6ff; border-left: 3px solid var(--accent); }
+    .ai-alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .ai-alert-body { flex: 1; }
+    .ai-alert-title { font-weight: 700; color: var(--primary); margin-bottom: 2px; }
+    .ai-alert-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+    /* Platform Distribution Feed */
+    .event-item {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      border-bottom: 1px solid #f0f4f8; font-size: 12px;
+    }
+    .event-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .event-meta { flex: 1; }
+    .event-type { font-weight: 600; color: var(--primary); }
+    .event-detail { color: var(--text-muted); font-size: 11px; margin-top: 1px; }
+    .event-time { color: var(--text-light); font-size: 10px; white-space: nowrap; }
+
+    /* QA flag chip */
+    .qa-flag-chip {
+      display: inline-flex; padding: 2px 7px; border-radius: 8px;
+      font-size: 10px; font-weight: 700; background: #fef9c3; color: #854d0e; margin: 1px;
+    }
+
+    /* Action buttons */
+    .review-btn { padding: 4px 10px; border: none; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .review-btn.approve { background: #d1fae5; color: #065f46; }
+    .review-btn.approve:hover { background: var(--green); color: white; }
+    .review-btn.reject  { background: #fee2e2; color: #991b1b; }
+    .review-btn.reject:hover  { background: var(--red); color: white; }
+    .review-btn.flag    { background: #fef3c7; color: #92400e; }
+    .review-btn.flag:hover    { background: var(--amber); color: white; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: white; border-radius: var(--radius); width: 100%; max-width: 700px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal-header { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 17px; font-weight: 700; }
+    .modal-close { width: 30px; height: 30px; border: none; background: #f1f5f9; border-radius: 7px; font-size: 17px; cursor: pointer; }
+    .modal-body { padding: 22px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+    .prop-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 6px; }
+    .prop-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font); margin-bottom: 14px; }
+    .prop-input:focus { outline: none; border-color: var(--accent); }
+    textarea.prop-input { resize: vertical; height: 90px; }
+
+    .detail-row { display: flex; gap: 8px; margin-bottom: 9px; }
+    .detail-key { font-size: 12px; font-weight: 600; color: var(--text-muted); min-width: 130px; }
+    .detail-val { font-size: 12px; color: var(--text); flex: 1; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: white; padding: 12px 18px; border-radius: var(--radius-sm); font-size: 13px; z-index: 9999; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; max-width: 360px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: var(--green); }
+    .toast.error   { background: var(--red); }
+
+    /* Sparkline container */
+    .sparkline-cell { display: flex; align-items: center; gap: 8px; }
+
+    /* Region bar (inline) */
+    .region-bar { background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; flex: 1; }
+    .region-bar-fill { background: var(--accent); height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Toolbar */
+    .toolbar { display: flex; gap: 8px; padding: 10px 16px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); background: #fafcff; }
+    .toolbar input, .toolbar select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-family: var(--font); }
+    .toolbar input { flex: 1; min-width: 140px; }
+
+    /* Heatmap calendar */
+    .heatmap-wrap { padding: 4px; }
+
+    /* Pagination */
+    .pagination { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); }
+    .page-btn { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: white; cursor: pointer; font-size: 12px; }
+    .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .page-info { font-size: 12px; color: var(--text-muted); }
+
+    /* StatChat Drawer */
+    #statchatDrawer {
+      position: fixed; top: 64px; right: -340px; width: 340px;
+      height: calc(100vh - 64px); background: white; border-left: 1px solid var(--border);
+      box-shadow: var(--shadow-lg); transition: right 0.3s ease; z-index: 999;
+      display: flex; flex-direction: column;
+    }
+    #scToggleBtn {
+      position: fixed; bottom: 28px; right: 28px; width: 54px; height: 54px;
+      border-radius: 50%; background: linear-gradient(135deg, #2563eb, #8b5cf6);
+      color: white; border: none; font-size: 22px; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(37,99,235,0.35); z-index: 998;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s;
+    }
+    #scToggleBtn:hover { transform: scale(1.08); }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <div class="header">
+    <div class="header-brand">
+      <img src="logo.png" alt="StatGate" style="width:34px;height:34px;border-radius:8px;box-shadow:0 0 0 2px rgba(255,255,255,0.25)" />
+      <div>
+        <h1 style="font-size:18px;line-height:1.1">StatCollect</h1>
+        <div style="font-size:10px;color:rgba(255,255,255,0.75);font-weight:500">StatGate Enterprise Platform</div>
+      </div>
+      <span class="badge-live"><span class="live-dot"></span> Live</span>
+    </div>
+    <div class="header-nav">
+      <a href="/ai/">🧠 AI Assistant</a>
+      <a href="templates.html">📐 Builder</a>
+      <a href="operations.html">⚙️ Operations</a>
+      <a href="survey-dashboard.html">📈 Survey Intel</a>
+      <a href="../field/agent.html">📱 Field Agent</a>
+
+      <!-- 3x3 StatGate App Launcher Button -->
+      <button onclick="toggle383Launcher()" title="StatGate 3x3 App Launcher" style="
+        background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 8px; padding: 7px 10px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; transition: all 0.2s;
+        margin-left: 6px;
+      " onmouseenter="this.style.background='rgba(255,255,255,0.22)'" onmouseleave="this.style.background='rgba(255,255,255,0.12)'">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2.5px;width:16px;height:16px">
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ API BANNER ═══ -->
+  <div class="api-banner">
+    <label>Admin Key:</label>
+    <input type="password" id="apiKeyInput" placeholder="Enter admin API key…" oninput="onApiKeyChange()" onkeydown="if(event.key==='Enter'){event.preventDefault();submitApiKey();}" />
+    <button class="btn btn-primary btn-sm" onclick="submitApiKey()">🔑 Save & Connect</button>
+    <label style="margin-left:12px">Form:</label>
+    <select id="formSelector" onchange="onFormChange()">
+      <option value="">— All Forms —</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+    <button class="btn btn-outline btn-sm" onclick="exportData('csv')">📄 CSV</button>
+    <button class="btn btn-outline btn-sm" onclick="exportData('geojson')">🗺 GeoJSON</button>
+    <span id="lastRefreshed" style="font-size:11px;color:var(--text-light);margin-left:auto"></span>
+  </div>
+
+  <div class="container">
+
+    <!-- ═══ KPI STRIP ═══ -->
+    <div class="kpi-strip">
+      <div class="kpi-block" id="kpi_total_surveys"></div>
+      <div class="kpi-block" id="kpi_active_surveys"></div>
+      <div class="kpi-block" id="kpi_today"></div>
+      <div class="kpi-block" id="kpi_this_week"></div>
+      <div class="kpi-block" id="kpi_this_month"></div>
+      <div class="kpi-block" id="kpi_this_year"></div>
+      <div class="kpi-block" id="kpi_active_projects"></div>
+      <div class="kpi-block" id="kpi_organizations"></div>
+    </div>
+
+    <!-- ═══ SURVEY INTELLIGENCE ═══ -->
+    <div class="section-header">
+      <div>
+        <div class="section-title">📈 Survey Intelligence</div>
+        <div class="section-sub">Real-time submission trends, response distributions, and completion analytics</div>
+      </div>
+      <select id="surveyIntelForm" onchange="loadSurveyIntelligence()" style="padding:7px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font)">
+        <option value="">— Select Form —</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('trends', this)">📈 Trends</button>
+        <button class="tab-btn" onclick="switchTab('completion', this)">✅ Approval Status</button>
+        <button class="tab-btn" onclick="switchTab('distributions', this)">📊 Distributions</button>
+        <button class="tab-btn" onclick="switchTab('enumerators', this)">👤 Enumerators</button>
+        <button class="tab-btn" onclick="switchTab('heatmap', this)">📅 Calendar</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-trends">
+        <div class="grid-2">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:12px">Daily Submissions (Last 30 Days)</div>
+            <div class="chart-container" id="chartDailyTrend"></div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:12px">Monthly Submissions (Last 12 Months)</div>
+            <div class="chart-container" id="chartMonthlyTrend"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-completion">
+        <div class="grid-2">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:12px">Approval Status Breakdown</div>
+            <div class="chart-container" id="chartApprovalDonut"></div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:12px">Survey Metrics</div>
+            <div id="surveyMetricsPanel" style="padding:8px">
+              <div style="text-align:center;color:var(--text-light);font-size:13px;padding:40px">Select a form to view metrics</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-distributions">
+        <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:12px">Question Response Distributions (select/rating fields)</div>
+        <div id="distributionChartsArea" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">
+          <div style="text-align:center;color:var(--text-light);font-size:13px;padding:40px;grid-column:1/-1">Select a form to generate response distributions</div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-enumerators">
+        <div id="enumeratorTableArea">
+          <div style="text-align:center;color:var(--text-light);font-size:13px;padding:40px">Select a form to view enumerator performance</div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-heatmap">
+        <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px">Submission Activity — Last 90 Days</div>
+        <div class="heatmap-wrap" id="calendarHeatmap"></div>
+      </div>
+    </div>
+
+    <!-- ═══ MAIN DATA GRID ═══ -->
+    <div class="grid-2-1">
+      <!-- LEFT: Submissions Table -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <h3>📋 Submission Feed <span class="live-dot" style="margin-left:6px"></span></h3>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm btn-outline" onclick="loadDashboard()">🔄</button>
+              <button class="btn btn-sm btn-primary" onclick="runQAScan()">🔍 QA Scan</button>
+            </div>
+          </div>
+          <div class="toolbar">
+            <input id="searchInput" type="text" placeholder="Search by ID or user…" oninput="filterSubmissions()" />
+            <select id="statusFilter" onchange="filterSubmissions()">
+              <option value="">All Status</option>
+              <option value="received">Received</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="flagged">Flagged</option>
+            </select>
+          </div>
+          <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+            <table class="sub-table">
+              <thead>
+                <tr>
+                  <th>Instance ID</th>
+                  <th>Form</th>
+                  <th>Submitted By</th>
+                  <th>GPS</th>
+                  <th>Status</th>
+                  <th>Received</th>
+                  <th>QA</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="submissionsBody">
+                <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted)">Loading submissions…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <div class="page-info" id="pageInfo"></div>
+          </div>
+        </div>
+
+        <!-- QA Flags -->
+        <div class="card">
+          <div class="card-header">
+            <h3>⚠️ Quality Control Flags</h3>
+            <button class="btn btn-sm btn-primary" onclick="runQAScan()">Run QA Scan</button>
+          </div>
+          <div id="qaFlagsPanel">
+            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">Run QA scan to detect data issues.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Intelligence Panels -->
+      <div>
+        <!-- Data Quality Gauge -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🛡️ Data Quality Score</h3>
+            <select id="dqFormSelect" onchange="loadQualityScore()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font)">
+              <option value="">All Forms</option>
+            </select>
+          </div>
+          <div class="gauge-wrap" id="qualityGaugeWrap">
+            <div style="color:var(--text-light);font-size:12px">Select a form to compute score</div>
+          </div>
+          <div id="qualityIssuesSummary" style="padding:0 18px 14px"></div>
+        </div>
+
+        <!-- Geographic Intelligence -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🗺️ Geographic Intelligence</h3>
+            <button class="btn btn-sm btn-outline" onclick="exportData('geojson')">Export GeoJSON</button>
+          </div>
+          <div class="map-container" id="submissionMap"></div>
+          <div style="padding:12px 16px">
+            <div id="regionCoveragePanel" style="max-height:220px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Active Forms -->
+        <div class="card">
+          <div class="card-header"><h3>📐 Active Forms</h3></div>
+          <div id="formsListPanel">
+            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">Loading…</div>
+          </div>
+          <div style="padding:10px 16px;border-top:1px solid var(--border)">
+            <a href="templates.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;display:flex">+ Create New Form</a>
+          </div>
+        </div>
+
+        <!-- Activity Feed -->
+        <div class="card">
+          <div class="card-header"><h3>🕐 Recent Activity</h3></div>
+          <div id="activityFeed" style="max-height:260px;overflow-y:auto">
+            <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">Loading activity…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ AI INTELLIGENCE PANEL ═══ -->
+    <div class="section-header" style="margin-top:8px">
+      <div>
+        <div class="section-title">🤖 AI Intelligence Engine</div>
+        <div class="section-sub">Anomaly detection, forecasting, risk scoring, and recommendations from live data</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="loadAIIntelligence()">🔄 Analyze Now</button>
+    </div>
+
+    <div class="grid-3" id="aiIntelligenceGrid">
+      <!-- Anomaly Alerts -->
+      <div class="card">
+        <div class="card-header"><h3>🚨 Anomaly Alerts</h3></div>
+        <div id="aiAnomalyPanel" class="card-body" style="min-height:120px">
+          <div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">Click Analyze to run AI detection</div>
+        </div>
+      </div>
+
+      <!-- Forecast -->
+      <div class="card">
+        <div class="card-header"><h3>📅 Completion Forecast</h3></div>
+        <div id="aiForecastPanel" class="card-body">
+          <div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">Forecasted completion based on submission trends</div>
+        </div>
+      </div>
+
+      <!-- Risk Regions & Recommendations -->
+      <div class="card">
+        <div class="card-header"><h3>💡 Recommendations</h3></div>
+        <div id="aiRecommendPanel" class="card-body" style="min-height:120px">
+          <div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">Quality recommendations will appear here</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PLATFORM DISTRIBUTION FEED ═══ -->
+    <div class="section-header" style="margin-top:8px">
+      <div>
+        <div class="section-title">🔁 Enterprise Data Distribution</div>
+        <div class="section-sub">Real-time cross-application event feed — StatChat, GIS, Projects, Reports, M&amp;E</div>
+      </div>
+      <span id="sseStatus" style="font-size:11px;color:var(--text-light)">Connecting…</span>
+    </div>
+    <div class="card">
+      <div id="platformFeed" style="max-height:280px;overflow-y:auto">
+        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">Waiting for platform events…</div>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+
+  <!-- ═══ 383 APP LAUNCHER MODAL ═══ -->
+  <div class="modal-overlay hidden" id="launcher383Modal" style="z-index:2000">
+    <div class="modal" style="max-width:680px;border-radius:16px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
+      <div class="modal-header" style="background:linear-gradient(135deg,#0d3d5f,#165c92);color:white;border-radius:16px 16px 0 0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="logo.png" style="width:28px;height:28px;border-radius:6px" alt="StatGate" />
+          <h2 style="font-size:16px;font-weight:700;color:white">StatGate Enterprise Platform Services</h2>
+        </div>
+        <button class="modal-close" onclick="closeModal('launcher383Modal')" style="background:rgba(255,255,255,0.2);color:white">✕</button>
+      </div>
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);background:#f8fafc">
+        <input type="text" id="launcherSearch" placeholder="Search StatGate apps and services..." oninput="filter383Apps()" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)" />
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px" id="launcherAppsGrid">
+          <!-- App 1: Analytics -->
+          <a href="http://localhost:5000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">📊</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">StatGate Analytics</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 5000</span>
+          </a>
+          <!-- App 2: StatCollect -->
+          <a href="http://localhost:8080/admin/" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:2px solid var(--accent);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:#eff6ff">
+            <span style="font-size:32px;margin-bottom:8px">📋</span>
+            <span style="font-weight:700;font-size:13px;text-align:center;color:var(--accent)">StatCollect</span>
+            <span style="font-size:10px;color:var(--accent);margin-top:2px">Active Service</span>
+          </a>
+          <!-- App 3: Field Registry -->
+          <a href="http://localhost:3000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">🏥</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Facility Registry</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3000</span>
+          </a>
+          <!-- App 4: Helpdesk -->
+          <a href="http://localhost:3005" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">🎫</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Helpdesk</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3005</span>
+          </a>
+          <!-- App 5: StatChat -->
+          <a href="http://localhost:5173" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">💬</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">StatChat</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 5173</span>
+          </a>
+          <!-- App 6: JupyterHub -->
+          <a href="http://localhost:8000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">📓</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">JupyterHub</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8000</span>
+          </a>
+          <!-- App 7: Superset BI -->
+          <a href="http://localhost:8088" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">📈</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Superset BI</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8088</span>
+          </a>
+          <!-- App 8: Metabase -->
+          <a href="http://localhost:3001" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">📊</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Metabase BI</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3001</span>
+          </a>
+          <!-- App 9: StatSpatial GIS -->
+          <a href="http://localhost:8084" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">🌍</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">StatSpatial GIS</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8084</span>
+          </a>
+        </div>
+      </div>
+      <div class="modal-footer" style="background:#f8fafc;border-radius:0 0 16px 16px;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;color:var(--text-muted)">StatGate Unified Ecosystem Services</span>
+        <button class="btn btn-outline btn-sm" onclick="closeModal('launcher383Modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- StatChat Drawer -->
+  <div id="statchatDrawer">
+    <div style="padding:14px 16px;background:#f8fafc;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <h3 style="font-size:13px;font-weight:700">💬 StatChat Collaboration</h3>
+      <button onclick="toggleStatChat()" style="border:none;background:none;cursor:pointer;font-size:15px;color:var(--text-muted)">✕</button>
+    </div>
+    <div style="padding:10px;border-bottom:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:4px">Channel</div>
+      <input class="prop-input" id="sc_channel_id" style="margin:0;font-size:12px" value="general_operations" oninput="loadDrawerComments()" />
+    </div>
+    <div id="sc_feed" style="flex:1;overflow-y:auto;padding:12px"></div>
+    <div style="padding:10px;border-top:1px solid var(--border)">
+      <textarea id="sc_msg_text" style="width:100%;height:50px;margin-bottom:8px;font-size:12px;padding:7px;border:1px solid var(--border);border-radius:6px;font-family:var(--font)" placeholder="Message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendDrawerComment();}"></textarea>
+      <button class="btn btn-primary btn-sm" style="width:100%;justify-content:center" onclick="sendDrawerComment()">Send</button>
+    </div>
+  </div>
+  <button id="scToggleBtn" onclick="toggleStatChat()">💬</button>
+
+  <script>
+  /* ════════════════════════════════════════════════════════════════════════
+     STATE
+  ════════════════════════════════════════════════════════════════════════ */
+  let apiKey = localStorage.getItem('sc_admin_key') || '';
+  let currentFormId = '';
+  let allSubmissions = [];
+  let qaFlags = {};
+  let currentReviewId = null;
+  let sseSource = null;
+
+  /* ════════════════════════════════════════════════════════════════════════
+     INIT
+  ════════════════════════════════════════════════════════════════════════ */
+  document.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('sc_admin_key');
+    if (saved) { document.getElementById('apiKeyInput').value = saved; apiKey = saved; }
+    loadForms();
+    loadDashboard();
+    connectSSE();
+    // Auto-refresh every 30 seconds
+    DashboardFramework.startAutoRefresh(loadKPIs, 30000);
+  });
+
+  function onApiKeyChange() {
+    apiKey = document.getElementById('apiKeyInput').value.trim();
+    localStorage.setItem('sc_admin_key', apiKey);
+  }
+
+  function submitApiKey() {
+    onApiKeyChange();
+    if (!apiKey) {
+      showToast('Please enter an Admin Key', 'error');
+      return;
+    }
+    showToast('Admin Key saved! Connecting…', 'success');
+    loadForms();
+    loadDashboard();
+  }
+
+  function onFormChange() {
+    currentFormId = document.getElementById('formSelector').value;
+    loadDashboard();
+  }
+
+  function headers() {
+    return { 'X-API-Key': apiKey, 'X-Admin-Key': apiKey };
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     TAB SWITCHING
+  ════════════════════════════════════════════════════════════════════════ */
+  function switchTab(id, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + id).classList.add('active');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     LOAD DASHBOARD
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadDashboard() {
+    await Promise.all([loadKPIs(), loadSubmissions(), loadActivity()]);
+    document.getElementById('lastRefreshed').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     KPI CARDS — Live from analytics/overview
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadKPIs() {
+    try {
+      const res = await fetch('/api/analytics/overview', { headers: headers() });
+      if (!res.ok) throw new Error('overview unavailable');
+      const s = await res.json();
+
+      DashboardFramework.KPICard(document.getElementById('kpi_total_surveys'), s.total_surveys, 'Total Surveys', 'blue', s.in_progress_surveys + ' in progress',
+        () => filterSubmissions());
+      DashboardFramework.KPICard(document.getElementById('kpi_active_surveys'), s.active_surveys, 'Active Surveys', 'green', s.completed_surveys + ' completed');
+      DashboardFramework.KPICard(document.getElementById('kpi_today'), s.received_today, 'Received Today', 'amber', 'submissions today');
+      DashboardFramework.KPICard(document.getElementById('kpi_this_week'), s.received_this_week, 'This Week', 'purple', '7-day rolling');
+      DashboardFramework.KPICard(document.getElementById('kpi_this_month'), s.received_this_month, 'This Month', 'teal', 'month-to-date');
+      DashboardFramework.KPICard(document.getElementById('kpi_this_year'), s.received_this_year, 'This Year', 'indigo', 'year-to-date');
+      DashboardFramework.KPICard(document.getElementById('kpi_active_projects'), s.active_projects_count, 'Active Projects', 'rose', '');
+      DashboardFramework.KPICard(document.getElementById('kpi_organizations'), s.organizations_count, 'Organizations', 'sky',
+        s.reporting_regions.length + ' regions reporting');
+    } catch(e) {
+      // Fallback: derive from submissions
+      const total = allSubmissions.length;
+      const today = allSubmissions.filter(s => new Date(s.received_at).toDateString() === new Date().toDateString()).length;
+      DashboardFramework.KPICard(document.getElementById('kpi_total_surveys'), total, 'Total Submissions', 'blue', today + ' today');
+      DashboardFramework.KPICard(document.getElementById('kpi_active_surveys'), allSubmissions.filter(s => s.status === 'approved').length, 'Approved', 'green', '');
+      DashboardFramework.KPICard(document.getElementById('kpi_today'), today, 'Received Today', 'amber', '');
+      DashboardFramework.KPICard(document.getElementById('kpi_this_week'), allSubmissions.filter(s => {
+        const d = new Date(s.received_at);
+        return (Date.now() - d.getTime()) < 7 * 86400000;
+      }).length, 'This Week', 'purple', '');
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     FORMS
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadForms() {
+    try {
+      const res = await fetch('/templates', { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = data.templates || [];
+
+      const selectors = ['formSelector','surveyIntelForm','dqFormSelect'];
+      selectors.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const defaultOpt = id === 'formSelector' ? '— All Forms —' : '— Select Form —';
+        el.innerHTML = `<option value="">${defaultOpt}</option>` +
+          items.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+      });
+
+      // Active forms panel
+      const panel = document.getElementById('formsListPanel');
+      panel.innerHTML = items.length === 0
+        ? '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No forms found</div>'
+        : items.slice(0, 8).map(t => `
+          <div style="padding:10px 16px;border-bottom:1px solid #f0f4f8;display:flex;justify-content:space-between;align-items:center;cursor:pointer"
+            onclick="document.getElementById('surveyIntelForm').value='${esc(t.id)}';loadSurveyIntelligence()">
+            <div>
+              <div style="font-size:13px;font-weight:600">${esc(t.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">v${t.version || '1'} · <a href="survey-dashboard.html?form_id=${esc(t.id)}" style="color:var(--accent);text-decoration:none;font-size:11px">Open →</a></div>
+            </div>
+            <span class="badge badge-${t.status === 'active' ? 'approved' : 'pending'}">${t.status}</span>
+          </div>
+        `).join('');
+    } catch(e) {}
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     SUBMISSIONS
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadSubmissions() {
+    const url = currentFormId
+      ? `/admin/submissions/export?form_id=${encodeURIComponent(currentFormId)}&format=json`
+      : `/admin/submissions/export?format=json`;
+    try {
+      const res = await fetch(url, { headers: headers() });
+      if (!res.ok) { renderError(); return; }
+      const data = await res.json();
+      allSubmissions = Array.isArray(data) ? data : [];
+      renderSubmissions(allSubmissions);
+      // Load geographic intelligence
+      loadGeoIntelligence();
+    } catch(e) { renderError(); }
+  }
+
+  function renderSubmissions(subs) {
+    const tbody = document.getElementById('submissionsBody');
+    if (!subs || !subs.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted)">No submissions found</td></tr>';
+      document.getElementById('pageInfo').textContent = '0 submissions';
+      return;
+    }
+    document.getElementById('pageInfo').textContent = subs.length + ' submission(s)';
+    tbody.innerHTML = subs.map(s => {
+      const flags = qaFlags[s.instance_id] || [];
+      const gpsOk = hasGPS(s);
+      return `
+        <tr>
+          <td>
+            <a href="#" onclick="openReview('${esc(s.instance_id)}');return false"
+              style="color:var(--accent);font-weight:600;font-size:12px;text-decoration:none;font-family:monospace">
+              ${esc(s.instance_id.slice(0,14))}…
+            </a>
+          </td>
+          <td style="font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.form_id || '—')}</td>
+          <td style="font-size:12px">${esc(s.submitted_by || '—')}</td>
+          <td><span style="font-size:11px;color:${gpsOk?'var(--green)':'var(--red)'}">${gpsOk?'📍':'❌'}</span></td>
+          <td><span class="badge badge-${s.status||'received'}">${s.status||'received'}</span></td>
+          <td style="font-size:11px;color:var(--text-muted)">${formatDate(s.received_at)}</td>
+          <td>${flags.length ? flags.slice(0,2).map(f => `<span class="qa-flag-chip">⚠</span>`).join('') : '<span style="color:var(--text-light);font-size:11px">—</span>'}</td>
+          <td>
+            <div style="display:flex;gap:3px">
+              <button class="review-btn approve" onclick="quickReview('${esc(s.instance_id)}','approved')">✔</button>
+              <button class="review-btn reject"  onclick="quickReview('${esc(s.instance_id)}','rejected')">✕</button>
+              <button class="review-btn flag"    onclick="quickReview('${esc(s.instance_id)}','flagged')">🚩</button>
+              <button class="review-btn" style="background:#f0f9ff;color:var(--accent)" onclick="openReview('${esc(s.instance_id)}')">👁</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function filterSubmissions() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    renderSubmissions(allSubmissions.filter(s => {
+      const mQ = !q || (s.instance_id||'').toLowerCase().includes(q) || (s.submitted_by||'').toLowerCase().includes(q);
+      const mS = !status || s.status === status;
+      return mQ && mS;
+    }));
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     SURVEY INTELLIGENCE (Charts)
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadSurveyIntelligence() {
+    const formId = document.getElementById('surveyIntelForm').value;
+    if (!formId) return;
+
+    try {
+      const res = await fetch(`/api/analytics/survey?form_id=${encodeURIComponent(formId)}`, { headers: headers() });
+      if (!res.ok) return;
+      const stats = await res.json();
+
+      // Daily trend line chart
+      const days = Object.entries(stats.daily_submissions || {}).sort((a,b) => a[0].localeCompare(b[0]));
+      DashboardFramework.LineChart(
+        document.getElementById('chartDailyTrend'),
+        days.map(([d]) => d.slice(5)),
+        [{ label: 'Submissions', data: days.map(([,v]) => v), color: DashboardFramework.PALETTE.blue }]
+      );
+
+      // Monthly trend bar chart
+      const months = Object.entries(stats.monthly_submissions || {}).sort((a,b) => a[0].localeCompare(b[0]));
+      DashboardFramework.BarChart(
+        document.getElementById('chartMonthlyTrend'),
+        months.map(([m]) => m),
+        [{ label: 'Monthly', data: months.map(([,v]) => v), color: DashboardFramework.PALETTE.teal }]
+      );
+
+      // Approval donut chart
+      DashboardFramework.DonutChart(
+        document.getElementById('chartApprovalDonut'),
+        ['Approved', 'Rejected', 'Pending'],
+        [
+          stats.approved_submissions,
+          stats.rejected_submissions,
+          Math.max(0, stats.total_submissions - stats.approved_submissions - stats.rejected_submissions),
+        ]
+      );
+
+      // Survey metrics panel
+      const metricsEl = document.getElementById('surveyMetricsPanel');
+      metricsEl.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          ${[
+            ['Total Submissions', stats.total_submissions],
+            ['Approved', stats.approved_submissions],
+            ['Rejected', stats.rejected_submissions],
+            ['Completion Rate', (stats.completion_rate||0).toFixed(1) + '%'],
+            ['Avg Duration', (stats.average_duration_seconds||0).toFixed(0) + 's'],
+            ['Validation Failures', stats.validation_failure_count],
+          ].map(([k,v]) => `
+            <div style="background:#f8fafc;padding:12px;border-radius:8px;text-align:center">
+              <div style="font-size:24px;font-weight:800;color:var(--accent)">${v}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${k}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Response distributions
+      const distArea = document.getElementById('distributionChartsArea');
+      const dists = stats.question_distributions || {};
+      const keys = Object.keys(dists);
+      if (keys.length === 0) {
+        distArea.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:13px;padding:40px;grid-column:1/-1">No select/rating/radio fields with recorded responses</div>';
+      } else {
+        distArea.innerHTML = keys.map(k => `<div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px">Field: <code>${esc(k)}</code></div>
+          <div id="dist_${esc(k).replace(/\W/g,'_')}"></div>
+        </div>`).join('');
+        keys.forEach(k => {
+          const el = distArea.querySelector(`#dist_${esc(k).replace(/\W/g,'_')}`);
+          if (el) DashboardFramework.DistributionBars(el, dists[k]);
+        });
+      }
+
+      // Enumerator table
+      const enumArea = document.getElementById('enumeratorTableArea');
+      DashboardFramework.DataTable(enumArea,
+        [
+          { key: 'enumerator_id', label: 'Enumerator ID' },
+          { key: 'total_interviews', label: 'Interviews' },
+          { key: 'avg_duration', label: 'Avg Duration (s)', format: v => (v||0).toFixed(0) + 's' },
+          { key: 'approved_rate', label: 'Approval Rate', format: v => `<span style="font-weight:700;color:${v>80?'var(--green)':v>50?'var(--amber)':'var(--red)'}">${(v||0).toFixed(1)}%</span>` },
+        ],
+        stats.enumerator_productivity || [],
+        { searchable: true, exportable: true }
+      );
+
+      // Calendar heatmap
+      DashboardFramework.HeatmapCalendar(
+        document.getElementById('calendarHeatmap'),
+        stats.daily_submissions || {},
+        'blue'
+      );
+
+    } catch(e) {
+      showToast('Survey intelligence error: ' + e.message, 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     DATA QUALITY GAUGE
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadQualityScore() {
+    const formId = document.getElementById('dqFormSelect').value;
+    if (!formId) return;
+    try {
+      const res = await fetch(`/api/analytics/quality?form_id=${encodeURIComponent(formId)}`, { headers: headers() });
+      if (!res.ok) return;
+      const dq = await res.json();
+      DashboardFramework.GaugeChart(
+        document.getElementById('qualityGaugeWrap'),
+        dq.overall_quality_score,
+        100,
+        'Quality Score'
+      );
+      document.getElementById('qualityIssuesSummary').innerHTML = `
+        <table style="width:100%;font-size:12px">
+          <tr><td style="padding:6px 14px;color:var(--text-muted)">Rapid Interviews (&lt;30s)</td><td style="text-align:right;font-weight:700;padding:6px 14px;color:${dq.rapid_interview_count>0?'var(--red)':'var(--green)'}">${dq.rapid_interview_count}</td></tr>
+          <tr><td style="padding:6px 14px;color:var(--text-muted)">Validation Failures</td><td style="text-align:right;font-weight:700;padding:6px 14px">${dq.validation_failure_count}</td></tr>
+          <tr><td style="padding:6px 14px;color:var(--text-muted)">GPS Inconsistencies</td><td style="text-align:right;font-weight:700;padding:6px 14px">${dq.gps_inconsistency_count}</td></tr>
+          <tr><td style="padding:6px 14px;color:var(--text-muted)">Outliers Detected</td><td style="text-align:right;font-weight:700;padding:6px 14px">${dq.outlier_count}</td></tr>
+        </table>
+      `;
+    } catch(e) {}
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     GEOGRAPHIC INTELLIGENCE
+  ════════════════════════════════════════════════════════════════════════ */
+  let mapInstance = null;
+  async function loadGeoIntelligence() {
+    const formId = currentFormId;
+    try {
+      const res = await fetch(`/api/analytics/geo${formId ? '?form_id=' + encodeURIComponent(formId) : ''}`, { headers: headers() });
+      if (!res.ok) throw new Error('geo unavailable');
+      const geo = await res.json();
+
+      const mapEl = document.getElementById('submissionMap');
+      mapInstance = GISWidget.renderSubmissionMap(mapEl, geo.geo_points || []);
+
+      GISWidget.renderCoverageMap(
+        document.getElementById('regionCoveragePanel'),
+        geo.region_breakdown || []
+      );
+    } catch(e) {
+      // Fallback: render local dot map
+      const mapEl = document.getElementById('submissionMap');
+      mapEl.style.cssText = 'display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e0f2fe,#bae6fd);height:380px';
+      mapEl.innerHTML = `
+        <div style="text-align:center;color:#0369a1;font-family:var(--font)">
+          <div style="font-size:36px;margin-bottom:8px">🗺️</div>
+          <div style="font-weight:700;font-size:14px">Geographic Intelligence</div>
+          <div style="font-size:12px;opacity:0.7;margin-top:4px">${allSubmissions.filter(s=>hasGPS(s)).length} GPS submissions</div>
+        </div>`;
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     AI INTELLIGENCE
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadAIIntelligence() {
+    const formId = document.getElementById('formSelector').value;
+    document.getElementById('aiAnomalyPanel').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px">Analyzing…</div>';
+    try {
+      const res = await fetch(`/api/analytics/ai${formId ? '?form_id=' + encodeURIComponent(formId) : ''}`, { headers: headers() });
+      if (!res.ok) throw new Error(await res.text());
+      const intel = await res.json();
+
+      // Anomaly alerts
+      const alertsEl = document.getElementById('aiAnomalyPanel');
+      if (!intel.anomaly_alerts || intel.anomaly_alerts.length === 0) {
+        alertsEl.innerHTML = `<div class="ai-alert info"><span class="ai-alert-icon">✅</span><div class="ai-alert-body"><div class="ai-alert-title">No Anomalies Detected</div><div class="ai-alert-desc">Data quality appears normal. Overall health score: <b>${intel.overall_health_score}%</b></div></div></div>`;
+      } else {
+        alertsEl.innerHTML = intel.anomaly_alerts.map(a => `
+          <div class="ai-alert ${a.severity}">
+            <span class="ai-alert-icon">${a.severity==='critical'?'🔴':a.severity==='warning'?'🟡':'🔵'}</span>
+            <div class="ai-alert-body">
+              <div class="ai-alert-title">${esc(a.alert_type.replace(/_/g,' ').toUpperCase())}</div>
+              <div class="ai-alert-desc">${esc(a.description)}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Forecast
+      const forecastEl = document.getElementById('aiForecastPanel');
+      if (intel.forecasted_completion) {
+        const f = intel.forecasted_completion;
+        forecastEl.innerHTML = `
+          <div style="text-align:center;padding:12px 0">
+            <div style="font-size:28px;font-weight:800;color:var(--accent)">${new Date(f.forecasted_end_date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin:6px 0">Forecasted Completion Date</div>
+            <span style="background:#eff6ff;color:var(--accent);font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px">Confidence: ${f.confidence_level}</span>
+          </div>
+          <table style="width:100%;font-size:12px;margin-top:10px">
+            <tr><td style="padding:5px 0;color:var(--text-muted)">Daily Avg Submissions</td><td style="text-align:right;font-weight:700">${f.daily_avg_submissions}</td></tr>
+            <tr><td style="padding:5px 0;color:var(--text-muted)">Current Approval Rate</td><td style="text-align:right;font-weight:700">${f.current_approval_rate}%</td></tr>
+            <tr><td style="padding:5px 0;color:var(--text-muted)">Remaining to Target</td><td style="text-align:right;font-weight:700">${f.remaining_to_target}</td></tr>
+            <tr><td style="padding:5px 0;color:var(--text-muted)">Target Submissions</td><td style="text-align:right;font-weight:700">${f.target_submissions}</td></tr>
+          </table>
+          <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">Potential duplicates flagged: <b>${intel.potential_duplicates}</b></div>
+        `;
+      } else {
+        forecastEl.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">Select a specific form to enable completion forecast</div>';
+      }
+
+      // Recommendations
+      const recEl = document.getElementById('aiRecommendPanel');
+      const recs = [...(intel.quality_recommendations||[]), ...(intel.survey_improvements||[]), ...(intel.emerging_trends||[])];
+      recEl.innerHTML = recs.length === 0
+        ? '<div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">No recommendations at this time</div>'
+        : recs.map(r => `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12px;color:var(--text-muted);line-height:1.5">${esc(r)}</div>`).join('');
+
+    } catch(e) {
+      document.getElementById('aiAnomalyPanel').innerHTML = `<div style="color:var(--red);font-size:12px;padding:10px">AI analysis failed: ${esc(e.message)}</div>`;
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     SSE LIVE STREAM — Platform Distribution Feed
+  ════════════════════════════════════════════════════════════════════════ */
+  function connectSSE() {
+    const statusEl = document.getElementById('sseStatus');
+    const feedEl   = document.getElementById('platformFeed');
+
+    sseSource = DashboardFramework.connectLiveStream('/api/analytics/stream', (event) => {
+      if (event.type === 'connected') {
+        statusEl.innerHTML = '<span style="color:var(--green);font-weight:700">● Live</span>';
+        return;
+      }
+      // Add event to feed
+      const icons = {
+        'submission.received':  { bg: '#dbeafe', icon: '📤', label: 'Submission Received' },
+        'submission.approved':  { bg: '#d1fae5', icon: '✅', label: 'Submission Approved' },
+        'submission.rejected':  { bg: '#fee2e2', icon: '❌', label: 'Submission Rejected' },
+        'quality.alert':        { bg: '#fef3c7', icon: '⚠️', label: 'Quality Alert' },
+        'gis.sync':             { bg: '#f0fdf4', icon: '🗺️', label: 'GIS Sync' },
+      };
+      const meta = icons[event.type] || { bg: '#f8fafc', icon: '⚡', label: event.type };
+      const item = document.createElement('div');
+      item.className = 'event-item';
+      item.innerHTML = `
+        <div class="event-icon" style="background:${meta.bg}">${meta.icon}</div>
+        <div class="event-meta">
+          <div class="event-type">${meta.label}</div>
+          <div class="event-detail">${event.data ? JSON.stringify(event.data).slice(0,80) : '—'}</div>
+        </div>
+        <div class="event-time">${new Date(event.ts * 1000).toLocaleTimeString()}</div>
+      `;
+      if (feedEl.querySelector('[style*="Waiting"]')) feedEl.innerHTML = '';
+      feedEl.insertBefore(item, feedEl.firstChild);
+      if (feedEl.children.length > 50) feedEl.removeChild(feedEl.lastChild);
+
+      // Auto-refresh KPIs and data on lifecycle events
+      if (event.type === 'submission.received' || event.type === 'submission.approved' || event.type === 'submission.rejected') {
+        loadKPIs();
+        loadSubmissions();
+        loadActivity();
+      }
+    });
+
+    sseSource.onerror = () => {
+      statusEl.innerHTML = '<span style="color:var(--amber)">● Reconnecting…</span>';
+    };
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     QA SCAN
+  ════════════════════════════════════════════════════════════════════════ */
+  async function runQAScan() {
+    const url = currentFormId
+      ? `/admin/submissions/qa?form_id=${encodeURIComponent(currentFormId)}`
+      : '/admin/submissions/qa';
+    try {
+      const res = await fetch(url, { headers: headers() });
+      if (!res.ok) { showToast('QA scan failed', 'error'); return; }
+      const data = await res.json();
+      const flags = data.flagged || [];
+
+      qaFlags = {};
+      flags.forEach(f => {
+        if (!qaFlags[f.instance_id]) qaFlags[f.instance_id] = [];
+        qaFlags[f.instance_id].push(f);
+      });
+
+      const panel = document.getElementById('qaFlagsPanel');
+      if (!flags.length) {
+        panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--green);font-size:14px;font-weight:600">✅ No QA issues detected</div>';
+      } else {
+        panel.innerHTML = flags.slice(0,20).map(f => `
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
+            <span style="font-size:18px">${flagIcon(f.flag)}</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${esc(f.flag.replace(/_/g,' '))}</div>
+              <div style="font-size:11px;color:var(--text-muted)">Instance: <code>${esc((f.instance_id||'').slice(0,24))}</code></div>
+            </div>
+            <button class="review-btn flag" onclick="openReview('${esc(f.instance_id)}')">Review</button>
+          </div>
+        `).join('');
+      }
+      filterSubmissions();
+      showToast(`QA scan: ${flags.length} flags found`, flags.length ? 'error' : 'success');
+    } catch(e) { showToast('QA error: ' + e.message, 'error'); }
+  }
+
+  function flagIcon(f) {
+    if ((f||'').includes('GPS')) return '📍';
+    if ((f||'').includes('DUPLICATE')) return '📋';
+    if ((f||'').includes('SPEED') || (f||'').includes('RAPID')) return '⚡';
+    if ((f||'').includes('MISSING')) return '❗';
+    return '⚠️';
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     ACTIVITY FEED
+  ════════════════════════════════════════════════════════════════════════ */
+  async function loadActivity() {
+    try {
+      const res = await fetch('/admin/events?limit=20', { headers: headers() });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      renderActivity(data.events || data || []);
+    } catch(e) {
+      renderActivityFromSubmissions();
+    }
+  }
+
+  function renderActivity(events) {
+    const feed = document.getElementById('activityFeed');
+    if (!events.length) {
+      feed.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px">No recent activity</div>';
+      return;
+    }
+    feed.innerHTML = events.map(e => `
+      <div class="event-item">
+        <div class="event-icon" style="background:#f0f9ff;font-size:16px">${eventIcon(e.event_type||e.type||'')}</div>
+        <div class="event-meta">
+          <div class="event-type">${esc(formatEventType(e.event_type||e.type||'event'))}</div>
+          <div class="event-detail">${esc((e.object_id||e.source||'').slice(0,32))}</div>
+        </div>
+        <div class="event-time">${formatDateShort(e.created_at)}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderActivityFromSubmissions() {
+    const feed = document.getElementById('activityFeed');
+    const recent = [...allSubmissions].sort((a,b) => new Date(b.received_at) - new Date(a.received_at)).slice(0, 10);
+    if (!recent.length) { feed.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px">No activity yet</div>'; return; }
+    feed.innerHTML = recent.map(s => `
+      <div class="event-item">
+        <div class="event-icon" style="background:#d1fae5;font-size:14px">📤</div>
+        <div class="event-meta">
+          <div class="event-type">New Submission</div>
+          <div class="event-detail">${esc(s.submitted_by||'Enumerator')} · ${esc(s.form_id||'')}</div>
+        </div>
+        <div class="event-time">${formatDateShort(s.received_at)}</div>
+      </div>
+    `).join('');
+  }
+
+  function eventIcon(t) {
+    if (t.includes('submit')) return '📤';
+    if (t.includes('review')) return '🔍';
+    if (t.includes('template')) return '📐';
+    return '⚡';
+  }
+
+  function formatEventType(t) {
+    return t.replace(/\./g,' → ').replace(/_/g,' ');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     REVIEW MODAL
+  ════════════════════════════════════════════════════════════════════════ */
+  function openReview(instanceId) {
+    currentReviewId = instanceId;
+    const sub = allSubmissions.find(s => s.instance_id === instanceId);
+    const flags = (qaFlags[instanceId] || []).map(f => f.flag);
+    document.getElementById('reviewModalBody').innerHTML = `
+      <div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:16px">
+        <div class="detail-row"><span class="detail-key">Instance ID</span><span class="detail-val"><code>${esc(instanceId)}</code></span></div>
+        <div class="detail-row"><span class="detail-key">Form</span><span class="detail-val">${esc(sub?.form_id||'—')}</span></div>
+        <div class="detail-row"><span class="detail-key">Submitted By</span><span class="detail-val">${esc(sub?.submitted_by||'—')}</span></div>
+        <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${sub?.status||'received'}">${sub?.status||'received'}</span></span></div>
+        <div class="detail-row"><span class="detail-key">Received At</span><span class="detail-val">${formatDate(sub?.received_at)}</span></div>
+        <div class="detail-row"><span class="detail-key">GPS</span><span class="detail-val">${hasGPS(sub||{}) ? '✅ Captured' : '❌ Missing'}</span></div>
+        ${flags.length ? `<div class="detail-row"><span class="detail-key">QA Flags</span><span class="detail-val">${flags.map(f => `<span class="qa-flag-chip">${esc(f.replace(/_/g,' '))}</span>`).join(' ')}</span></div>` : ''}
+      </div>
+      <div style="background:#eff6ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px">
+        <div style="font-weight:700;color:#0369a1;margin-bottom:8px">📋 Survey Header (MSH)</div>
+        <div class="detail-row"><span class="detail-key">Respondent Type</span><span class="detail-val">${esc(sub?.meta?._msh_respondent_type||'Individual')}</span></div>
+        <div class="detail-row"><span class="detail-key">Region / District</span><span class="detail-val">${esc(sub?.meta?._msh_region||'—')} / ${esc(sub?.meta?._msh_district||'—')}</span></div>
+        <div class="detail-row"><span class="detail-key">Enumerator ID</span><span class="detail-val"><code>${esc(sub?.meta?._msh_enumerator_id||'—')}</code></span></div>
+      </div>
+      <div style="margin-bottom:14px">
+        <button onclick="fetchAndShowLineage('${esc(instanceId)}')" class="btn btn-outline btn-sm">🔗 Data Lineage</button>
+      </div>
+      <div id="lineageSection" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px"></div>
+      <div class="prop-label">Reviewer Notes</div>
+      <textarea class="prop-input" id="reviewNotes" placeholder="Add notes…"></textarea>
+    `;
+    openModal('reviewModal');
+  }
+
+  async function fetchAndShowLineage(instanceId) {
+    const el = document.getElementById('lineageSection');
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Loading lineage…</div>';
+    try {
+      const res = await fetch(`/admin/lineage?instance_id=${encodeURIComponent(instanceId)}`, { headers: headers() });
+      if (!res.ok) throw new Error(await res.text());
+      const d = await res.json();
+      const att = d.attachments || [];
+      const app = d.approval_history || [];
+      el.innerHTML = `
+        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">DATA LINEAGE & PROVENANCE</div>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;font-size:11px;background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:10px">
+          <b>Device ID:</b><span><code>${esc(d.device_id||'—')}</code></span>
+          <b>OS:</b><span>${esc((d.metadata||{}).operating_system||'—')}</span>
+          <b>Status:</b><span>${esc(d.status||'—')}</span>
+        </div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:4px">Approval Pipeline</div>
+        ${app.length ? app.map(a => `<div style="font-size:11px;background:${a.status==='approved'?'#ecfdf5':'#fef2f2'};padding:6px;border-radius:4px;margin-bottom:3px">[${esc(a.stage)}] ${esc(a.approver_role||a.validator)} — ${esc(a.notes||'no notes')}</div>`).join('') : '<div style="font-size:11px;color:var(--text-light)">No approval records</div>'}
+      `;
+    } catch(e) {
+      el.innerHTML = `<div style="color:var(--red);font-size:11px">Failed: ${esc(e.message)}</div>`;
+    }
+  }
+
+  async function submitReview(decision) {
+    const notes = (document.getElementById('reviewNotes')?.value || '').trim();
+    try {
+      const res = await fetch('/admin/submission/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers() },
+        body: JSON.stringify({ instance_id: currentReviewId, status: decision, notes })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      showToast(`Submission ${decision}!`, decision === 'approved' ? 'success' : 'error');
+      closeModal('reviewModal');
+      await loadSubmissions();
+    } catch(e) { showToast('Review failed: ' + e.message, 'error'); }
+  }
+
+  async function quickReview(instanceId, status) {
+    try {
+      await fetch('/admin/submission/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers() },
+        body: JSON.stringify({ instance_id: instanceId, status, notes: '' })
+      });
+      showToast('Marked as ' + status, status === 'approved' ? 'success' : '');
+      await loadSubmissions();
+    } catch(e) { showToast('Action failed: ' + e.message, 'error'); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     EXPORT
+  ════════════════════════════════════════════════════════════════════════ */
+  async function exportData(format) {
+    const formParam = currentFormId ? `&form_id=${encodeURIComponent(currentFormId)}` : '';
+    const url = `/admin/submissions/export?format=${format}${formParam}`;
+    try {
+      const res = await fetch(url, { headers: headers() });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const cd = res.headers.get('Content-Disposition') || '';
+      a.download = cd.match(/filename="([^"]+)"/)?.[1] || `export.${format}`;
+      a.click();
+      showToast('Export downloaded', 'success');
+    } catch(e) { showToast('Export error: ' + e.message, 'error'); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     STATCHAT DRAWER
+  ════════════════════════════════════════════════════════════════════════ */
+  let scOpen = false;
+  function toggleStatChat() {
+    scOpen = !scOpen;
+    document.getElementById('statchatDrawer').style.right = scOpen ? '0' : '-340px';
+    if (scOpen) loadDrawerComments();
+  }
+
+  async function loadDrawerComments() {
+    const chId = document.getElementById('sc_channel_id').value.trim();
+    const feed = document.getElementById('sc_feed');
+    if (!chId) return;
+    try {
+      const res = await fetch(`/admin/comments?object_type=statchat&object_id=${encodeURIComponent(chId)}`, { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.comments || [];
+      feed.innerHTML = list.length === 0
+        ? '<div style="text-align:center;color:var(--text-light);font-size:12px;padding:20px">No messages yet</div>'
+        : list.map(c => `
+          <div style="margin-bottom:8px;background:#f8fafc;border-radius:8px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--accent)">
+              <span>${esc(c.author)}</span>
+              <span style="color:var(--text-light)">${new Date(c.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text);margin-top:2px;word-break:break-word">${esc(c.comment)}</div>
+          </div>
+        `).join('');
+      feed.scrollTop = feed.scrollHeight;
+    } catch(e) {}
+  }
+
+  async function sendDrawerComment() {
+    const chId = document.getElementById('sc_channel_id').value.trim();
+    const msgEl = document.getElementById('sc_msg_text');
+    const comment = msgEl.value.trim();
+    if (!chId || !comment) return;
+    try {
+      await fetch('/admin/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers() },
+        body: JSON.stringify({ object_type: 'statchat', object_id: chId, author: 'Supervisor', comment })
+      });
+      msgEl.value = '';
+      loadDrawerComments();
+    } catch(e) { showToast('Send failed: ' + e.message, 'error'); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     383 APP LAUNCHER MODAL
+  ════════════════════════════════════════════════════════════════════════ */
+  function toggle383Launcher() {
+    const modal = document.getElementById('launcher383Modal');
+    if (modal.classList.contains('hidden')) {
+      modal.classList.remove('hidden');
+      document.getElementById('launcherSearch').value = '';
+      filter383Apps();
+      document.getElementById('launcherSearch').focus();
+    } else {
+      modal.classList.add('hidden');
+    }
+  }
+
+  function filter383Apps() {
+    const q = (document.getElementById('launcherSearch')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('.app-383-card').forEach(card => {
+      const txt = card.textContent.toLowerCase();
+      card.style.display = (!q || txt.includes(q)) ? 'flex' : 'none';
+    });
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     UTILS
+  ════════════════════════════════════════════════════════════════════════ */
+  function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    setTimeout(() => t.className = 'toast', 3500);
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function hasGPS(sub) {
+    if (!sub || !sub.meta) return false;
+    for (const v of Object.values(sub.meta)) {
+      if (typeof v === 'string' && /^-?\d+\.\d+/.test(v)) return true;
+      if (typeof v === 'object' && v !== null && (v.lat !== undefined || v.latitude !== undefined)) return true;
+    }
+    return false;
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleDateString() + ' ' + new Date(d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+    catch(e) { return d; }
+  }
+
+  function formatDateShort(d) {
+    if (!d) return '';
+    try {
+      const diff = Date.now() - new Date(d).getTime();
+      if (diff < 60000) return 'just now';
+      if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+      if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+      return new Date(d).toLocaleDateString();
+    } catch(e) { return d; }
+  }
+  </script>
+</body>
+</html>

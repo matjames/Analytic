@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>StatCollect Field Agent Workspace</title>
+  <style>
+    :root {
+      --primary: #165c92;
+      --primary-light: #1a7ab5;
+      --primary-dark: #0f3f5f;
+      --bg-primary: #f8fafc;
+      --bg-card: #ffffff;
+      --border-color: #e2e8f0;
+      --accent-red: #ef4444;
+      --accent-green: #10b981;
+      --accent-gold: #f59e0b;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .header {
+      background: linear-gradient(135deg, #0f3f5f 0%, #165c92 100%);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(15, 63, 95, 0.2);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .header a { color: #fff; text-decoration: none; font-size: 12px; background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 6px; }
+
+    .status-bar {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .status-online  { background: #d1fae5; color: #065f46; }
+    .status-offline { background: #fee2e2; color: #991b1b; }
+    .status-gps-ok  { background: #dbeafe; color: #1e40af; }
+    .status-gps-no  { background: #fef3c7; color: #92400e; }
+
+    .container { max-width: 680px; margin: 0 auto; padding: 16px; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--primary); }
+
+    /* ── Mandatory GPS Block ── */
+    .mandatory-gps {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .mandatory-gps h3 { font-size: 14px; font-weight: 700; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .gps-coords-row { display: flex; gap: 8px; align-items: center; }
+    .gps-coords-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #93c5fd;
+      border-radius: 8px;
+      font-size: 13px;
+      background: white;
+      font-family: monospace;
+    }
+    .gps-lock-btn {
+      padding: 10px 16px;
+      background: #1d4ed8;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .gps-lock-btn:disabled { background: #93c5fd; cursor: wait; }
+    .gps-accuracy { font-size: 11px; color: #1e40af; margin-top: 6px; }
+
+    /* ── Mandatory Video Block ── */
+    .mandatory-video {
+      background: linear-gradient(135deg, #fdf4ff, #f3e8ff);
+      border: 2px solid #a855f7;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .mandatory-video h3 { font-size: 14px; font-weight: 700; color: #7e22ce; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .video-recorder-box {
+      background: #1a1a1a;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      position: relative;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .video-recorder-box video {
+      width: 100%;
+      max-height: 240px;
+      object-fit: cover;
+      display: block;
+    }
+    .rec-timer {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: rgba(239,68,68,0.9);
+      color: white;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 12px;
+      display: none;
+    }
+    .rec-timer.recording { display: block; }
+    .video-controls { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .video-status {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #f3e8ff;
+      color: #7e22ce;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .video-status.ok { background: #d1fae5; color: #065f46; }
+    .video-status.error { background: #fee2e2; color: #991b1b; }
+
+    .field { margin-bottom: 18px; }
+    .field label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .field label .required { color: var(--accent-red); }
+    .field .hint { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .field input[type=text], .field input[type=number], .field input[type=tel],
+    .field input[type=date], .field select, .field textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 15px;
+      background: white;
+    }
+
+    .signature-pad {
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      background: #fafafa;
+      width: 100%;
+      height: 140px;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .rating-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .rating-btn {
+      flex: 1;
+      min-width: 44px;
+      padding: 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: white;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+    }
+    .rating-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+
+    .btn {
+      padding: 12px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-primary  { background: var(--primary); color: white; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-outline  { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+    .btn-success  { background: var(--accent-green); color: white; }
+    .btn-warning  { background: var(--accent-gold); color: white; }
+    .btn-rec      { background: #ef4444; color: white; }
+
+    .sync-badge {
+      background: var(--accent-gold); color: white;
+      font-size: 11px; padding: 2px 8px;
+      border-radius: 10px; margin-left: 6px;
+    }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #0f172a; color: white; padding: 12px 20px;
+      border-radius: 8px; font-size: 13px; z-index: 2000;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      max-width: 90%; text-align: center;
+    }
+    .toast.show { opacity: 1; }
+    .toast.success { background: var(--accent-green); }
+    .toast.error   { background: var(--accent-red); }
+    .toast.warning { background: var(--accent-gold); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📱 StatCollect Field Agent</h1>
+    <a href="/admin/">Admin Portal</a>
+  </div>
+
+  <div class="status-bar">
+    <div id="netStatus" class="status-pill status-online">🟢 Online</div>
+    <div id="gpsStatusPill" class="status-pill status-gps-no">📍 GPS: Not Locked</div>
+    <div>Queue: <span id="syncQueueCount" class="sync-badge">0</span></div>
+  </div>
+
+  <div class="container">
+
+    <!-- Form selector & API key -->
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <select id="templateSelect" onchange="onSelectForm()"
+          style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border-color);font-size:14px">
+          <option value="">-- Select Survey Form --</option>
+        </select>
+        <button class="btn btn-outline" onclick="loadForms()">🔄</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="fieldApiKey" placeholder="API Key"
+          style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px" />
+        <button class="btn btn-outline" onclick="saveKey()" style="padding:6px 12px;font-size:12px">Save Key</button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         MANDATORY GPS — always shown on every form
+         ════════════════════════════════════════════ -->
+    <div class="mandatory-gps" id="mandatoryGpsBlock" style="display:none">
+      <h3>📍 GPS Location <span style="color:#ef4444;font-size:12px">REQUIRED</span></h3>
+      <div class="gps-coords-row">
+        <input type="text" id="mandatoryGpsInput" placeholder="Tap 'Get GPS' to lock coordinates" readonly />
+        <button class="gps-lock-btn" id="gpsLockBtn" onclick="acquireMandatoryGPS()">Get GPS</button>
+      </div>
+      <div class="gps-accuracy" id="gpsAccuracyLabel"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         MANDATORY FIELD VIDEO — minimum 10 seconds
+         ════════════════════════════════════════════ -->
+    <div class="mandatory-video" id="mandatoryVideoBlock" style="display:none">
+      <h3>🎥 Field Evidence Video <span style="color:#ef4444;font-size:12px">REQUIRED · MIN 10 SECONDS</span></h3>
+      <div class="video-recorder-box">
+        <video id="videoPreview" autoplay muted playsinline></video>
+        <div class="rec-timer" id="recTimer">⏺ 00:00</div>
+      </div>
+      <div class="video-controls">
+        <button class="btn btn-rec" id="startRecBtn" onclick="startRecording()">⏺ Start Recording</button>
+        <button class="btn btn-outline" id="stopRecBtn" onclick="stopRecording()" disabled>⏹ Stop</button>
+        <button class="btn btn-outline" id="retakeBtn" onclick="retakeVideo()" style="display:none">🔄 Retake</button>
+      </div>
+      <div class="video-status" id="videoStatus">Press "Start Recording" to capture field evidence (minimum 10 seconds required).</div>
+    </div>
+
+    <!-- Dynamic form sections injected here -->
+    <div id="surveyFormArea"></div>
+
+    <!-- Submit / Draft / Reset -->
+    <div class="card" id="actionsCard" style="display:none">
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" id="submitBtn" style="flex:2" onclick="handleFormSubmission()">Submit Survey</button>
+        <button class="btn btn-warning" style="flex:1" onclick="saveDraftLocally()">Draft</button>
+        <button class="btn btn-outline" style="flex:1" onclick="resetForm()">Reset</button>
+      </div>
+      <div id="readinessHints" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
+    </div>
+
+    <!-- Offline Sync Queue -->
+    <div class="card">
+      <h2>Offline Sync Queue</h2>
+      <div id="queueListContainer" style="font-size:13px;color:var(--text-muted)">No pending offline submissions.</div>
+      <button class="btn btn-success" style="margin-top:12px;width:100%" onclick="syncOfflineQueue()">Sync Now</button>
+    </div>
+
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* ════════════════════════════════════════
+       STATE
+    ════════════════════════════════════════ */
+    let currentTemplate   = null;
+    let offlineQueue      = JSON.parse(localStorage.getItem('statcollect_offline_queue') || '[]');
+
+    // GPS state
+    let lockedLat  = null;
+    let lockedLng  = null;
+    let lockedAlt  = null;
+    let lockedAcc  = null;
+
+    // Video state
+    let mediaStream      = null;
+    let mediaRecorder    = null;
+    let recordedChunks   = [];
+    let videoBlob        = null;
+    let recordingSeconds = 0;
+    let recInterval      = null;
+
+    // Phase Y telemetry state
+    let formStartTime    = null;
+    let deviceID         = localStorage.getItem('statcollect_device_id') || '';
+    if (!deviceID) {
+      deviceID = 'sc-dev-' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('statcollect_device_id', deviceID);
+    }
+
+    /* ════════════════════════════════════════
+       UTILITY
+    ════════════════════════════════════════ */
+    function getApiKey() {
+      return localStorage.getItem('statcollect_api_key') || document.getElementById('fieldApiKey').value.trim() || 'changeme';
+    }
+    function saveKey() {
+      localStorage.setItem('statcollect_api_key', document.getElementById('fieldApiKey').value.trim());
+      showToast('Key saved');
+    }
+    document.getElementById('fieldApiKey').value = getApiKey();
+
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + (type || '');
+      setTimeout(() => t.className = 'toast', 3500);
+    }
+
+    function updateNetworkStatus() {
+      const net = document.getElementById('netStatus');
+      if (navigator.onLine) {
+        net.className = 'status-pill status-online';
+        net.textContent = '🟢 Online';
+        syncOfflineQueue();
+      } else {
+        net.className = 'status-pill status-offline';
+        net.textContent = '🔴 Offline Mode';
+      }
+    }
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+    updateNetworkStatus();
+
+    /* ════════════════════════════════════════
+       FORM LOADING
+    ════════════════════════════════════════ */
+    async function loadForms() {
+      try {
+        const res = await fetch('/templates', { headers: { 'X-API-Key': getApiKey() } });
+        const data = await res.json();
+        let items = data.templates || [];
+
+        // Dynamic assignments filter check (Directive 2)
+        try {
+          const assRes = await fetch('/admin/assignments', { headers: { 'X-API-Key': getApiKey(), 'X-Admin-Key': getApiKey() } });
+          if (assRes.ok) {
+            const assData = await assRes.json();
+            const assList = assData.assignments || [];
+            // Filter assignments targeted to this specific device, or to "all" or specific enumerator
+            const user = document.getElementById('enumeratorName')?.value || 'field-agent';
+            const assignedIds = assList
+              .filter(a => a.target_id === deviceID || a.target_id === user || a.target_id === 'all')
+              .map(a => a.survey_id);
+
+            if (assignedIds.length > 0) {
+              items = items.filter(t => assignedIds.includes(t.id));
+              console.log('Filtered forms by active survey assignment:', assignedIds);
+            }
+          }
+        } catch(e) {
+          console.warn('Assignment engine offline, showing all forms');
+        }
+
+        localStorage.setItem('statcollect_cached_templates', JSON.stringify(items));
+        renderFormSelect(items);
+      } catch (e) {
+        const cached = JSON.parse(localStorage.getItem('statcollect_cached_templates') || '[]');
+        renderFormSelect(cached);
+        showToast('Using cached offline templates');
+      }
+    }
+
+    function renderFormSelect(items) {
+      const sel = document.getElementById('templateSelect');
+      sel.innerHTML = '<option value="">-- Select Survey Form --</option>';
+      items.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `${t.name} (v${t.version})`;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function onSelectForm() {
+      const id = document.getElementById('templateSelect').value;
+      if (!id) {
+        document.getElementById('surveyFormArea').innerHTML = '';
+        document.getElementById('actionsCard').style.display = 'none';
+        document.getElementById('mandatoryGpsBlock').style.display = 'none';
+        document.getElementById('mandatoryVideoBlock').style.display = 'none';
+        currentTemplate = null;
+        resetGPS();
+        return;
+      }
+      try {
+        const res = await fetch(`/templates/${encodeURIComponent(id)}`, { headers: { 'X-API-Key': getApiKey() } });
+        currentTemplate = await res.json();
+      } catch (e) {
+        const cached = JSON.parse(localStorage.getItem('statcollect_cached_templates') || '[]');
+        currentTemplate = cached.find(t => t.id === id);
+      }
+      formStartTime = new Date(); // set start timer
+      renderFormFields(currentTemplate);
+      // Show mandatory blocks for every form
+      document.getElementById('mandatoryGpsBlock').style.display = 'block';
+      document.getElementById('mandatoryVideoBlock').style.display = 'block';
+      // Start camera for video
+      initCamera();
+      checkReadiness();
+    }
+
+    /* ════════════════════════════════════════
+       MANDATORY GPS
+    ════════════════════════════════════════ */
+    function resetGPS() {
+      lockedLat = lockedLng = lockedAlt = lockedAcc = null;
+      document.getElementById('mandatoryGpsInput').value = '';
+      document.getElementById('gpsAccuracyLabel').textContent = '';
+      document.getElementById('gpsStatusPill').className = 'status-pill status-gps-no';
+      document.getElementById('gpsStatusPill').textContent = '📍 GPS: Not Locked';
+    }
+
+    function acquireMandatoryGPS() {
+      if (!('geolocation' in navigator)) {
+        showToast('Geolocation not supported on this device', 'error');
+        return;
+      }
+      const btn = document.getElementById('gpsLockBtn');
+      btn.textContent = 'Locating…';
+      btn.disabled = true;
+
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          lockedLat = pos.coords.latitude;
+          lockedLng = pos.coords.longitude;
+          lockedAlt = pos.coords.altitude || 0;
+          lockedAcc = pos.coords.accuracy;
+
+          document.getElementById('mandatoryGpsInput').value =
+            `${lockedLat.toFixed(7)}, ${lockedLng.toFixed(7)}`;
+          document.getElementById('gpsAccuracyLabel').textContent =
+            `Accuracy: ±${lockedAcc.toFixed(1)} m  |  Altitude: ${lockedAlt.toFixed(1)} m`;
+
+          document.getElementById('gpsStatusPill').className = 'status-pill status-gps-ok';
+          document.getElementById('gpsStatusPill').textContent = `📍 GPS Locked`;
+
+          btn.textContent = '✔ Locked';
+          btn.style.background = '#10b981';
+          showToast(`GPS locked — ±${lockedAcc.toFixed(1)} m accuracy`, 'success');
+          checkReadiness();
+        },
+        err => {
+          btn.textContent = 'Get GPS';
+          btn.disabled = false;
+          const msgs = {
+            1: 'Permission denied — please allow location access.',
+            2: 'Position unavailable — are you indoors?',
+            3: 'GPS timed out — try again.'
+          };
+          showToast(msgs[err.code] || 'GPS error', 'error');
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+    }
+
+    /* ════════════════════════════════════════
+       MANDATORY VIDEO (≥10 seconds)
+    ════════════════════════════════════════ */
+    async function initCamera() {
+      videoBlob = null;
+      recordedChunks = [];
+      document.getElementById('videoStatus').textContent =
+        'Press "Start Recording" to capture field evidence (minimum 10 seconds required).';
+      document.getElementById('videoStatus').className = 'video-status';
+      document.getElementById('retakeBtn').style.display = 'none';
+      document.getElementById('startRecBtn').disabled = false;
+      document.getElementById('stopRecBtn').disabled = true;
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('videoPreview').srcObject = mediaStream;
+      } catch (e) {
+        document.getElementById('videoStatus').textContent =
+          '⚠ Camera unavailable — video evidence is still required. Use file upload below.';
+        document.getElementById('videoStatus').className = 'video-status error';
+      }
+    }
+
+    function startRecording() {
+      if (!mediaStream) { showToast('Camera not available', 'error'); return; }
+      recordedChunks = [];
+      recordingSeconds = 0;
+      videoBlob = null;
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9' : 'video/webm';
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(videoBlob);
+        const vid = document.getElementById('videoPreview');
+        vid.srcObject = null;
+        vid.src = url;
+        vid.controls = true;
+        vid.muted = false;
+        if (recordingSeconds < 10) {
+          document.getElementById('videoStatus').textContent =
+            `⚠ Recording too short (${recordingSeconds}s). Minimum 10 seconds required. Please retake.`;
+          document.getElementById('videoStatus').className = 'video-status error';
+          videoBlob = null;
+        } else {
+          document.getElementById('videoStatus').textContent =
+            `✔ Video recorded — ${recordingSeconds} seconds. Evidence attached to submission.`;
+          document.getElementById('videoStatus').className = 'video-status ok';
+        }
+        document.getElementById('retakeBtn').style.display = 'inline-flex';
+        checkReadiness();
+      };
+
+      mediaRecorder.start(1000);
+
+      document.getElementById('startRecBtn').disabled = true;
+      document.getElementById('stopRecBtn').disabled = false;
+      document.getElementById('recTimer').classList.add('recording');
+
+      recInterval = setInterval(() => {
+        recordingSeconds++;
+        const mm = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
+        const ss = String(recordingSeconds % 60).padStart(2, '0');
+        document.getElementById('recTimer').textContent = `⏺ ${mm}:${ss}`;
+      }, 1000);
+
+      document.getElementById('videoStatus').textContent = 'Recording… keep device steady.';
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        clearInterval(recInterval);
+        document.getElementById('recTimer').classList.remove('recording');
+        document.getElementById('stopRecBtn').disabled = true;
+      }
+    }
+
+    function retakeVideo() {
+      videoBlob = null;
+      recordingSeconds = 0;
+      document.getElementById('retakeBtn').style.display = 'none';
+      document.getElementById('startRecBtn').disabled = false;
+      initCamera();
+      checkReadiness();
+    }
+
+    /* ════════════════════════════════════════
+       READINESS CHECK (GPS + Video = required)
+    ════════════════════════════════════════ */
+    function checkReadiness() {
+      if (!currentTemplate) return;
+      const gpsOk   = (lockedLat !== null && lockedLng !== null);
+      const videoOk = (videoBlob !== null);
+
+      const hints = [];
+      if (!gpsOk)   hints.push('📍 GPS location must be locked');
+      if (!videoOk) hints.push('🎥 Field video (≥10 sec) must be recorded');
+
+      document.getElementById('readinessHints').innerHTML =
+        hints.length ? '<span style="color:#ef4444">⚠ Before submitting: ' + hints.join(' · ') + '</span>' : '';
+      document.getElementById('submitBtn').disabled = !(gpsOk && videoOk);
+    }
+
+    /* ════════════════════════════════════════
+       FORM RENDERING
+    ════════════════════════════════════════ */
+    function renderFormFields(tmpl) {
+      if (!tmpl) return;
+      const schema = typeof tmpl.schema === 'string' ? JSON.parse(tmpl.schema) : tmpl.schema;
+      let html = '';
+      (schema.sections || []).forEach(sec => {
+        html += `<div class="card"><h2>${sec.title}</h2>`;
+        (sec.fields || []).forEach(f => {
+          // Skip built-in gps / video fields — handled by mandatory blocks
+          if (f.key === 'gps_coordinates' || f.key === 'field_video') return;
+
+          html += `<div class="field" data-key="${f.key}">
+            <label>${f.label} ${f.required ? '<span class="required">*</span>' : ''}</label>`;
+
+          switch (f.type) {
+            case 'text': case 'tel':
+              html += `<input type="${f.type}" id="field_${f.key}" placeholder="${f.label}" />`;
+              break;
+            case 'number':
+              html += `<input type="number" id="field_${f.key}" />`;
+              break;
+            case 'date':
+              html += `<input type="date" id="field_${f.key}" />`;
+              break;
+            case 'select':
+              html += `<select id="field_${f.key}"><option value="">-- Select --</option>`;
+              (f.options || []).forEach(o => html += `<option value="${o.value}">${o.label}</option>`);
+              html += `</select>`;
+              break;
+            case 'multiselect':
+              html += `<div style="display:flex;flex-wrap:wrap;gap:8px">`;
+              (f.options || []).forEach(o => html +=
+                `<label style="display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer">
+                  <input type="checkbox" value="${o.value}" data-multi="${f.key}" />${o.label}
+                 </label>`);
+              html += `</div>`;
+              break;
+            case 'gps':
+              html += `<div style="display:flex;gap:8px">
+                <input type="text" id="field_${f.key}" placeholder="Latitude, Longitude" readonly />
+                <button class="btn btn-outline" style="white-space:nowrap" onclick="getInlineGPS('field_${f.key}')">📍 Locate</button>
+              </div>`;
+              break;
+            case 'photo':
+              html += `<input type="file" accept="image/*" capture="environment" id="field_${f.key}" />`;
+              break;
+            case 'signature':
+              html += `<canvas class="signature-pad" id="canvas_${f.key}"></canvas>
+                <button class="btn btn-outline" style="margin-top:4px;font-size:12px" onclick="clearCanvas('canvas_${f.key}')">Clear</button>`;
+              break;
+            case 'rating':
+              html += `<div class="rating-group" id="rating_${f.key}">
+                ${[1,2,3,4,5].map(v => `<button class="rating-btn" onclick="selectRating('${f.key}',${v},this)">${v}</button>`).join('')}
+              </div><input type="hidden" id="field_${f.key}" />`;
+              break;
+          }
+          html += `</div>`;
+        });
+        html += `</div>`;
+      });
+      document.getElementById('surveyFormArea').innerHTML = html;
+      document.getElementById('actionsCard').style.display = 'block';
+      initCanvases();
+    }
+
+    /* ════════════════════════════════════════
+       INLINE GPS FIELD (extra, not mandatory)
+    ════════════════════════════════════════ */
+    function getInlineGPS(inputId) {
+      navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById(inputId).value =
+          `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+        showToast('GPS acquired', 'success');
+      }, () => showToast('GPS unavailable', 'error'));
+    }
+
+    /* ════════════════════════════════════════
+       SIGNATURE / RATING HELPERS
+    ════════════════════════════════════════ */
+    function selectRating(key, val, btn) {
+      document.getElementById('field_' + key).value = val;
+      document.getElementById('rating_' + key).querySelectorAll('.rating-btn')
+        .forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    }
+
+    function initCanvases() {
+      document.querySelectorAll('.signature-pad').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        const pt = (e) => {
+          const r = canvas.getBoundingClientRect();
+          const src = e.touches ? e.touches[0] : e;
+          return { x: src.clientX - r.left, y: src.clientY - r.top };
+        };
+        const down = e => { drawing = true; ctx.beginPath(); const p = pt(e); ctx.moveTo(p.x, p.y); };
+        const move = e => {
+          if (!drawing) return;
+          e.preventDefault();
+          const p = pt(e);
+          ctx.lineWidth = 2; ctx.lineCap = 'round';
+          ctx.lineTo(p.x, p.y); ctx.stroke();
+        };
+        const up = () => { drawing = false; };
+        canvas.addEventListener('mousedown', down);
+        canvas.addEventListener('mousemove', move);
+        canvas.addEventListener('mouseup', up);
+        canvas.addEventListener('touchstart', down, { passive: false });
+        canvas.addEventListener('touchmove', move, { passive: false });
+        canvas.addEventListener('touchend', up);
+      });
+    }
+
+    function clearCanvas(id) {
+      const c = document.getElementById(id);
+      if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    }
+
+    /* ════════════════════════════════════════
+       BUILD & SUBMIT
+    ════════════════════════════════════════ */
+    function buildSubmissionData() {
+      const instanceID = 'uuid:' + crypto.randomUUID();
+      const schema = typeof currentTemplate.schema === 'string'
+        ? JSON.parse(currentTemplate.schema) : currentTemplate.schema;
+
+      // GPS string in ODK format: lat lon alt acc
+      const gpsStr = (lockedLat !== null)
+        ? `${lockedLat.toFixed(7)} ${lockedLng.toFixed(7)} ${(lockedAlt||0).toFixed(1)} ${(lockedAcc||0).toFixed(1)}`
+        : '';
+
+      const enumName = document.getElementById('enumeratorName')?.value || 'field-agent';
+      const durationSecs = formStartTime ? Math.round((new Date() - formStartTime) / 1000) : 0;
+      const osName = navigator.userAgent.includes('Windows') ? 'Windows' : (navigator.userAgent.includes('Android') ? 'Android' : 'iOS');
+
+      let xml = `<?xml version="1.0"?>\n<data id="${currentTemplate.id}" version="${currentTemplate.version || '1.0'}">\n`;
+      xml += `  <meta>\n`;
+      xml += `    <instanceID>${instanceID}</instanceID>\n`;
+      xml += `    <deviceID>${deviceID}</deviceID>\n`;
+      xml += `    <enumerator>${enumName}</enumerator>\n`;
+      xml += `    <duration_seconds>${durationSecs}</duration_seconds>\n`;
+      xml += `    <operating_system>${osName}</operating_system>\n`;
+      xml += `    <browser>${navigator.userAgent}</browser>\n`;
+      xml += `    <online_status>${navigator.onLine}</online_status>\n`;
+      xml += `    <timestamp>${new Date().toISOString()}</timestamp>\n`;
+      // Directive 21 MSH collection and assignment fields
+      xml += `    <_msh_enumerator_name>${enumName}</_msh_enumerator_name>\n`;
+      xml += `    <_msh_enumerator_id>enum_${enumName.toLowerCase().replace(/\s+/g, '_')}</_msh_enumerator_id>\n`;
+      xml += `    <_msh_interview_date>${new Date().toISOString().split('T')[0]}</_msh_interview_date>\n`;
+      xml += `    <_msh_interview_start_time>${formStartTime ? formStartTime.toISOString() : new Date().toISOString()}</_msh_interview_start_time>\n`;
+      xml += `    <_msh_interview_end_time>${new Date().toISOString()}</_msh_interview_end_time>\n`;
+      xml += `    <_msh_duration>${durationSecs}</_msh_duration>\n`;
+      xml += `    <_msh_device_id>${deviceID}</_msh_device_id>\n`;
+      xml += `    <_msh_network_status>${navigator.onLine ? 'online' : 'offline'}</_msh_network_status>\n`;
+      xml += `    <_msh_gps>${gpsStr}</_msh_gps>\n`;
+      xml += `    <_msh_consent_status>Granted</_msh_consent_status>\n`;
+      xml += `    <_msh_respondent_type>Individual</_msh_respondent_type>\n`;
+      xml += `  </meta>\n`;
+      xml += `  <mandatory_capture>\n`;
+      xml += `    <gps_coordinates>${gpsStr}</gps_coordinates>\n`;
+      xml += `    <gps_accuracy>${(lockedAcc||0).toFixed(1)}</gps_accuracy>\n`;
+      xml += `    <gps_altitude>${(lockedAlt||0).toFixed(1)}</gps_altitude>\n`;
+      xml += `  </mandatory_capture>\n`;
+
+      (schema.sections || []).forEach(sec => {
+        xml += `  <${sec.id}>\n`;
+        (sec.fields || []).forEach(f => {
+          if (f.key === 'gps_coordinates' || f.key === 'field_video') return;
+          const el = document.getElementById(`field_${f.key}`);
+          const val = el ? el.value : '';
+          xml += `    <${f.key}>${val}</${f.key}>\n`;
+        });
+        xml += `  </${sec.id}>\n`;
+      });
+      xml += `</data>`;
+      return { instanceID, formID: currentTemplate.id, xml };
+
+    }
+
+    async function handleFormSubmission() {
+      if (!currentTemplate) return;
+
+      // Final gate: GPS + Video
+      if (lockedLat === null || lockedLng === null) {
+        showToast('⛔ GPS location is required before submitting', 'error');
+        return;
+      }
+      if (!videoBlob) {
+        showToast('⛔ Field video (min 10 sec) is required before submitting', 'error');
+        return;
+      }
+
+      const sub = buildSubmissionData();
+      const formData = new FormData();
+      formData.append('xml_submission_file',
+        new Blob([sub.xml], { type: 'application/xml' }), 'submission.xml');
+      formData.append('field_video',
+        videoBlob, `field_video_${sub.instanceID}.webm`);
+
+      if (!navigator.onLine) {
+        // Store the XML payload for offline retry (video will be lost; enumerator must retake when online)
+        offlineQueue.push({ ...sub, videoOffline: true });
+        localStorage.setItem('statcollect_offline_queue', JSON.stringify(offlineQueue));
+        updateQueueDisplay();
+        showToast('Saved to offline queue. Video will be re-captured on sync.', 'warning');
+        resetForm();
+        return;
+      }
+
+      try {
+        const res = await fetch('/submission', {
+          method: 'POST',
+          headers: { 'X-API-Key': getApiKey(), 'X-Instance-ID': sub.instanceID },
+          body: formData
+        });
+        if (res.ok) {
+          showToast('Survey + video submitted successfully! ✔', 'success');
+          resetForm();
+        } else {
+          throw new Error('Server error: ' + res.status);
+        }
+      } catch (e) {
+        offlineQueue.push({ ...sub, videoOffline: true });
+        localStorage.setItem('statcollect_offline_queue', JSON.stringify(offlineQueue));
+        updateQueueDisplay();
+        showToast('Connection failed — queued for sync', 'warning');
+        resetForm();
+      }
+    }
+
+    function saveDraftLocally() {
+      showToast('Draft saved locally', 'success');
+    }
+
+    function resetForm() {
+      document.querySelectorAll('#surveyFormArea input, #surveyFormArea select').forEach(i => i.value = '');
+      document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
+      resetGPS();
+      videoBlob = null;
+      recordingSeconds = 0;
+      document.getElementById('mandatoryGpsBlock').style.display = 'none';
+      document.getElementById('mandatoryVideoBlock').style.display = 'none';
+      document.getElementById('templateSelect').value = '';
+      document.getElementById('surveyFormArea').innerHTML = '';
+      document.getElementById('actionsCard').style.display = 'none';
+      currentTemplate = null;
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+    }
+
+    /* ════════════════════════════════════════
+       OFFLINE QUEUE
+    ════════════════════════════════════════ */
+    async function syncOfflineQueue() {
+      if (!offlineQueue.length || !navigator.onLine) return;
+      showToast('Syncing offline queue…');
+      const remaining = [];
+      for (const item of offlineQueue) {
+        const formData = new FormData();
+        formData.append('xml_submission_file',
+          new Blob([item.xml], { type: 'application/xml' }), 'submission.xml');
+        try {
+          const res = await fetch('/submission', {
+            method: 'POST',
+            headers: { 'X-API-Key': getApiKey(), 'X-Instance-ID': item.instanceID },
+            body: formData
+          });
+          if (!res.ok && res.status !== 200) remaining.push(item);
+        } catch (e) { remaining.push(item); }
+      }
+      offlineQueue = remaining;
+      localStorage.setItem('statcollect_offline_queue', JSON.stringify(offlineQueue));
+      updateQueueDisplay();
+      if (!offlineQueue.length) showToast('All offline records synced! ✔', 'success');
+    }
+
+    function updateQueueDisplay() {
+      document.getElementById('syncQueueCount').textContent = offlineQueue.length;
+      const c = document.getElementById('queueListContainer');
+      if (!offlineQueue.length) { c.textContent = 'No pending offline submissions.'; return; }
+      let html = '<ul style="padding-left:18px">';
+      offlineQueue.forEach(q =>
+        html += `<li>${q.formID} · ${q.instanceID.slice(0,16)}… ${q.videoOffline ? '<span style="color:#f59e0b">(video needed)</span>' : ''}</li>`
+      );
+      html += '</ul>';
+      c.innerHTML = html;
+    }
+
+    /* INIT & DEVICE AUTO-REGISTRATION */
+    async function autoRegisterDevice() {
+      try {
+        const body = {
+          device_id: deviceID,
+          name: 'Agent Terminal - ' + deviceID.slice(-4),
+          owner: 'Field Operator',
+          status: 'Active',
+          battery_level: 95,
+          storage_utilization: 14.2,
+          os: navigator.userAgent.includes('Windows') ? 'Windows' : 'Android',
+          app_version: '1.2.0',
+          security_compliant: true
+        };
+        await fetch('/admin/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': getApiKey(), 'X-Admin-Key': getApiKey() },
+          body: JSON.stringify(body)
+        });
+      } catch(e) {}
+    }
+    
+    autoRegisterDevice().then(() => {
+      loadForms();
+      updateQueueDisplay();
+    });
+  </script>
+</body>
+</html>

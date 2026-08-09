@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StatCollect — Questionnaire Previewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #165c92; --primary-dark: #0d3d5f; --primary-light: #1e7fc4;
+      --bg-main: #f1f5f9; --bg-card: #ffffff; --border: #cbd5e1;
+      --red: #ef4444; --green: #10b981; --amber: #f59e0b;
+      --text-main: #0f172a; --text-muted: #64748b;
+      --font: 'Inter', -apple-system, sans-serif;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg-main); color: var(--text-main); min-height: 100vh; overflow: hidden; }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0d3d5f 0%, #165c92 60%, #1e7fc4 100%);
+      color: white; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      height: 60px; box-shadow: 0 2px 8px rgba(15,63,95,0.2);
+      position: relative; z-index: 100;
+    }
+    .header h1 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .header-nav { display: flex; gap: 8px; align-items: center; }
+    .header-nav a {
+      color: rgba(255,255,255,0.85); text-decoration: none; font-size: 12px;
+      background: rgba(255,255,255,0.12); padding: 6px 12px; border-radius: 6px;
+      font-weight: 500; transition: all 0.2s;
+    }
+    .header-nav a:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+    /* ── Main Layout ── */
+    .preview-workspace {
+      display: grid; grid-template-columns: 300px 1fr;
+      height: calc(100vh - 60px);
+    }
+    .controls-panel {
+      background: white; border-right: 1px solid var(--border);
+      padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+    }
+    .preview-stage {
+      background: #e2e8f0; display: flex; align-items: center; justify-content: center;
+      padding: 20px; overflow: auto; position: relative;
+    }
+
+    /* ── Controls ── */
+    .control-group { border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; }
+    .control-group:last-child { border-bottom: none; }
+    .control-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 6px; }
+    
+    .btn {
+      padding: 8px 14px; border: none; border-radius: 6px; font-size: 12px;
+      font-weight: 600; cursor: pointer; display: inline-flex; align-items: center;
+      gap: 5px; transition: all 0.15s; justify-content: center;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); background: #eff8ff; }
+    .btn-outline.active { border-color: var(--primary); background: #eff8ff; color: var(--primary); }
+
+    .prop-input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 13px; font-family: var(--font);
+      margin-bottom: 8px;
+    }
+
+    /* Viewport Selector */
+    .viewport-selector { display: flex; gap: 4px; margin-bottom: 10px; }
+    .viewport-btn { flex: 1; text-align: center; }
+
+    /* ── Device Simulator ── */
+    .device-wrapper {
+      background: #000; border-radius: 36px; padding: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex; flex-direction: column;
+    }
+    .device-screen {
+      background: white; border-radius: 26px; overflow-y: auto;
+      transition: all 0.3s ease; position: relative;
+    }
+    
+    /* Device Sizes */
+    .mode-mobile { width: 360px; height: 720px; }
+    .mode-mobile .device-screen { width: 100%; height: 100%; }
+
+    .mode-tablet { width: 768px; height: 1024px; border-radius: 28px; padding: 16px; }
+    .mode-tablet .device-screen { width: 100%; height: 100%; border-radius: 16px; }
+
+    .mode-desktop { width: 100%; height: 100%; max-width: 1100px; max-height: 85vh; border-radius: 12px; padding: 0; background: transparent; box-shadow: none; }
+    .mode-desktop .device-screen { width: 100%; height: 100%; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+
+    /* ── Questionnaire Container (rendered inside simulated screen) ── */
+    .q-container { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    .q-header { border-bottom: 2px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 10px; }
+    .q-title { font-size: 20px; font-weight: 800; color: var(--primary-dark); }
+    .q-desc { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    .q-section {
+      background: white; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 18px; margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .q-sec-title {
+      font-size: 15px; font-weight: 700; color: var(--primary);
+      margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9;
+    }
+
+    .q-field { margin-bottom: 16px; }
+    .q-field:last-child { margin-bottom: 0; }
+    .q-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+    .q-label .req { color: var(--red); margin-left: 2px; }
+    .q-hint { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+
+    .q-input-text, .q-input-select {
+      width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 13px; font-family: var(--font);
+    }
+    .q-input-text:focus, .q-input-select:focus { outline: none; border-color: var(--primary); }
+
+    .q-radio-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .q-radio-btn {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex;
+      align-items: center; gap: 6px; background: white; user-select: none;
+    }
+    .q-radio-btn input { display: none; }
+    .q-radio-btn.selected { border-color: var(--primary); background: #eff8ff; color: var(--primary); }
+
+    /* GPS Input Preview */
+    .gps-preview-box {
+      border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+      background: #fafcff; display: flex; justify-content: space-between; align-items: center;
+    }
+    .gps-coords { font-size: 12px; font-family: monospace; color: var(--text-muted); }
+
+    /* Photo Upload Dropzone Preview */
+    .photo-dropzone {
+      border: 2px dashed var(--border); border-radius: 6px; padding: 16px;
+      text-align: center; font-size: 12px; color: var(--text-muted);
+      cursor: pointer; background: #fafcff;
+    }
+
+    /* Signature Canvas Preview */
+    .signature-box {
+      border: 1px solid var(--border); border-radius: 6px; height: 100px;
+      background: #f8fafc; position: relative;
+    }
+    .signature-watermark {
+      position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 12px; color: var(--text-light);
+      pointer-events: none;
+    }
+
+    /* Rating stars preview */
+    .rating-stars { display: flex; gap: 6px; font-size: 20px; color: #cbd5e1; cursor: pointer; }
+    .rating-stars span.active { color: var(--amber); }
+
+    /* Matrix grid preview */
+    .matrix-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+    .matrix-table th, .matrix-table td { border: 1px solid var(--border); padding: 8px; text-align: center; }
+    .matrix-table th:first-child, .matrix-table td:first-child { text-align: left; font-weight: 600; }
+
+    /* Forms Select styling */
+    .form-selector-card { display: flex; flex-direction: column; gap: 8px; }
+
+    /* Toast notification */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: white; padding: 12px 18px; border-radius: 10px; font-size: 13px; z-index: 9999; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>👁 StatCollect — Responsive Survey Previewer</h1>
+    <div class="header-nav">
+      <a href="templates.html">📐 Builder</a>
+      <a href="index.html">📊 Dashboard</a>
+    </div>
+  </div>
+
+  <div class="preview-workspace">
+    <!-- CONTROLS SIDEBAR -->
+    <div class="controls-panel">
+      <div class="control-group">
+        <div class="control-label">Viewport Mode</div>
+        <div class="viewport-selector">
+          <button class="btn btn-outline active viewport-btn" onclick="setMode('mobile', this)">📱 Mobile</button>
+          <button class="btn btn-outline viewport-btn" onclick="setMode('tablet', this)">📟 Tablet</button>
+          <button class="btn btn-outline viewport-btn" onclick="setMode('desktop', this)">💻 Desktop</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">Select Form Template</div>
+        <div class="form-selector-card">
+          <select id="formSelector" class="prop-input" onchange="onFormSelected()">
+            <option value="">Loading templates…</option>
+          </select>
+          <button class="btn btn-primary" style="width:100%" onclick="loadSelectedForm()">🔄 Reload Form</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">Template Details</div>
+        <div style="font-size:12px;color:var(--text-muted);display:flex;flex-direction:column;gap:6px">
+          <div>ID: <span id="info_id" style="font-family:monospace;color:var(--text-main)">—</span></div>
+          <div>Version: <span id="info_version" style="color:var(--text-main)">—</span></div>
+          <div>Category: <span id="info_category" style="color:var(--text-main)">—</span></div>
+          <div>Sections: <span id="info_sections" style="color:var(--text-main)">0</span></div>
+          <div>Fields: <span id="info_fields" style="color:var(--text-main)">0</span></div>
+        </div>
+      </div>
+
+      <div style="flex:1"></div>
+      <button class="btn btn-outline" onclick="testValidation()" style="width:100%">Verify Required Fields</button>
+    </div>
+
+    <!-- PREVIEW STAGE -->
+    <div class="preview-stage">
+      <div class="device-wrapper mode-mobile" id="deviceWrapper">
+        <div class="device-screen">
+          <div class="q-container" id="qContainer">
+            <!-- Rendered form template gets populated here dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let apiKey = localStorage.getItem('sc_admin_key') || '';
+    let currentTemplate = null;
+    let previewMode = 'mobile';
+    let responses = {};
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFormsList();
+    });
+
+    async function loadFormsList() {
+      try {
+        const res = await fetch('/templates', { headers: { 'X-API-Key': apiKey } });
+        const data = await res.json();
+        const items = data.templates || [];
+        const selector = document.getElementById('formSelector');
+        if (!items.length) {
+          selector.innerHTML = '<option value="">No templates available</option>';
+          return;
+        }
+        selector.innerHTML = items.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        loadSelectedForm();
+      } catch(e) {
+        document.getElementById('formSelector').innerHTML = '<option value="">Error loading templates</option>';
+      }
+    }
+
+    async function loadSelectedForm() {
+      const id = document.getElementById('formSelector').value;
+      if (!id) return;
+      try {
+        const res = await fetch(`/templates/${id}`, { headers: { 'X-API-Key': apiKey } });
+        const t = await res.json();
+        currentTemplate = t;
+        
+        // Update details
+        document.getElementById('info_id').textContent = t.id;
+        document.getElementById('info_version').textContent = t.version || '1.0';
+        document.getElementById('info_category').textContent = t.category || 'Other';
+        
+        const schema = typeof t.schema === 'string' ? JSON.parse(t.schema) : t.schema;
+        const sections = schema.sections || [];
+        document.getElementById('info_sections').textContent = sections.length;
+        const fieldCount = sections.reduce((acc, s) => acc + (s.fields || []).length, 0);
+        document.getElementById('info_fields').textContent = fieldCount;
+
+        responses = {};
+        renderForm(t.name, t.description, sections);
+      } catch(e) {
+        showToast('Error loading form template details');
+      }
+    }
+
+    function onFormSelected() {
+      loadSelectedForm();
+    }
+
+    function setMode(mode, btn) {
+      document.querySelectorAll('.viewport-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const wrapper = document.getElementById('deviceWrapper');
+      wrapper.className = `device-wrapper mode-${mode}`;
+      previewMode = mode;
+    }
+
+    function renderForm(name, description, sections) {
+      const container = document.getElementById('qContainer');
+      container.innerHTML = `
+        <div class="q-header">
+          <div class="q-title">${esc(name)}</div>
+          <div class="q-desc">${esc(description || '')}</div>
+        </div>
+        <div id="qSectionsList"></div>
+      `;
+
+      const list = document.getElementById('qSectionsList');
+      sections.forEach((sec, idx) => {
+        const secDiv = document.createElement('div');
+        secDiv.className = 'q-section';
+        secDiv.id = `sec_${sec.id}`;
+        secDiv.innerHTML = `
+          <div class="q-sec-title">${idx + 1}. ${esc(sec.title)}</div>
+          <div class="q-fields-list"></div>
+        `;
+        
+        const fieldsList = secDiv.querySelector('.q-fields-list');
+        (sec.fields || []).forEach(f => {
+          const fDiv = renderFieldMarkup(f);
+          fieldsList.appendChild(fDiv);
+        });
+
+        list.appendChild(secDiv);
+      });
+
+      // Bind conditional rules
+      evaluateConditionalVisibility();
+    }
+
+    function renderFieldMarkup(f) {
+      const div = document.createElement('div');
+      div.className = 'q-field';
+      div.id = `qf_${f.key}`;
+      div.dataset.key = f.key;
+
+      const reqDot = f.required ? '<span class="req">*</span>' : '';
+      const label = `<label class="q-label">${esc(f.label)} ${reqDot}</label>`;
+      const hint = f.hint ? `<div class="q-hint">${esc(f.hint)}</div>` : '';
+
+      let inner = '';
+      if (f.type === 'text' || f.type === 'tel' || f.type === 'email') {
+        inner = `<input type="text" class="q-input-text" placeholder="Enter text…" oninput="onFieldInput('${f.key}', this.value)" />`;
+      } else if (f.type === 'number') {
+        inner = `<input type="number" class="q-input-text" placeholder="Enter number…" oninput="onFieldInput('${f.key}', this.value)" />`;
+      } else if (f.type === 'date') {
+        inner = `<input type="date" class="q-input-text" oninput="onFieldInput('${f.key}', this.value)" />`;
+      } else if (f.type === 'select') {
+        inner = `
+          <select class="q-input-select" onchange="onFieldInput('${f.key}', this.value)">
+            <option value="">-- Select option --</option>
+            ${(f.options || []).map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+          </select>
+        `;
+      } else if (f.type === 'multiselect') {
+        inner = `
+          <div class="q-radio-group">
+            ${(f.options || []).map((o, idx) => `
+              <label class="q-radio-btn" onclick="toggleMultiSelect(this, '${f.key}', '${o.value}')">
+                <input type="checkbox" value="${o.value}" /> ${esc(o.label)}
+              </label>
+            `).join('')}
+          </div>
+        `;
+      } else if (f.type === 'rating') {
+        inner = `
+          <div class="rating-stars" id="stars_${f.key}">
+            <span onclick="setRating('${f.key}', 1)">★</span>
+            <span onclick="setRating('${f.key}', 2)">★</span>
+            <span onclick="setRating('${f.key}', 3)">★</span>
+            <span onclick="setRating('${f.key}', 4)">★</span>
+            <span onclick="setRating('${f.key}', 5)">★</span>
+          </div>
+        `;
+      } else if (f.type === 'gps') {
+        inner = `
+          <div class="gps-preview-box">
+            <span class="gps-coords" id="coords_${f.key}">No GPS Lock</span>
+            <button class="btn btn-outline btn-sm" onclick="simulateGps('${f.key}')">📍 Acquire GPS</button>
+          </div>
+        `;
+      } else if (f.type === 'photo') {
+        inner = `
+          <div class="photo-dropzone">
+            📷 Camera / Drop image file
+          </div>
+        `;
+      } else if (f.type === 'signature') {
+        inner = `
+          <div class="signature-box">
+            <div class="signature-watermark">Draw signature here</div>
+          </div>
+        `;
+      } else if (f.type === 'matrix') {
+        const rows = f.rows || [{ label: 'Row 1' }];
+        const cols = f.cols || [{ label: 'Col 1' }, { label: 'Col 2' }];
+        inner = `
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th></th>
+                ${cols.map(c => `<th>${esc(c.label)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r, ri) => `
+                <tr>
+                  <td>${esc(r.label)}</td>
+                  ${cols.map((c, ci) => `
+                    <td>
+                      <input type="radio" name="matrix_${f.key}_${ri}" value="${ci}" onchange="onFieldInput('${f.key}_${ri}', '${ci}')" />
+                    </td>
+                  `).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        inner = `<input type="text" class="q-input-text" placeholder="Value…" oninput="onFieldInput('${f.key}', this.value)" />`;
+      }
+
+      div.innerHTML = label + hint + inner;
+      return div;
+    }
+
+    function onFieldInput(key, val) {
+      responses[key] = val;
+      evaluateConditionalVisibility();
+    }
+
+    function toggleMultiSelect(labelEl, key, value) {
+      labelEl.classList.toggle('selected');
+      if (!responses[key]) responses[key] = [];
+      const idx = responses[key].indexOf(value);
+      if (idx > -1) {
+        responses[key].splice(idx, 1);
+      } else {
+        responses[key].push(value);
+      }
+      evaluateConditionalVisibility();
+    }
+
+    function setRating(key, val) {
+      responses[key] = val;
+      const stars = document.getElementById(`stars_${key}`).children;
+      for (let i = 0; i < 5; i++) {
+        stars[i].classList.toggle('active', i < val);
+      }
+      evaluateConditionalVisibility();
+    }
+
+    function simulateGps(key) {
+      const lat = (0.3476 + Math.random() * 0.01).toFixed(6);
+      const lng = (32.5825 + Math.random() * 0.01).toFixed(6);
+      responses[key] = `${lat} ${lng} 1182.0 4.0`;
+      document.getElementById(`coords_${key}`).textContent = `${lat}, ${lng} (Simulated)`;
+      showToast('GPS Coordinates Captured!');
+      evaluateConditionalVisibility();
+    }
+
+    function evaluateConditionalVisibility() {
+      if (!currentTemplate) return;
+      const schema = typeof currentTemplate.schema === 'string' ? JSON.parse(currentTemplate.schema) : currentTemplate.schema;
+      const sections = schema.sections || [];
+      sections.forEach(sec => {
+        (sec.fields || []).forEach(f => {
+          const el = document.getElementById(`qf_${f.key}`);
+          if (!el) return;
+          if (f.showWhen) {
+            const condField = f.showWhen.field;
+            const condVal = f.showWhen.value;
+            const op = f.showWhen.op || 'eq';
+            const curVal = responses[condField];
+            let show = false;
+            
+            if (op === 'eq' && curVal === condVal) show = true;
+            if (op === 'neq' && curVal !== condVal) show = true;
+            if (op === 'gt' && parseFloat(curVal) > parseFloat(condVal)) show = true;
+            if (op === 'lt' && parseFloat(curVal) < parseFloat(condVal)) show = true;
+
+            el.style.display = show ? 'block' : 'none';
+          } else {
+            el.style.display = 'block';
+          }
+        });
+      });
+    }
+
+    function testValidation() {
+      if (!currentTemplate) return;
+      const schema = typeof currentTemplate.schema === 'string' ? JSON.parse(currentTemplate.schema) : currentTemplate.schema;
+      const sections = schema.sections || [];
+      let missing = [];
+      
+      sections.forEach(sec => {
+        (sec.fields || []).forEach(f => {
+          const el = document.getElementById(`qf_${f.key}`);
+          if (el && el.style.display !== 'none' && f.required) {
+            const val = responses[f.key];
+            if (!val || (Array.isArray(val) && val.length === 0)) {
+              missing.push(f.label);
+            }
+          }
+        });
+      });
+
+      if (missing.length > 0) {
+        showToast(`Missing required fields: ${missing.slice(0,2).join(', ')}`, 'error');
+      } else {
+        showToast('All visible required fields verified successfully!', 'success');
+      }
+    }
+
+    function showToast(msg, type='') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + type;
+      setTimeout(() => t.className = 'toast', 3500);
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>

@@ -111,7 +111,8 @@ The backend auto-creates and seeds the following tables on first run:
 - `STATCHAT_DB_HOST` / `STATCHAT_DB_PORT` / `STATCHAT_DB_USER` / `STATCHAT_DB_PASSWORD` / `STATCHAT_DB_NAME` / `STATCHAT_DB_SSLMODE`
 - `BACKEND_PORT` — HTTP listen port (default `4000`)
 - `STATCHAT_AUTH_REQUIRED` — set `true` to enforce JWT auth on all protected routes, including WebSocket `/ws`
-- `STATCHAT_JWT_SECRET` — JWT signing secret; required when `STATCHAT_AUTH_REQUIRED=true` and must not remain the default development value
+- `STATGATE_REGISTRY_JWT_SECRET` — shared StatGate identity signing secret. Required when `STATCHAT_AUTH_REQUIRED=true`; StatChat validates Registry-issued tokens and provisions the authenticated profile on first use.
+- `STATCHAT_JWT_SECRET` — legacy local-development fallback only. Do not use a separate secret in production.
 - `STATCHAT_CORS_ALLOWED_ORIGINS` — comma-separated list of allowed browser origins for CORS; if unset, only same-origin and localhost origins are accepted
 - `STATCHAT_UPLOAD_DIR` — upload directory (default `uploads`)
 

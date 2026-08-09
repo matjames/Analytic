@@ -18,8 +18,8 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="theme-color" content="#0ea5e9" />
       </Head>
 
-      <AuthProvider mockMode={true}>
-        <LauncherProvider mockMode={true}>
+      <AuthProvider mockMode={false}>
+        <LauncherProvider mockMode={false}>
           <Component {...pageProps} />
         </LauncherProvider>
       </AuthProvider>

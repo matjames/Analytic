@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<data id="test_form">
+  <instanceID>test-instance-001</instanceID>
+  <name>Test Submission</name>
+  <value>42</value>
+</data>

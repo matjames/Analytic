@@ -78,7 +78,7 @@ SELECT id, name FROM channels WHERE name ILIKE $1 ORDER BY name LIMIT 20`, like)
 
 	// Messages (only ones in conversations the user belongs to)
 	messageRows, err := db.QueryContext(context.Background(), `
-SELECT m.id, m.conversation_id, m.channel_id, m.sender, m.text, m.created_at, m.updated_at, m.deleted_at, m.parent_message_id, m.thread_root_id, m.status, m.tenant_id, m.delivery_status
+SELECT m.id, m.conversation_id, m.channel_id, COALESCE(m.sender_id, ''), m.sender, m.text, m.created_at, m.updated_at, m.deleted_at, m.parent_message_id, m.thread_root_id, m.status, m.tenant_id, m.delivery_status
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE m.status != 'deleted' AND m.text ILIKE $1
@@ -94,7 +94,7 @@ ORDER BY m.created_at DESC LIMIT 30`, like, userID)
 		var deletedAt sql.NullTime
 		var parentID sql.NullString
 		var threadRootID sql.NullString
-		if err := messageRows.Scan(&msg.ID, &msg.ConversationID, &channelID, &msg.Sender, &msg.Text, &msg.CreatedAt, &updatedAt, &deletedAt, &parentID, &threadRootID, &msg.Status, &msg.TenantID, &msg.DeliveryStatus); err != nil {
+		if err := messageRows.Scan(&msg.ID, &msg.ConversationID, &channelID, &msg.SenderID, &msg.Sender, &msg.Text, &msg.CreatedAt, &updatedAt, &deletedAt, &parentID, &threadRootID, &msg.Status, &msg.TenantID, &msg.DeliveryStatus); err != nil {
 			messageRows.Close()
 			return result, err
 		}

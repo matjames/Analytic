@@ -58,6 +58,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_NAME=StatGate
+      - FLASK_ANALYTICS_URL=http://statgate-analytics:5000
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3002 >/dev/null 2>&1 || exit 1"]
@@ -83,6 +84,12 @@ services:
       - CORS_ALLOWED_ORIGIN=http://localhost:5000
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
       - FLASK_BACKEND_URL=http://statgate-analytics:5000
+      - KAGGLE_DB_HOST=postgres
+      - KAGGLE_DB_PORT=${KAGGLE_DB_PORT:-5432}
+      - KAGGLE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - KAGGLE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
     secrets:
       - STATGATE_INTERNAL_API_KEY
     restart: unless-stopped
@@ -107,6 +114,8 @@ services:
       - FLASK_PORT=5000
       - GO_BACKEND_URL=http://statgate-core:8080
       - ANALYTICS_REQUIRE_AUTH=${ANALYTICS_REQUIRE_AUTH:-false}
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATCHAT_UI_URL=http://statchat-frontend:80
       - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
       - STATGATE_REGISTRY_UI_URL=http://statgate-registry-ui:80
       - ENABLE_NOTEBOOK_EXECUTION=false
@@ -117,6 +126,8 @@ services:
       - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
       - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
       - KAGGLE_STAGING_SCHEMA=${KAGGLE_STAGING_SCHEMA:-ml_staging}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-REDACTED_PLACEHOLDER}
@@ -126,6 +137,9 @@ services:
       - STATGATE_REGISTRY_JWT_SECRET
     volumes:
       - ./data:/app/data
+      # Keep launcher/service-discovery URLs aligned with Compose without a
+      # full Analytics image rebuild.
+      - ./frontend/config/services.json:/app/config/services.json:ro
     depends_on:
       statgate-core:
         condition: service_healthy
@@ -160,6 +174,7 @@ services:
       - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
       - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?required}
       # The Go app signs/verifies tokens with JWT_SECRET (not STATGATE_REGISTRY_JWT_SECRET)
       - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
     secrets:
@@ -207,7 +222,6 @@ services:
   # NOTE: The app reads POSTGRES_* env vars. We map HELPDESK_DB_* from
   # .env to POSTGRES_* here so the container gets the right credentials.
   statgate-helpdesk-api:
-    profiles: ["disabled"]
     build:
       context: ./helpdesk-master/backend
     ports:
@@ -220,8 +234,10 @@ services:
       - POSTGRES_DB=${HELPDESK_DB_NAME:-statgate}
       - POSTGRES_USER=${HELPDESK_DB_USER:-statgate}
       - POSTGRES_PASSWORD=${HELPDESK_DB_PASSWORD:-REDACTED_PLACEHOLDER}
-      # The Node app signs/verifies tokens with SECRETKEY (not JWT_SECRET)
-      - SECRETKEY=${HELPDESK_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      # Unified identity: Helpdesk validates the same Registry JWT as
+      # the rest of the StatGate ecosystem so users move seamlessly.
+      - SECRETKEY=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
     depends_on:
       postgres:
         condition: service_healthy
@@ -239,7 +255,6 @@ services:
   # 7. OPERATIONS HELPDESK - React UI
   # ══════════════════════════════════════════════════════════════
   statgate-helpdesk-ui:
-    profiles: ["disabled"]
     build:
       context: ./helpdesk-master/frontend
       args:
@@ -275,14 +290,17 @@ services:
       - STATCHAT_DB_USER=${STATCHAT_DB_USER:-Statchat}
       - STATCHAT_DB_PASSWORD=${STATCHAT_DB_PASSWORD:-Statgate}
       - STATCHAT_DB_SSLMODE=${STATCHAT_DB_SSLMODE:-disable}
-      - STATCHAT_AUTH_REQUIRED=${STATCHAT_AUTH_REQUIRED:-false}
-      - STATCHAT_JWT_SECRET=${STATCHAT_JWT_SECRET:-statchat_prod_secret}
+      - STATCHAT_AUTH_REQUIRED=${STATCHAT_AUTH_REQUIRED:-true}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?required}
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?required}
+      - STATCHAT_CORS_ALLOWED_ORIGINS=${STATCHAT_CORS_ALLOWED_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/readyz >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -301,6 +319,120 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 9. PROJECTS MANAGEMENT SYSTEM (PMS)
+  # ══════════════════════════════════════════════════════════════
+  statgate-pms-api:
+    build:
+      context: ./PMS/backend
+    ports:
+      - "8091:8080"
+    environment:
+      - PORT=8080
+      - PMS_ENV=production
+      - BIND_ADDRESS=0.0.0.0
+      - PMS_DB_HOST=postgres
+      - PMS_DB_PORT=${PMS_DB_PORT:-5432}
+      - PMS_DB_NAME=${PMS_DB_NAME:-pms}
+      - PMS_DB_USER=${PMS_DB_USER:-PMS}
+      - PMS_DB_PASSWORD=${PMS_DB_PASSWORD:-Statgate}
+      - PMS_DB_SSLMODE=${PMS_DB_SSLMODE:-disable}
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATCHAT_UI_URL=http://statchat-frontend:80
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statgate-pms-ui:
+    build:
+      context: ./PMS/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_PMS_API_URL: http://localhost:8091
+    ports:
+      - "3010:80"
+    depends_on:
+      statgate-pms-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # 10. RESEARCH MANAGEMENT SYSTEM (RMS)
+  # ══════════════════════════════════════════════════════════════
+  statgate-rms-api:
+    build:
+      context: ./RMS/backend
+    ports:
+      - "8092:8080"
+    environment:
+      - PORT=8080
+      - RMS_ENV=production
+      - BIND_ADDRESS=0.0.0.0
+      - RMS_DB_HOST=postgres
+      - RMS_DB_PORT=${RMS_DB_PORT:-5432}
+      - RMS_DB_NAME=${RMS_DB_NAME:-rms}
+      - RMS_DB_USER=${RMS_DB_USER:-RMS}
+      - RMS_DB_PASSWORD=${RMS_DB_PASSWORD:-Statgate}
+      - RMS_DB_SSLMODE=${RMS_DB_SSLMODE:-disable}
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATCHAT_UI_URL=http://statchat-frontend:80
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statgate-rms-ui:
+    build:
+      context: ./RMS/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_RMS_API_URL: http://localhost:8092
+    ports:
+      - "3011:80"
+    depends_on:
+      statgate-rms-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -411,6 +543,7 @@ services:
 
   mlflow:
     image: larribas/mlflow:latest
+    command: --host 0.0.0.0 --port 5000
     ports:
       - "5002:5000"
     environment:
@@ -421,6 +554,91 @@ services:
     volumes:
       - mlflow_data:/mlflow
     restart: unless-stopped
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # ENTERPRISE SEARCH & INTEGRATION SERVICE
+  # ══════════════════════════════════════════════════════════════
+  statgate-enterprise:
+    build:
+      context: ./enterprise/search
+    ports:
+      - "8095:8095"
+    environment:
+      - ENTERPRISE_SEARCH_PORT=8095
+      - PMS_API_URL=http://statgate-pms-api:8080
+      - RMS_API_URL=http://statgate-rms-api:8080
+      - REGISTRY_API_URL=http://statgate-registry-api:9090
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+      - PMS_UI_URL=http://localhost:3010
+      - RMS_UI_URL=http://localhost:3011
+      - REGISTRY_UI_URL=http://localhost:3007
+      - STATCHAT_UI_URL=http://localhost:3009
+      - HELPDESK_UI_URL=http://localhost:3005
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8095/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # ══════════════════════════════════════════════════════════════
+  # ENTERPRISE CORE - PHASE II (Event Bus, Notifications, Timeline,
+  # Dashboards, Widgets, Files, Permissions, Calendar, Reporting,
+  # AI Preparation, API Governance, Monitoring)
+  # ══════════════════════════════════════════════════════════════
+  statgate-enterprise-core:
+    build:
+      context: ./enterprise/core
+    ports:
+      - "8096:8096"
+    environment:
+      - ENTERPRISE_CORE_PORT=8096
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ENTERPRISE_DB_HOST=postgres
+      - ENTERPRISE_DB_PORT=5432
+      - ENTERPRISE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - ENTERPRISE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - ENTERPRISE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - ENTERPRISE_DB_SSLMODE=disable
+      - PMS_API_URL=http://statgate-pms-api:8080
+      - RMS_API_URL=http://statgate-rms-api:8080
+      - REGISTRY_API_URL=http://statgate-registry-api:9090
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+      - ANALYTICS_API_URL=http://statgate-analytics:5000
+      - STATCOLLECT_API_URL=http://statcollect:8080
+      - PMS_UI_URL=http://localhost:3010
+      - RMS_UI_URL=http://localhost:3011
+      - REGISTRY_UI_URL=http://localhost:3007
+      - STATCHAT_UI_URL=http://localhost:3009
+      - HELPDESK_UI_URL=http://localhost:3005
+      - ANALYTICS_UI_URL=http://localhost:5000
+      - ENTERPRISE_UPLOAD_DIR=/app/uploads/enterprise
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
+    secrets:
+      - STATGATE_INTERNAL_API_KEY
+    volumes:
+      - enterprise_uploads:/app/uploads/enterprise
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8096/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - statgate-network
 
@@ -444,4 +662,5 @@ volumes:
   superset_data:
   airflow_logs:
   mlflow_data:
+  enterprise_uploads:
 

@@ -131,6 +131,48 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/search", async (req, res) => {
+  try {
+    const query = req.query.q;
+    if (!query) {
+      return res.status(400).json({ status: "error", message: "Search query required" });
+    }
+
+    const { Op } = await import("sequelize");
+    const searchTerm = `%${query}%`;
+
+    const tickets = await TicketModel.findAll({
+      where: {
+        [Op.or]: [
+          { reportedby: { [Op.iLike]: searchTerm } },
+          { facility: { [Op.iLike]: searchTerm } },
+          { system: { [Op.iLike]: searchTerm } },
+          { category: { [Op.iLike]: searchTerm } },
+          { description: { [Op.iLike]: searchTerm } },
+          { status: { [Op.iLike]: searchTerm } },
+        ],
+      },
+      limit: 10,
+      include: [{ model: User }],
+    });
+
+    const results = tickets.map((ticket) => ({
+      type: "ticket",
+      id: String(ticket.id),
+      title: ticket.description ? ticket.description.substring(0, 80) : `Ticket #${ticket.id}`,
+      description: `${ticket.facility} • ${ticket.category} • ${ticket.status}`,
+      meta: ticket.system,
+    }));
+
+    res.status(200).json(results);
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+
 router.get("/count", async (req, res) => {
   try {
     const tickets = await TicketModel.findAll();

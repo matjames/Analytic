@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<data id="community_health_survey" version="2026.08.05">
+  <meta><instanceID>uuid:health-survey-002-wakiso</instanceID></meta>
+  <respondent_info>
+    <respondent_name>John Okello</respondent_name>
+    <respondent_age>52</respondent_age>
+    <respondent_gender>male</respondent_gender>
+    <respondent_phone>+256772345678</respondent_phone>
+    <household_size>8</household_size>
+    <district>wakiso</district>
+    <village>Nansana</village>
+    <gps_location>0.3636 32.5267 1190.0 4.0</gps_location>
+  </respondent_info>
+  <health_status>
+    <has_chronic_condition>yes</has_chronic_condition>
+    <chronic_conditions>diabetes hypertension</chronic_conditions>
+    <has_insurance>no</has_insurance>
+    <last_hospital_visit>2026-06-20</last_hospital_visit>
+    <visit_reason>illness</visit_reason>
+    <medication_count>3</medication_count>
+    <medication_list>Metformin 500mg, Glibenclamide 5mg, Lisinopril 10mg</medication_list>
+  </health_status>
+  <water_sanitation>
+    <water_source>borehole</water_source>
+    <water_treatment>chlorine</water_treatment>
+    <has_toilet>yes</has_toilet>
+    <toilet_type>vip</toilet_type>
+    <handwashing_facility>yes_no_soap</handwashing_facility>
+  </water_sanitation>
+  <child_health>
+    <has_children_under_5>yes</has_children_under_5>
+    <children_under_5_count>3</children_under_5_count>
+    <vaccination_complete>partial</vaccination_complete>
+    <vaccination_reason>Missed appointments due to work schedule</vaccination_reason>
+  </child_health>
+  <feedback>
+    <satisfaction_rating>3</satisfaction_rating>
+    <comments>Need more health workers in the area.</comments>
+    <consent>yes</consent>
+  </feedback>
+</data>

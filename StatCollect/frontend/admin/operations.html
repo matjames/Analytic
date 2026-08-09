@@ -1,0 +1,1856 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StatCollect Operations Centre — StatGate</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #0f172a;
+      --primary-light: #1e293b;
+      --primary-dark: #020617;
+      --accent: #2563eb;
+      --accent-light: #3b82f6;
+      --accent-dark: #1d4ed8;
+      --bg: #f8fafc;
+      --bg-card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-light: #94a3b8;
+      --red: #ef4444;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --purple: #8b5cf6;
+      --teal: #14b8a6;
+      --font-title: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
+      color: white; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      height: 64px; box-shadow: var(--shadow);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-family: var(--font-title); font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .header h1 span { font-weight: 400; color: var(--text-light); }
+    .header-nav { display: flex; gap: 8px; align-items: center; }
+    .header-nav a {
+      color: rgba(255,255,255,0.85); text-decoration: none; font-size: 13px;
+      background: rgba(255,255,255,0.08); padding: 8px 16px; border-radius: var(--radius-sm);
+      font-weight: 500; transition: all 0.2s;
+    }
+    .header-nav a:hover { background: rgba(255,255,255,0.18); color: #fff; }
+
+    /* API Key Banner */
+    .api-banner {
+      background: white; border-bottom: 1px solid var(--border); padding: 12px 24px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: var(--shadow);
+    }
+    .api-banner label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .api-banner input {
+      flex: 1; min-width: 240px; max-width: 400px; padding: 8px 12px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px;
+      font-family: var(--font-body);
+    }
+    .api-banner input:focus { outline: none; border-color: var(--accent); }
+
+    /* Workspace */
+    .workspace {
+      display: flex; flex: 1; height: calc(100vh - 120px); overflow: hidden;
+    }
+    .sidebar {
+      width: 250px; background: white; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px; padding: 12px; overflow-y: auto;
+    }
+    .main-content {
+      flex: 1; padding: 24px; overflow-y: auto;
+    }
+
+    /* Sidebar Buttons */
+    .side-btn {
+      display: flex; align-items: center; gap: 10px; padding: 12px; border: none;
+      background: transparent; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 13px; font-weight: 600; color: var(--text-muted); text-align: left;
+      transition: all 0.15s; font-family: var(--font-body);
+    }
+    .side-btn:hover { background: #f1f5f9; color: var(--text); }
+    .side-btn.active { background: #eff6ff; color: var(--accent); }
+    .side-btn .icon { font-size: 18px; width: 24px; text-align: center; }
+
+    /* Panel view switching */
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* Typography & Headers */
+    .view-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px;
+    }
+    .view-header h2 { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--primary); }
+    .view-header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Grid & Cards */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+      margin-bottom: 20px; padding: 20px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media(max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* Inputs */
+    .prop-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 6px; }
+    .prop-input, .prop-select, .prop-textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-body);
+      margin-bottom: 12px; background: white; color: var(--text);
+    }
+    .prop-input:focus, .prop-select:focus, .prop-textarea:focus { outline: none; border-color: var(--accent); }
+    .prop-textarea { resize: vertical; height: 100px; }
+
+    /* Table styles */
+    .op-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    .op-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 2px solid var(--border); background: #f8fafc; }
+    .op-table td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    .op-table tr:hover td { background: #fafcff; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+    .badge-active    { background: #d1fae5; color: #065f46; }
+    .badge-suspended { background: #fee2e2; color: #991b1b; }
+    .badge-retired   { background: #f3f4f6; color: #4b5563; }
+    .badge-compliant { background: #e0f2fe; color: #0369a1; }
+    .badge-danger    { background: #fee2e2; color: #ef4444; }
+
+    /* Buttons */
+    .btn {
+      padding: 9px 16px; border: none; border-radius: var(--radius-sm); font-size: 13px;
+      font-weight: 600; cursor: pointer; display: inline-flex; align-items: center;
+      gap: 6px; transition: all 0.15s; justify-content: center; font-family: var(--font-body);
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-muted); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); background: #eff6ff; }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: white; padding: 12px 20px; border-radius: 10px; font-size: 13px; z-index: 9999; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: var(--green); }
+    .toast.error   { background: var(--red); }
+
+    /* AI checks suggestions lists */
+    .suggest-box { border-left: 3px solid var(--accent); background: #eff6ff; padding: 12px; border-radius: 0 8px 8px 0; margin-bottom: 10px; font-size: 13px; }
+
+    /* History timeline */
+    .timeline { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+    .timeline-item { border-left: 2px solid var(--border); padding-left: 16px; position: relative; }
+    .timeline-item::before { content: ''; position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid white; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>⚙️ StatCollect Operations Centre <span>— Production Readiness Console</span></h1>
+    <div class="header-nav">
+      <a href="/ai/">🧠 StatCollect AI</a>
+      <a href="index.html">📊 Dashboard</a>
+      <a href="templates.html">📐 Template Builder</a>
+    </div>
+  </div>
+
+  <div class="api-banner">
+    <label>Admin Access Key:</label>
+    <input type="password" id="adminKeyInput" placeholder="Enter admin key here…" oninput="onKeyChange()" onkeydown="if(event.key==='Enter'){event.preventDefault();submitApiKey();}" />
+    <button class="btn btn-primary btn-sm" onclick="submitApiKey()">🔑 Save & Connect</button>
+  </div>
+
+  <div class="workspace">
+    <!-- LEFT SIDEBAR PANELS -->
+    <div class="sidebar">
+      <button class="side-btn active" onclick="switchPanel('devices', this)"><span class="icon">📱</span>Device Assets</button>
+      <button class="side-btn" onclick="switchPanel('assignments', this)"><span class="icon">🎯</span>Intelligent Assignments</button>
+      <button class="side-btn" onclick="switchPanel('registry', this)"><span class="icon">🗂</span>Longitudinal Registry</button>
+      <button class="side-btn" onclick="switchPanel('sampling', this)"><span class="icon">🎲</span>Sampling Laboratory</button>
+      <button class="side-btn" onclick="switchPanel('workflows', this)"><span class="icon">🔁</span>Approval Workflows</button>
+      <button class="side-btn" onclick="switchPanel('approvals', this)"><span class="icon">✅</span>Submission Approvals</button>
+      <button class="side-btn" onclick="switchPanel('schedules', this)"><span class="icon">📅</span>Survey Schedules</button>
+      <button class="side-btn" onclick="switchPanel('comments', this)"><span class="icon">💬</span>StatChat Collaboration</button>
+      <button class="side-btn" onclick="switchPanel('integrations', this)"><span class="icon">🔌</span>Integration Hub</button>
+      <button class="side-btn" onclick="switchPanel('plugins', this)"><span class="icon">🧩</span>Plugin Registry</button>
+      <button class="side-btn" onclick="switchPanel('rules', this)"><span class="icon">⚖️</span>Business Rules</button>
+      <button class="side-btn" onclick="switchPanel('ai', this)"><span class="icon">🤖</span>AI Survey Intelligence</button>
+      <button class="side-btn" onclick="switchPanel('analytics', this)"><span class="icon">📈</span>Survey Analytics</button>
+      <button class="side-btn" onclick="switchPanel('quality', this)"><span class="icon">🛡️</span>Data Quality & Enumerator Prod</button>
+    </div>
+
+
+    <!-- MAIN VIEWPORT -->
+    <div class="main-content">
+
+      <!-- ── DEVICES PANEL ── -->
+      <div class="view-panel active" id="panel_devices">
+        <div class="view-header">
+          <div>
+            <h2>📱 Enterprise Device Management</h2>
+            <p>Enroll, approve, monitor health status, and issue remote controls to field devices.</p>
+          </div>
+          <button class="btn btn-primary" onclick="showAddDeviceSim()">+ Enroll Asset</button>
+        </div>
+
+        <div class="grid-2" id="deviceEnrollCard" style="display:none">
+          <div class="card">
+            <h3>Enroll New Device Simulator</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Device Name</label>
+              <input class="prop-input" id="dev_name" placeholder="e.g. Field Tablet A" />
+              <label class="prop-label">Device UUID / IMEI</label>
+              <input class="prop-input" id="dev_id" placeholder="e.g. dev_tablet_99" />
+              <label class="prop-label">Owner</label>
+              <input class="prop-input" id="dev_owner" placeholder="e.g. James M." />
+              <label class="prop-label">Operating System</label>
+              <input class="prop-input" id="dev_os" placeholder="Android 13" />
+              <button class="btn btn-primary" onclick="enrollDevice()">Submit Enrollment</button>
+              <button class="btn btn-outline" onclick="hideAddDeviceSim()">Cancel</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="card">
+          <table class="op-table">
+            <thead>
+              <tr>
+                <th>Device ID</th>
+                <th>Asset Name</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th>OS</th>
+                <th>Battery</th>
+                <th>Compliance</th>
+                <th>Last Sync</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="devicesTableBody">
+              <tr><td colspan="9" style="text-align:center;color:var(--text-light)">Loading devices list…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── ASSIGNMENTS PANEL ── -->
+      <div class="view-panel" id="panel_assignments">
+        <div class="view-header">
+          <div>
+            <h2>🎯 Survey Assignment Engine</h2>
+            <p>Define targeted deadlines, targets, thresholds, and crons for specific regions, facilities, or users.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Configure Assignment Rule</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Target Form / Questionnaire ID</label>
+              <select class="prop-select" id="ass_form_id">
+                <option value="">— Select Form —</option>
+              </select>
+              <label class="prop-label">Target Type</label>
+              <select class="prop-select" id="ass_target_type">
+                <option value="enumerator">Individual Enumerator</option>
+                <option value="team">Field Team</option>
+                <option value="district">District Administration</option>
+                <option value="facility">Health Facility / Clinic</option>
+                <option value="school">School Facility</option>
+                <option value="boundary">Boundary / GIS Area</option>
+              </select>
+              <label class="prop-label">Target ID (Name/Code)</label>
+              <input class="prop-input" id="ass_target_id" placeholder="e.g. kampala_team_1" />
+              <label class="prop-label">Daily Target (Number of submissions)</label>
+              <input class="prop-input" type="number" id="ass_daily_target" value="5" />
+              <label class="prop-label">Escalation / Reminder Cron</label>
+              <input class="prop-input" id="ass_cron" value="0 9 * * *" placeholder="Daily reminder schedule" />
+              <button class="btn btn-primary" onclick="createAssignment()">Create Rule</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Active Assignment Rules</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Form ID</th>
+                  <th>Target Type</th>
+                  <th>Target ID</th>
+                  <th>Daily Target</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="assignmentsTableBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-light)">No rules configured.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── REGISTRY PANEL ── -->
+      <div class="view-panel" id="panel_registry">
+        <div class="view-header">
+          <div>
+            <h2>🗂 Household, Facility & Respondent Registry</h2>
+            <p>Maintain permanent identity profiles and audit timelines of longitudinal patient/school visits.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Register Entity Profile</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Entity Unique ID</label>
+              <input class="prop-input" id="reg_id" placeholder="e.g. HH-9022" />
+              <label class="prop-label">Registry Type</label>
+              <select class="prop-select" id="reg_type">
+                <option value="individual">Individual Respondent</option>
+                <option value="household">Household Dwelling</option>
+                <option value="health_facility">Health Facility / Clinic</option>
+                <option value="school">School / Academy</option>
+                <option value="farm">Agriculture Farm</option>
+              </select>
+              <label class="prop-label">Name / Label</label>
+              <input class="prop-input" id="reg_name" placeholder="e.g. Kampala Primary School" />
+              <label class="prop-label">Location (District/Facility)</label>
+              <input class="prop-input" id="reg_location" placeholder="Kampala District" />
+              <label class="prop-label">Attributes (JSON)</label>
+              <textarea class="prop-textarea" id="reg_attribs" placeholder='{"beds": 45, "funding": "government"}'></textarea>
+              <button class="btn btn-primary" onclick="saveRegistryEntity()">Save Entity</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Longitudinal Tracking Timeline</h3>
+            <label class="prop-label">Select Entity to Inspect Visited History</label>
+            <select class="prop-select" id="reg_inspect_select" onchange="inspectLongitudinalHistory()">
+              <option value="">— Select Registered Entity —</option>
+            </select>
+            <div id="longitudinalTimeline" class="timeline">
+              <div style="color:var(--text-light);font-size:13px">Select an entity to render baseline vs midline timelines.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Registered System Assets</h3>
+          <table class="op-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Registry Type</th>
+                <th>Name / Label</th>
+                <th>Details</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="registriesTableBody">
+              <tr><td colspan="5" style="text-align:center;color:var(--text-light)">No registry files found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SAMPLING PANEL ── -->
+      <div class="view-panel" id="panel_sampling">
+        <div class="view-header">
+          <div>
+            <h2>🎲 Statistical Sampling Laboratory</h2>
+            <p>Produce audit-logged, reproducible probability samples from frame list datasets.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Configure Sampling Design</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Design Name</label>
+              <input class="prop-input" id="samp_name" placeholder="National Health Site Sample" />
+              <label class="prop-label">Sampling Method</label>
+              <select class="prop-select" id="samp_method">
+                <option value="simple_random">Simple Random Sampling (SRS)</option>
+                <option value="stratified">Stratified Sampling</option>
+                <option value="systematic">Systematic Sampling</option>
+                <option value="cluster">Cluster Sampling</option>
+              </select>
+              <label class="prop-label">Sample Size (Limit)</label>
+              <input class="prop-input" type="number" id="samp_size" value="3" />
+              <label class="prop-label">Random Seed Preservation</label>
+              <input class="prop-input" type="number" id="samp_seed" value="48202" placeholder="Preserves seed for reproduction" />
+              <label class="prop-label">Sampling Frame Candidates (JSON List)</label>
+              <textarea class="prop-textarea" id="samp_frame" placeholder='["Site A", "Site B", "Site C", "Site D", "Site E"]'></textarea>
+              <button class="btn btn-primary" onclick="runSampling()">Generate Probability Sample</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Calculated Selected Results</h3>
+            <div id="samplingOutput" style="font-size:13px;padding:12px;background:#f8fafc;border:1px dashed var(--border);border-radius:6px;min-height:100px;margin-top:12px">
+              Results will display here.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Reproducible Sampling Audits</h3>
+          <table class="op-table">
+            <thead>
+              <tr>
+                <th>Design ID</th>
+                <th>Name</th>
+                <th>Method</th>
+                <th>Seed</th>
+                <th>Sample size</th>
+                <th>Selected Candidates</th>
+              </tr>
+            </thead>
+            <tbody id="samplingTableBody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-light)">No designs executed yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── WORKFLOWS PANEL ── -->
+      <div class="view-panel" id="panel_workflows">
+        <div class="view-header">
+          <div>
+            <h2>🔁 Workflow Stage Configurer</h2>
+            <p>Set custom validation flow logic (Draft -> Supervisor review -> District review -> Approved dataset).</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Design Survey Review Stages</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Survey Form ID</label>
+              <select class="prop-select" id="wf_form_id">
+                <option value="">— Select Form —</option>
+              </select>
+              <label class="prop-label">Current Pipeline State</label>
+              <input class="prop-input" id="wf_current" value="draft" readonly />
+              <label class="prop-label">Pipeline Steps (JSON Array)</label>
+              <textarea class="prop-textarea" id="wf_stages" placeholder='["draft", "internal_review", "supervisor_qa", "national_approved"]'></textarea>
+              <button class="btn btn-primary" onclick="saveWorkflow()">Save Workflow Pipeline</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+      </div>
+
+      <!-- ── SCHEDULES PANEL ── -->
+      <div class="view-panel" id="panel_schedules">
+        <div class="view-header">
+          <div>
+            <h2>📅 Automated Survey Scheduling</h2>
+            <p>Schedule survey templates to automatically activate or notify field workers using cron syntax.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Create Cron Schedule</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Survey Form</label>
+              <select class="prop-select" id="sched_form_id">
+                <option value="">— Select Form —</option>
+              </select>
+              <label class="prop-label">Cron Expression</label>
+              <input class="prop-input" id="sched_cron" placeholder="0 0 1 * * (Monthly)" value="0 0 1 * *" />
+              <button class="btn btn-primary" onclick="createSchedule()">Activate Schedule</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Active Schedules</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Form ID</th>
+                  <th>Cron Expression</th>
+                  <th>Next Run Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="schedulesTableBody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-light)">No schedules.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── COMMENTS PANEL ── -->
+      <div class="view-panel" id="panel_comments">
+        <div class="view-header">
+          <div>
+            <h2>💬 StatChat Collaborative Review Threads</h2>
+            <p>Discuss data quality issues directly with other supervisors linked with StatChat conversations.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>StatChat Discussion Channel</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Discuss Object</label>
+              <select class="prop-select" id="com_type" onchange="loadComments()">
+                <option value="survey">Survey Template</option>
+                <option value="submission">Submission Record</option>
+              </select>
+              <label class="prop-label">Object Unique ID</label>
+              <input class="prop-input" id="com_id" value="community_health_survey" oninput="loadComments()" />
+              <div id="commentsFeed" style="max-height: 240px; overflow-y:auto; border: 1px solid var(--border); border-radius: 6px; padding: 12px; background:#f8fafc; margin-bottom: 12px">
+                No discussion posts yet.
+              </div>
+              <label class="prop-label">Your message</label>
+              <textarea class="prop-textarea" id="com_text" style="height: 60px" placeholder="Write comment here…"></textarea>
+              <button class="btn btn-primary" onclick="postComment()">Send Message</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+      </div>
+
+      <!-- ── AI PANEL ── -->
+      <div class="view-panel" id="panel_ai">
+        <div class="view-header">
+          <div>
+            <h2>🤖 AI Survey Intelligence</h2>
+            <p>Use local AI heuristics to analyze question quality, detect duplicates, and find outliers.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>AI Template Auditor</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Select Survey Form</label>
+              <select class="prop-select" id="ai_form_id">
+                <option value="">— Select Form —</option>
+              </select>
+              <button class="btn btn-primary" onclick="runAITemplateCheck()">Run AI Design Audit</button>
+              <div id="aiTemplateSuggestions" style="margin-top:14px"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>AI Outlier Detector</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Select Database Dataset</label>
+              <select class="prop-select" id="ai_dataset_id">
+                <option value="">— Select Form Dataset —</option>
+              </select>
+              <button class="btn btn-primary" onclick="runAIOutlierScan()">Scan Statistical Outliers</button>
+              <div id="aiOutlierResults" style="margin-top:14px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── APPROVALS PIPELINE PANEL ── -->
+      <div class="view-panel" id="panel_approvals">
+        <div class="view-header">
+          <div>
+            <h2>✅ Enterprise Multi-Level Submission Approvals</h2>
+            <p>Advance submissions through configurable verification stages (Enumerator → Supervisor → District Review → Regional Review → National Review → Approved Dataset).</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Pipeline Operations</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Submission Instance ID</label>
+              <input class="prop-input" id="app_instance_id" placeholder="e.g. uuid:..." />
+              <label class="prop-label">Approval Stage</label>
+              <select class="prop-select" id="app_stage">
+                <option value="supervisor">Supervisor Review</option>
+                <option value="district">District Review</option>
+                <option value="regional">Regional Review</option>
+                <option value="national">National Review (Final Approved)</option>
+              </select>
+              <label class="prop-label">Validator / Approver Role</label>
+              <input class="prop-input" id="app_role" value="National Supervisor" />
+              <label class="prop-label">Decision Notes / Reason</label>
+              <textarea class="prop-textarea" id="app_notes" placeholder="Notes or justification..."></textarea>
+              <div style="display:flex;gap:10px">
+                <button class="btn btn-primary" onclick="submitPipelineAction(true)">Approve & Advance</button>
+                <button class="btn btn-danger" onclick="submitPipelineAction(false)">Reject Submission</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Recent Pipeline Activity</h3>
+            <label class="prop-label">Filter by Survey Form</label>
+            <select class="prop-select" id="app_filter_form" onchange="loadApprovalPipeline()">
+              <option value="">— All Forms —</option>
+            </select>
+            <div style="max-height: 380px; overflow-y:auto; border: 1px solid var(--border); border-radius: 6px; padding: 12px; background:#f8fafc">
+              <table class="op-table" style="font-size:12px">
+                <thead>
+                  <tr>
+                    <th>Instance ID</th>
+                    <th>Stage</th>
+                    <th>Status</th>
+                    <th>Approver</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="approvalsPipelineBody">
+                  <tr><td colspan="5" style="text-align:center;color:var(--text-light)">No activity logged.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── INTEGRATIONS HUB PANEL ── -->
+      <div class="view-panel" id="panel_integrations">
+        <div class="view-header">
+          <div>
+            <h2>🔌 Enterprise Integration Hub & StatGate Unified Dashboard</h2>
+            <p>Sync StatCollect database records directly to DHIS2, ODK Central, HL7/FHIR, and monitor live cross-module platform integration events (Research, Projects, Statistics, GIS, Reporting, AI).</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Add External Connection</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Connection Name</label>
+              <input class="prop-input" id="int_name" placeholder="e.g. Ministry Health DHIS2" />
+              <label class="prop-label">Target System Type</label>
+              <select class="prop-select" id="int_type">
+                <option value="dhis2">DHIS2 Data Elements</option>
+                <option value="odk_central">ODK Central Sync</option>
+                <option value="fhir">HL7/FHIR Service</option>
+                <option value="openmrs">OpenMRS Clinic Database</option>
+                <option value="redcap">REDCap Project</option>
+              </select>
+              <label class="prop-label">Base API Endpoint URL</label>
+              <input class="prop-input" id="int_url" placeholder="https://dhis2.gov/api/" />
+              <label class="prop-label">Authentication Credentials (JSON)</label>
+              <textarea class="prop-textarea" id="int_creds" placeholder='{"username": "admin", "password": "securepassword"}'></textarea>
+              <label class="prop-label">Field Mapping Config (JSON)</label>
+              <textarea class="prop-textarea" id="int_mapping" placeholder='{"form_field_age": "dhis_data_element_xyz"}'></textarea>
+              <button class="btn btn-primary" onclick="createIntegration()">Register Connection</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Configured System Connectors</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Connector Name</th>
+                  <th>System</th>
+                  <th>API Endpoint</th>
+                  <th>Status</th>
+                  <th>Push Count</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="integrationsTableBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-light)">No connectors configured.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- StatGate Cross-Module Dashboard Section -->
+        <div class="card" style="margin-top:20px;border-top:3px solid var(--accent)">
+          <h3>📡 StatGate Unified Platform Bus Monitor</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:15px">Directive 22 Live Integration Status. Monitor data fanout and automated workflow tasks generated from survey submissions.</p>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+              <h4 style="font-size:13px;font-weight:700;color:var(--primary-dark)">🗺️ GIS Sync Queue (Real-Time Location Layer)</h4>
+              <table class="op-table" style="font-size:12px">
+                <thead>
+                  <tr>
+                    <th>Submission ID</th>
+                    <th>Form ID</th>
+                    <th>GPS Coordinates</th>
+                    <th>Attempts</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="gisSyncTableBody">
+                  <tr><td colspan="5" style="text-align:center;color:var(--text-light)">No sync events recorded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <h4 style="font-size:13px;font-weight:700;color:var(--primary-dark)">📊 Statistics dataset exports</h4>
+              <table class="op-table" style="font-size:12px">
+                <thead>
+                  <tr>
+                    <th>Submission ID</th>
+                    <th>Form ID</th>
+                    <th>Attempts</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="statsExportTableBody">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-light)">No export events recorded.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="margin-top:20px">
+            <h4 style="font-size:13px;font-weight:700;color:var(--primary-dark)">✅ Automatically Generated Workflow Tasks</h4>
+            <table class="op-table" style="font-size:12px">
+              <thead>
+                <tr>
+                  <th>Task Type</th>
+                  <th>Title</th>
+                  <th>Assigned Role</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="workflowTasksTableBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-light)">No workflow tasks generated.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ── PLUGIN REGISTRY PANEL ── -->
+      <div class="view-panel" id="panel_plugins">
+        <div class="view-header">
+          <div>
+            <h2>🧩 Plugin & Extension Framework</h2>
+            <p>Deploy plug-and-play integrations for biometric readers, smart cards, external RFID/GPS devices, or IoT telemetry.</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Register Platform Extension</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Plugin Unique ID</label>
+              <input class="prop-input" id="plg_id" placeholder="e.g. fingerprint_scanner" />
+              <label class="prop-label">Plugin Display Name</label>
+              <input class="prop-input" id="plg_name" placeholder="Biometric Fingerprint Extension" />
+              <label class="prop-label">Extension Type</label>
+              <select class="prop-select" id="plg_type">
+                <option value="biometric">Biometric Authentication</option>
+                <option value="nfc">NFC/Smart Card Reader</option>
+                <option value="gps_device">External High-Precision GPS</option>
+                <option value="iot">IoT Sensor Telemetry</option>
+                <option value="imagery">Drone/Satellite Imagery Layer</option>
+              </select>
+              <label class="prop-label">JS Module Entry Point Path / Webhook</label>
+              <input class="prop-input" id="plg_entry" placeholder="/plugins/fingerprint/main.js" />
+              <label class="prop-label">Static Configuration (JSON)</label>
+              <textarea class="prop-textarea" id="plg_config" placeholder='{"baudRate": 9600, "allowFallback": true}'></textarea>
+              <button class="btn btn-primary" onclick="createPlugin()">Deploy Extension</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Deployed Extensions</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Extension ID</th>
+                  <th>Display Name</th>
+                  <th>Type</th>
+                  <th>Entry Point</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="pluginsTableBody">
+                <tr><td colspan="5" style="text-align:center;color:var(--text-light)">No plugins deployed.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BUSINESS RULES PANEL ── -->
+      <div class="view-panel" id="panel_rules">
+        <div class="view-header">
+          <div>
+            <h2>⚖️ Configurable Business Rules Engine</h2>
+            <p>Declare dynamic validation, conditional logic, branch execution, and escalation triggers without redeploying code.</p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Add Dynamic Business Rule</h3>
+            <div style="margin-top:12px">
+              <label class="prop-label">Target Form Template</label>
+              <select class="prop-select" id="rule_form_id">
+                <option value="">— Select Form —</option>
+              </select>
+              <label class="prop-label">Rule Name</label>
+              <input class="prop-input" id="rule_name" placeholder="Age limit validation" />
+              <label class="prop-label">Rule Type</label>
+              <select class="prop-select" id="rule_type">
+                <option value="validation">Validation Rule</option>
+                <option value="calculation">Automatic Calculation</option>
+                <option value="skip_logic">Survey Skip / Branching Logic</option>
+                <option value="approval_trigger">Workflow Auto-Approval Trigger</option>
+                <option value="notification">Escalation / Notification Trigger</option>
+              </select>
+              <label class="prop-label">Condition Expression (JSONLogic syntax)</label>
+              <textarea class="prop-textarea" id="rule_cond" placeholder='{"<": [{"var": "respondent_age"}, 18]}'></textarea>
+              <label class="prop-label">Action Expression / Trigger Action</label>
+              <textarea class="prop-textarea" id="rule_action" placeholder='{"error": "Respondent must be an adult"}'></textarea>
+              <button class="btn btn-primary" onclick="createBusinessRule()">Save Rule</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Configured Rules</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Form ID</th>
+                  <th>Rule Name</th>
+                  <th>Type</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="rulesTableBody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-light)">No rules configured.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <!-- ── SURVEY ANALYTICS PANEL ── -->
+      <div class="view-panel" id="panel_analytics">
+        <div class="view-header">
+          <div>
+            <h2>📈 Shared Analytics & Visualization Engine</h2>
+            <p>Produce frequency tables, cross-tabulations, percentiles, average durations, and value distributions directly from production databases.</p>
+          </div>
+          <div style="display:flex;gap:10px">
+            <select class="prop-select" id="analytics_form_id" onchange="loadAnalyticsData()" style="margin:0;width:220px">
+              <option value="">— Select Form —</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadAnalyticsData()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>📊 Question Choice / Rating Distribution</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Aggregated counts for dropdown selection and rating fields.</p>
+            <div id="choiceDistributionsArea">
+              <div style="text-align:center;padding:30px;color:var(--text-light)">Select a form to display field value frequencies.</div>
+            </div>
+          </div>
+          
+          <div class="card">
+            <h3>📈 Submission History Trend (Last 30 Days)</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Submissions</th>
+                  <th>Visual Timeline Indicator</th>
+                </tr>
+              </thead>
+              <tbody id="trendsTableBody">
+                <tr><td colspan="3" style="text-align:center;color:var(--text-light)">No trend data loaded.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── DATA QUALITY & ENUMERATOR PRODUCTIVITY PANEL ── -->
+      <div class="view-panel" id="panel_quality">
+        <div class="view-header">
+          <div>
+            <h2>🛡️ Data Quality Assurance & Field Performance</h2>
+            <p>Monitor automatically computed quality scores, rapid interviews, missing values, and enumerator approval rates.</p>
+          </div>
+          <div style="display:flex;gap:10px">
+            <select class="prop-select" id="quality_form_id" onchange="loadQualityData()" style="margin:0;width:220px">
+              <option value="">— Select Form —</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadQualityData()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>🛡️ Automated Data Quality Audit</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+              <div style="background:#f8fafc;padding:15px;border-radius:8px;text-align:center">
+                <div style="font-size:32px;font-weight:700;color:var(--accent)" id="qualityScoreVal">100%</div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-top:5px">Quality Score</div>
+              </div>
+              <div style="background:#f8fafc;padding:15px;border-radius:8px;text-align:center">
+                <div style="font-size:32px;font-weight:700;color:#ef4444" id="rapidInterviewsVal">0</div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-top:5px">Rapid Interviews (<30s)</div>
+              </div>
+            </div>
+            <table class="op-table">
+              <tbody>
+                <tr><td><b>Duplicate Submissions</b></td><td style="text-align:right" id="dq_duplicates">0</td></tr>
+                <tr><td><b>Identified Outliers</b></td><td style="text-align:right" id="dq_outliers">0</td></tr>
+                <tr><td><b>Validation Failures</b></td><td style="text-align:right" id="dq_failures">0</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>👤 Enumerator Productivity & Durations</h3>
+            <table class="op-table">
+              <thead>
+                <tr>
+                  <th>Enumerator ID</th>
+                  <th>Interviews</th>
+                  <th>Avg Duration (s)</th>
+                  <th>Approval Rate</th>
+                </tr>
+              </thead>
+              <tbody id="enumeratorTableBody">
+                <tr><td colspan="4" style="text-align:center;color:var(--text-light)">No enumerator data loaded.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let adminKey = localStorage.getItem('sc_admin_key') || '';
+    let formsList = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('adminKeyInput').value = adminKey;
+      loadForms();
+      loadDevices();
+      loadAssignments();
+      loadRegistries();
+      loadSchedules();
+      loadSamplingDesigns();
+      loadApprovalPipeline();
+      loadIntegrations();
+      loadPlugins();
+      loadBusinessRules();
+    });
+
+    function onKeyChange() {
+      adminKey = document.getElementById('adminKeyInput').value.trim();
+      localStorage.setItem('sc_admin_key', adminKey);
+    }
+
+    function submitApiKey() {
+      onKeyChange();
+      if (!adminKey) {
+        showToast('Please enter an Admin Access Key', 'error');
+        return;
+      }
+      showToast('Admin Key saved! Reloading datasets…', 'success');
+      loadForms();
+      loadDevices();
+      loadAssignments();
+      loadRegistries();
+      loadSchedules();
+      loadSamplingDesigns();
+      loadApprovalPipeline();
+      loadIntegrations();
+      loadPlugins();
+      loadBusinessRules();
+    }
+
+    function headers() {
+      return { 'X-API-Key': adminKey, 'X-Admin-Key': adminKey };
+    }
+
+    function showToast(msg, type='') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + type;
+      setTimeout(() => t.className = 'toast', 3500);
+    }
+
+    function switchPanel(panelId, btn) {
+      document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel_' + panelId).classList.add('active');
+      if (panelId === 'integrations') {
+        loadPlatformIntegrationData();
+      }
+    }
+
+    async function loadForms() {
+      try {
+        const res = await fetch('/templates', { headers: headers() });
+        const data = await res.json();
+        formsList = data.templates || [];
+        
+        const selectors = ['ass_form_id', 'wf_form_id', 'sched_form_id', 'ai_form_id', 'ai_dataset_id', 'app_filter_form', 'rule_form_id', 'analytics_form_id', 'quality_form_id'];
+        selectors.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.innerHTML = '<option value="">— Select Form —</option>' +
+              formsList.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+          }
+        });
+
+      } catch(e) {}
+    }
+
+    /* ── DEVICES ── */
+    function showAddDeviceSim() { document.getElementById('deviceEnrollCard').style.display = 'grid'; }
+    function hideAddDeviceSim() { document.getElementById('deviceEnrollCard').style.display = 'none'; }
+
+    async function loadDevices() {
+      try {
+        const res = await fetch('/admin/devices', { headers: headers() });
+        const data = await res.json();
+        const list = data.devices || [];
+        const body = document.getElementById('devicesTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-light)">No assets registered.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(d => `
+          <tr>
+            <td><code>${d.device_id}</code></td>
+            <td style="font-weight:600">${d.name}</td>
+            <td>${d.owner}</td>
+            <td><span class="badge badge-${d.status.toLowerCase()}">${d.status}</span></td>
+            <td>${d.os}</td>
+            <td>${d.battery_level}%</td>
+            <td><span class="badge badge-compliant">${d.security_compliant ? 'Compliant' : 'Non-compliant'}</span></td>
+            <td>${new Date(d.last_sync_at).toLocaleDateString()}</td>
+            <td>
+              <button class="btn btn-outline btn-sm btn-danger" style="padding:4px 8px" onclick="deleteDevice('${d.device_id}')">Wipe</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function enrollDevice() {
+      const body = {
+        device_id: document.getElementById('dev_id').value,
+        name: document.getElementById('dev_name').value,
+        owner: document.getElementById('dev_owner').value,
+        status: 'Active',
+        battery_level: 98,
+        storage_utilization: 12.5,
+        os: document.getElementById('dev_os').value,
+        app_version: '1.2.0',
+        security_compliant: true
+      };
+      if (!body.device_id || !body.name) { showToast('Device ID and name are required', 'error'); return; }
+      try {
+        const res = await fetch('/admin/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Device successfully enrolled!', 'success');
+        hideAddDeviceSim();
+        loadDevices();
+      } catch(e) {
+        showToast('Enrollment failed: ' + e.message, 'error');
+      }
+    }
+
+    async function deleteDevice(id) {
+      if (!confirm('Perform remote wipe on this device asset? This action will revoke all tokens.')) return;
+      try {
+        const res = await fetch(`/admin/devices?device_id=${id}`, { method: 'DELETE', headers: headers() });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Remote command dispatched successfully', 'success');
+        loadDevices();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── ASSIGNMENTS ── */
+    async function loadAssignments() {
+      try {
+        const res = await fetch('/admin/assignments', { headers: headers() });
+        const data = await res.json();
+        const list = data.assignments || [];
+        const body = document.getElementById('assignmentsTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light)">No rules configured.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(a => `
+          <tr>
+            <td><code>${a.survey_id}</code></td>
+            <td>${a.target_type}</td>
+            <td><code>${a.target_id}</code></td>
+            <td>${a.daily_target}</td>
+            <td><span class="badge badge-active">${a.status}</span></td>
+            <td>
+              <button class="btn btn-outline btn-sm" onclick="deleteAssignment(${a.id})" style="color:var(--red)">Remove</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function createAssignment() {
+      const body = {
+        survey_id: document.getElementById('ass_form_id').value,
+        target_type: document.getElementById('ass_target_type').value,
+        target_id: document.getElementById('ass_target_id').value,
+        daily_target: parseInt(document.getElementById('ass_daily_target').value || '0'),
+        reminder_cron: document.getElementById('ass_cron').value,
+        status: 'Active'
+      };
+      if (!body.survey_id || !body.target_id) { showToast('Complete assignment details', 'error'); return; }
+      try {
+        const res = await fetch('/admin/assignments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Assignment configured', 'success');
+        loadAssignments();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    async function deleteAssignment(id) {
+      try {
+        const res = await fetch(`/admin/assignments?id=${id}`, { method: 'DELETE', headers: headers() });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Assignment rule removed');
+        loadAssignments();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── REGISTRY ── */
+    async function loadRegistries() {
+      try {
+        const res = await fetch('/admin/registries', { headers: headers() });
+        const data = await res.json();
+        const list = data.registries || [];
+        const body = document.getElementById('registriesTableBody');
+        const selector = document.getElementById('reg_inspect_select');
+        
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light)">No registry files found.</td></tr>';
+          selector.innerHTML = '<option value="">— Select Registered Entity —</option>';
+          return;
+        }
+        
+        selector.innerHTML = '<option value="">— Select Registered Entity —</option>' +
+          list.map(r => `<option value="${r.id}">${r.name} (${r.id})</option>`).join('');
+
+        body.innerHTML = list.map(r => `
+          <tr>
+            <td><code>${r.id}</code></td>
+            <td>${r.registry_type}</td>
+            <td style="font-weight:600">${r.name}</td>
+            <td><code style="font-size:11px">${JSON.stringify(r.attributes)}</code></td>
+            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function saveRegistryEntity() {
+      const id = document.getElementById('reg_id').value;
+      const type = document.getElementById('reg_type').value;
+      const name = document.getElementById('reg_name').value;
+      const loc = document.getElementById('reg_location').value;
+      let attribs = {};
+      try {
+        attribs = JSON.parse(document.getElementById('reg_attribs').value || '{}');
+      } catch(err) { showToast('Invalid attributes JSON', 'error'); return; }
+      attribs.location = loc;
+
+      const body = { id, registry_type: type, name, attributes: attribs };
+      if (!id || !name) { showToast('ID and Name are required', 'error'); return; }
+      try {
+        const res = await fetch('/admin/registries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Entity registered profile saved', 'success');
+        loadRegistries();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    async function inspectLongitudinalHistory() {
+      const id = document.getElementById('reg_inspect_select').value;
+      const panel = document.getElementById('longitudinalTimeline');
+      if (!id) {
+        panel.innerHTML = '<div style="color:var(--text-light);font-size:13px">Select an entity to render baseline vs midline timelines.</div>';
+        return;
+      }
+      try {
+        const res = await fetch(`/admin/registries?history_id=${encodeURIComponent(id)}`, { headers: headers() });
+        const data = await res.json();
+        const history = data.history || [];
+        if (!history.length) {
+          panel.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No visits recorded yet for this longitudinal index.</div>';
+          return;
+        }
+        panel.innerHTML = history.map(h => `
+          <div class="timeline-item">
+            <div style="font-weight:700;font-size:13px;color:var(--accent)">Visit #${h.visit_number} (${h.phase})</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+              Captured: ${new Date(h.created_at).toLocaleDateString()}<br/>
+              Enumerator: <b>${h.submitted_by}</b> · Status: <span class="badge badge-active" style="padding:1px 5px">${h.status}</span><br/>
+              <code style="font-size:11px">${JSON.stringify(h.meta)}</code>
+            </div>
+          </div>
+        `).join('');
+      } catch(e) {
+        panel.innerHTML = '<div style="color:var(--red)">Failed to inspect logs</div>';
+      }
+    }
+
+    /* ── SAMPLING ── */
+    async function loadSamplingDesigns() {
+      try {
+        const res = await fetch('/admin/sampling', { headers: headers() });
+        const data = await res.json();
+        const list = data.sampling || [];
+        const body = document.getElementById('samplingTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light)">No designs executed yet.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(s => `
+          <tr>
+            <td><code>${s.id}</code></td>
+            <td style="font-weight:600">${s.name}</td>
+            <td>${s.method}</td>
+            <td><code>${s.seed}</code></td>
+            <td>${s.sample_size}</td>
+            <td><code style="font-size:11px">${JSON.stringify(s.selected_ids)}</code></td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function runSampling() {
+      const name = document.getElementById('samp_name').value;
+      const method = document.getElementById('samp_method').value;
+      const size = parseInt(document.getElementById('samp_size').value || '0');
+      const seed = parseInt(document.getElementById('samp_seed').value || '0');
+      let frame = [];
+      try {
+        frame = JSON.parse(document.getElementById('samp_frame').value || '[]');
+      } catch(err) { showToast('Invalid candidates frame array', 'error'); return; }
+
+      const body = { name, method, sample_size: size, seed, frame_data: frame };
+      if (!name || !size || !frame.length) { showToast('Complete sampling options', 'error'); return; }
+      try {
+        const res = await fetch('/admin/sampling', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        
+        document.getElementById('samplingOutput').innerHTML = `
+          <div style="font-weight:700;color:var(--green)">✔ Sampling Succeeded DETERMINISTICALLY</div>
+          <div style="margin-top:6px">Preserved Seed: <b>${data.seed}</b></div>
+          <div style="margin-top:2px">Audit Log: <i>${data.audit_trail}</i></div>
+          <div style="margin-top:6px;font-family:monospace">Selected: ${JSON.stringify(data.selected_ids)}</div>
+        `;
+        showToast('Sample generated', 'success');
+        loadSamplingDesigns();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── WORKFLOWS ── */
+    async function saveWorkflow() {
+      const id = document.getElementById('wf_form_id').value;
+      let stages = [];
+      try {
+        stages = JSON.parse(document.getElementById('wf_stages').value || '[]');
+      } catch(e) { showToast('Stages must be a valid JSON array', 'error'); return; }
+      
+      if (!id || !stages.length) { showToast('Select form and enter stages', 'error'); return; }
+      try {
+        const res = await fetch('/admin/workflows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify({ survey_id: id, stages, current_stage: 'draft' })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Review stages saved', 'success');
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── SCHEDULES ── */
+    async function loadSchedules() {
+      try {
+        const res = await fetch('/admin/schedules', { headers: headers() });
+        const data = await res.json();
+        const list = data.schedules || [];
+        const body = document.getElementById('schedulesTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light)">No active schedules.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(s => `
+          <tr>
+            <td><code>${s.survey_id}</code></td>
+            <td><code>${s.cron_expression}</code></td>
+            <td>${new Date(s.next_run_at).toLocaleString()}</td>
+            <td><span class="badge badge-active">${s.status}</span></td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function createSchedule() {
+      const body = {
+        survey_id: document.getElementById('sched_form_id').value,
+        cron_expression: document.getElementById('sched_cron').value
+      };
+      if (!body.survey_id || !body.cron_expression) { showToast('Complete scheduling parameters', 'error'); return; }
+      try {
+        const res = await fetch('/admin/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Automated schedule activated', 'success');
+        loadSchedules();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── COMMENTS ── */
+    async function loadComments() {
+      const type = document.getElementById('com_type').value;
+      const id = document.getElementById('com_id').value;
+      const feed = document.getElementById('commentsFeed');
+      if (!id) return;
+      try {
+        const res = await fetch(`/admin/comments?object_type=${type}&object_id=${encodeURIComponent(id)}`, { headers: headers() });
+        const data = await res.json();
+        const list = data.comments || [];
+        if (!list.length) {
+          feed.innerHTML = '<div style="color:var(--text-light);font-size:12px">No discussion posts yet.</div>';
+          return;
+        }
+        feed.innerHTML = list.map(c => `
+          <div style="margin-bottom:8px;border-bottom:1px solid #f1f5f9;padding-bottom:6px">
+            <span style="font-weight:700;font-size:12px;color:var(--accent)">${c.author}</span> 
+            <span style="font-size:10px;color:var(--text-light)">(${new Date(c.created_at).toLocaleTimeString()})</span>
+            <div style="font-size:12px;margin-top:2px">${c.comment}</div>
+          </div>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function postComment() {
+      const body = {
+        object_type: document.getElementById('com_type').value,
+        object_id: document.getElementById('com_id').value,
+        author: 'Supervisor',
+        comment: document.getElementById('com_text').value
+      };
+      if (!body.object_id || !body.comment) { return; }
+      try {
+        const res = await fetch('/admin/comments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        document.getElementById('com_text').value = '';
+        loadComments();
+        showToast('Comment posted to StatChat channel');
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── AI ── */
+    async function runAITemplateCheck() {
+      const id = document.getElementById('ai_form_id').value;
+      const target = document.getElementById('aiTemplateSuggestions');
+      if (!id) { showToast('Select form', 'error'); return; }
+      target.innerHTML = '<div style="font-size:13px;color:var(--text-light)">AI Auditor executing…</div>';
+      try {
+        const res = await fetch('/admin/ai/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify({ template_id: id })
+        });
+        const data = await res.json();
+        const list = data.suggestions || [];
+        target.innerHTML = list.map(s => `<div class="suggest-box">${s}</div>`).join('');
+      } catch(e) { target.innerHTML = '<div style="color:var(--red)">Audit failed</div>'; }
+    }
+
+    async function runAIOutlierScan() {
+      const id = document.getElementById('ai_dataset_id').value;
+      const target = document.getElementById('aiOutlierResults');
+      if (!id) { showToast('Select dataset', 'error'); return; }
+      target.innerHTML = '<div style="font-size:13px;color:var(--text-light)">AI Outliers engine calculation running…</div>';
+      try {
+        const res = await fetch('/admin/ai/outliers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify({ form_id: id })
+        });
+        const data = await res.json();
+        const list = data.outliers_found || [];
+        if (!list.length) {
+          target.innerHTML = '<div style="color:var(--green);font-weight:700;font-size:13px">✅ AI check complete. No statistical anomalies found.</div>';
+          return;
+        }
+        target.innerHTML = list.map(item => `
+          <div style="margin-bottom:8px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+            <div>Instance: <code>${item.instance_id.slice(0,16)}…</code> (User: <b>${item.submitted_by}</b>)</div>
+            <div style="color:var(--red);margin-top:2px">Outliers: ${item.outliers.join(', ')}</div>
+          </div>
+        `).join('');
+      } catch(e) { target.innerHTML = '<div style="color:var(--red)">Scan failed</div>'; }
+    }
+
+    /* ── APPROVALS PIPELINE ── */
+    async function loadApprovalPipeline() {
+      const fID = document.getElementById('app_filter_form').value;
+      const url = fID ? `/admin/submission/pipeline?form_id=${encodeURIComponent(fID)}` : '/admin/submission/pipeline';
+      try {
+        const res = await fetch(url, { headers: headers() });
+        const data = await res.json();
+        const list = data.pipeline || [];
+        const body = document.getElementById('approvalsPipelineBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light)">No pipeline events found.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(a => `
+          <tr>
+            <td><code style="font-size:10px">${a.instance_id.slice(0,12)}…</code></td>
+            <td><span class="badge" style="background:#e0f2fe;color:#0369a1">${a.stage.toUpperCase()}</span></td>
+            <td><span class="badge ${a.status==='approved'?'badge-active':'badge-suspended'}">${a.status}</span></td>
+            <td><b>${a.approver_role || a.validator}</b></td>
+            <td style="color:var(--text-muted)">${a.notes || '—'}</td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function submitPipelineAction(isApprove) {
+      const instance_id = document.getElementById('app_instance_id').value.trim();
+      const stage = document.getElementById('app_stage').value;
+      const approver_role = document.getElementById('app_role').value.trim();
+      const notes = document.getElementById('app_notes').value.trim();
+
+      if (!instance_id || !approver_role) {
+        showToast('Instance ID and Approver Role are required', 'error');
+        return;
+      }
+      const endpoint = isApprove ? '/admin/submission/approve' : '/admin/submission/reject';
+      const payload = isApprove ? { instance_id, stage, approver_role, notes } : { instance_id, stage, approver_role, reason: notes };
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast(isApprove ? 'Submission approved & advanced' : 'Submission rejected', 'success');
+        document.getElementById('app_instance_id').value = '';
+        document.getElementById('app_notes').value = '';
+        loadApprovalPipeline();
+      } catch(e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    /* ── INTEGRATIONS ── */
+    async function loadIntegrations() {
+      try {
+        const res = await fetch('/admin/integrations', { headers: headers() });
+        const data = await res.json();
+        const list = data.integrations || [];
+        const body = document.getElementById('integrationsTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light)">No connectors configured.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(ig => `
+          <tr>
+            <td style="font-weight:600">${ig.name}</td>
+            <td><code>${ig.system_type.toUpperCase()}</code></td>
+            <td><code style="font-size:11px">${ig.base_url}</code></td>
+            <td><span class="badge ${ig.status==='Active'?'badge-active':'badge-suspended'}">${ig.status}</span></td>
+            <td>${ig.push_count}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="deleteIntegration(${ig.id})" style="color:var(--red);padding:2px 8px">Delete</button></td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function createIntegration() {
+      const name = document.getElementById('int_name').value.trim();
+      const system_type = document.getElementById('int_type').value;
+      const base_url = document.getElementById('int_url').value.trim();
+      let credentials = {}, field_mapping = {};
+      try { credentials = JSON.parse(document.getElementById('int_creds').value || '{}'); } catch(e) { showToast('Invalid credentials JSON', 'error'); return; }
+      try { field_mapping = JSON.parse(document.getElementById('int_mapping').value || '{}'); } catch(e) { showToast('Invalid mapping JSON', 'error'); return; }
+
+      if (!name || !base_url) { showToast('Name and Base URL are required', 'error'); return; }
+      const body = { name, system_type, base_url, credentials, field_mapping, status: 'Active' };
+
+      try {
+        const res = await fetch('/admin/integrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Integration connector saved!', 'success');
+        document.getElementById('int_name').value = '';
+        document.getElementById('int_url').value = '';
+        document.getElementById('int_creds').value = '';
+        document.getElementById('int_mapping').value = '';
+        loadIntegrations();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    async function deleteIntegration(id) {
+      if (!confirm('Delete this integration config?')) return;
+      try {
+        const res = await fetch(`/admin/integrations?id=${id}`, { method: 'DELETE', headers: headers() });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Integration connector removed');
+        loadIntegrations();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── PLUGINS ── */
+    async function loadPlugins() {
+      try {
+        const res = await fetch('/admin/plugins', { headers: headers() });
+        const data = await res.json();
+        const list = data.plugins || [];
+        const body = document.getElementById('pluginsTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light)">No plugins deployed.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(p => `
+          <tr>
+            <td><code>${p.id}</code></td>
+            <td style="font-weight:600">${p.name}</td>
+            <td><code>${p.plugin_type.toUpperCase()}</code></td>
+            <td><code>${p.entry_point}</code></td>
+            <td><span class="badge ${p.enabled?'badge-active':'badge-suspended'}">${p.enabled?'Enabled':'Disabled'}</span></td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function createPlugin() {
+      const id = document.getElementById('plg_id').value.trim();
+      const name = document.getElementById('plg_name').value.trim();
+      const plugin_type = document.getElementById('plg_type').value;
+      const entry_point = document.getElementById('plg_entry').value.trim();
+      let config = {};
+      try { config = JSON.parse(document.getElementById('plg_config').value || '{}'); } catch(e) { showToast('Invalid config JSON', 'error'); return; }
+
+      if (!id || !name || !entry_point) { showToast('ID, Name, and Entry point are required', 'error'); return; }
+      const body = { id, name, plugin_type, entry_point, config, version: '1.0', enabled: true };
+
+      try {
+        const res = await fetch('/admin/plugins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Plugin registry updated!', 'success');
+        document.getElementById('plg_id').value = '';
+        document.getElementById('plg_name').value = '';
+        document.getElementById('plg_entry').value = '';
+        document.getElementById('plg_config').value = '';
+        loadPlugins();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── BUSINESS RULES ── */
+    async function loadBusinessRules() {
+      try {
+        const res = await fetch('/admin/rules', { headers: headers() });
+        const data = await res.json();
+        const list = data.rules || [];
+        const body = document.getElementById('rulesTableBody');
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light)">No rules configured.</td></tr>';
+          return;
+        }
+        body.innerHTML = list.map(r => `
+          <tr>
+            <td><code>${r.template_id || 'Global'}</code></td>
+            <td style="font-weight:600">${r.name}</td>
+            <td><code>${r.rule_type.toUpperCase()}</code></td>
+            <td><button class="btn btn-outline btn-sm" onclick="deleteBusinessRule(${r.id})" style="color:var(--red);padding:2px 8px">Remove</button></td>
+          </tr>
+        `).join('');
+      } catch(e) {}
+    }
+
+    async function createBusinessRule() {
+      const template_id = document.getElementById('rule_form_id').value;
+      const name = document.getElementById('rule_name').value.trim();
+      const rule_type = document.getElementById('rule_type').value;
+      const condition_expr = document.getElementById('rule_cond').value.trim();
+      const action_expr = document.getElementById('rule_action').value.trim();
+
+      if (!name || !condition_expr || !action_expr) { showToast('Name, Condition, and Action are required', 'error'); return; }
+      const body = { template_id, name, rule_type, condition_expr, action_expr, priority: 0, enabled: true };
+
+      try {
+        const res = await fetch('/admin/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Business rule configured!', 'success');
+        document.getElementById('rule_name').value = '';
+        document.getElementById('rule_cond').value = '';
+        document.getElementById('rule_action').value = '';
+        loadBusinessRules();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    async function deleteBusinessRule(id) {
+      if (!confirm('Remove this business rule?')) return;
+      try {
+        const res = await fetch(`/admin/rules?id=${id}`, { method: 'DELETE', headers: headers() });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Business rule removed');
+        loadBusinessRules();
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    /* ── DIRECTIVE 22 PLATFORM INTEGRATION DASHBOARD ── */
+    async function loadPlatformIntegrationData() {
+      try {
+        // Fetch GIS Sync records
+        const resGis = await fetch('/admin/platform/gis-queue', { headers: headers() });
+        if (resGis.ok) {
+          const list = await resGis.json();
+          const tbody = document.getElementById('gisSyncTableBody');
+          tbody.innerHTML = list.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--text-light)">No GIS sync logs.</td></tr>` :
+            list.map(r => `
+              <tr>
+                <td><code>${r.submission_instance_id}</code></td>
+                <td>${r.form_id}</td>
+                <td>${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}</td>
+                <td>${r.sync_attempt}</td>
+                <td><span class="badge ${r.sync_status === 'synced' ? 'badge-compliant' : 'badge-danger'}">${r.sync_status}</span></td>
+              </tr>
+            `).join('');
+        }
+
+        // Fetch Stats Exports
+        const resStats = await fetch('/admin/platform/stats-exports', { headers: headers() });
+        if (resStats.ok) {
+          const list = await resStats.json();
+          const tbody = document.getElementById('statsExportTableBody');
+          tbody.innerHTML = list.length === 0 ? `<tr><td colspan="4" style="text-align:center;color:var(--text-light)">No stats export logs.</td></tr>` :
+            list.map(r => `
+              <tr>
+                <td><code>${r.submission_instance_id}</code></td>
+                <td>${r.form_id}</td>
+                <td>${r.export_attempt}</td>
+                <td><span class="badge ${r.export_status === 'exported' ? 'badge-compliant' : 'badge-danger'}">${r.export_status}</span></td>
+              </tr>
+            `).join('');
+        }
+
+        // Fetch Workflow Tasks
+        const resTasks = await fetch('/admin/platform/tasks', { headers: headers() });
+        if (resTasks.ok) {
+          const list = await resTasks.json();
+          const tbody = document.getElementById('workflowTasksTableBody');
+          tbody.innerHTML = list.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--text-light)">No workflow tasks generated.</td></tr>` :
+            list.map(t => `
+              <tr>
+                <td><code>${t.task_type}</code></td>
+                <td><strong>${t.title}</strong><div style="font-size:11px;color:var(--text-muted)">${t.description}</div></td>
+                <td>${t.assigned_role || '—'}</td>
+                <td><span style="font-weight:700;color:${t.priority === 'high' ? 'red' : 'inherit'}">${t.priority}</span></td>
+                <td><span class="badge ${t.status === 'completed' ? 'badge-compliant' : 'badge-suspended'}">${t.status}</span></td>
+                <td>
+                  ${t.status === 'open' ? `<button class="btn btn-outline btn-sm" onclick="patchWorkflowTask(${t.id}, 'completed')">Complete</button>` : '—'}
+                </td>
+              </tr>
+            `).join('');
+        }
+      } catch(e) {
+        showToast('Error loading platform integration logs: ' + e.message, 'error');
+      }
+    }
+
+    async function patchWorkflowTask(taskId, status) {
+      try {
+        const res = await fetch('/admin/platform/tasks', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers() },
+          body: JSON.stringify({ task_id: taskId, status })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        showToast('Workflow task status updated', 'success');
+        loadPlatformIntegrationData();
+      } catch(e) {
+        showToast('Failed to update task: ' + e.message, 'error');
+      }
+    }
+
+    /* ── DYNAMIC ANALYTICS & QUALITY DASHBOARD LOADER ── */
+    async function loadAnalyticsData() {
+      const formId = document.getElementById('analytics_form_id').value;
+      const area = document.getElementById('choiceDistributionsArea');
+      const trendBody = document.getElementById('trendsTableBody');
+      if (!formId) {
+        area.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-light)">Select a form to display field value frequencies.</div>`;
+        trendBody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-light)">No trend data loaded.</td></tr>`;
+        return;
+      }
+      area.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Loading real-time frequencies…</div>';
+      try {
+        const res = await fetch(`/api/analytics/survey?form_id=${encodeURIComponent(formId)}`, { headers: headers() });
+        if (res.ok) {
+          const stats = await res.json();
+          // Choices distributions
+          const keys = Object.keys(stats.question_distributions || {});
+          if (keys.length === 0) {
+            area.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-light)">No categorised single-choice or rating fields recorded.</div>`;
+          } else {
+            area.innerHTML = keys.map(k => {
+              const dist = stats.question_distributions[k];
+              const totalDist = Object.values(dist).reduce((a,b) => a+b, 0);
+              const rows = Object.entries(dist).map(([val, count]) => {
+                const pct = totalDist > 0 ? Math.round((count / totalDist) * 100) : 0;
+                return `
+                  <div style="margin-bottom:8px">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+                      <span>${escHtml(val)}</span>
+                      <span><b>${count}</b> (${pct}%)</span>
+                    </div>
+                    <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
+                      <div style="background:var(--accent);width:${pct}%;height:100%"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('');
+              return `<div style="margin-bottom:18px"><h4 style="font-size:12px;font-weight:700;margin-bottom:6px">Field: <code>${k}</code></h4>${rows}</div>`;
+            }).join('');
+          }
+
+          // Trends timeline
+          const days = Object.entries(stats.daily_submissions || {});
+          trendBody.innerHTML = days.length === 0 ? `<tr><td colspan="3" style="text-align:center;color:var(--text-light)">No trend history available.</td></tr>` :
+            days.map(([day, count]) => `
+              <tr>
+                <td><code>${day}</code></td>
+                <td><b>${count}</b></td>
+                <td>
+                  <div style="background:#e0f2fe;height:8px;border-radius:4px;overflow:hidden;width:120px">
+                    <div style="background:var(--accent);width:${Math.min(count * 10, 100)}%;height:100%"></div>
+                  </div>
+                </td>
+              </tr>
+            `).join('');
+        }
+      } catch(e) {
+        showToast('Analytics failure: ' + e.message, 'error');
+      }
+    }
+
+    async function loadQualityData() {
+      const formId = document.getElementById('quality_form_id').value;
+      if (!formId) {
+        document.getElementById('qualityScoreVal').textContent = '100%';
+        document.getElementById('rapidInterviewsVal').textContent = '0';
+        document.getElementById('dq_duplicates').textContent = '0';
+        document.getElementById('dq_outliers').textContent = '0';
+        document.getElementById('dq_failures').textContent = '0';
+        document.getElementById('enumeratorTableBody').innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-light)">No enumerator data loaded.</td></tr>`;
+        return;
+      }
+      try {
+        const resQ = await fetch(`/api/analytics/quality?form_id=${encodeURIComponent(formId)}`, { headers: headers() });
+        if (resQ.ok) {
+          const dq = await resQ.json();
+          document.getElementById('qualityScoreVal').textContent = dq.overall_quality_score + '%';
+          document.getElementById('rapidInterviewsVal').textContent = dq.rapid_interview_count;
+          document.getElementById('dq_duplicates').textContent = dq.duplicate_record_count;
+          document.getElementById('dq_outliers').textContent = dq.outlier_count;
+          document.getElementById('dq_failures').textContent = dq.validation_failure_count;
+        }
+
+        const resS = await fetch(`/api/analytics/survey?form_id=${encodeURIComponent(formId)}`, { headers: headers() });
+        if (resS.ok) {
+          const stats = await resS.json();
+          const tbody = document.getElementById('enumeratorTableBody');
+          tbody.innerHTML = stats.enumerator_productivity.length === 0 ? `<tr><td colspan="4" style="text-align:center;color:var(--text-light)">No active enumerators.</td></tr>` :
+            stats.enumerator_productivity.map(e => `
+              <tr>
+                <td><code>${e.enumerator_id}</code></td>
+                <td><b>${e.total_interviews}</b></td>
+                <td>${e.avg_duration.toFixed(0)}s</td>
+                <td><span class="badge ${e.approved_rate > 80 ? 'badge-compliant' : 'badge-suspended'}">${e.approved_rate.toFixed(1)}%</span></td>
+              </tr>
+            `).join('');
+        }
+      } catch(e) {
+        showToast('Quality metrics failure: ' + e.message, 'error');
+      }
+    }
+
+  </script>
+
+</body>
+</html>

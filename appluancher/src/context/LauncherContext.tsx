@@ -32,11 +32,11 @@ export const LauncherProvider: React.FC<LauncherProviderProps> = ({
           await new Promise((resolve) => setTimeout(resolve, 500));
           setApplications(MOCK_APPLICATIONS);
         } else {
-          // Real API call would go here
+          // Real API call
           const response = await fetch('/api/applications');
           if (!response.ok) throw new Error('Failed to fetch applications');
           const data = await response.json();
-          setApplications(data);
+          setApplications(data.data ?? []);
         }
       } catch (err) {
         const errorMsg =
@@ -55,8 +55,10 @@ export const LauncherProvider: React.FC<LauncherProviderProps> = ({
     setLoading(true);
     setError(null);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setApplications(MOCK_APPLICATIONS);
+      const response = await fetch('/api/applications');
+      if (!response.ok) throw new Error('Failed to fetch applications');
+      const data = await response.json();
+      setApplications(data.data ?? []);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to refetch applications'

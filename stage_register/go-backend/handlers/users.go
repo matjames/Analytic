@@ -71,7 +71,7 @@ func RegisterUser(c *gin.Context) {
 	}
 
 	user = toSafeUser(user)
-	token, err := utils.SignUserToken(user.ID, user.Role, user.DistrictID)
+	token, err := utils.SignUserToken(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -126,7 +126,7 @@ func LoginUser(c *gin.Context) {
 	}
 
 	user = toSafeUser(user)
-	token, err := utils.SignUserToken(user.ID, user.Role, user.DistrictID)
+	token, err := utils.SignUserToken(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return

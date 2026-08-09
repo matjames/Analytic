@@ -1,0 +1,57 @@
+version: '3.8'
+services:
+  statcollect:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - STATCOLLECT_DATA_DIR=/data
+      - STATCOLLECT_PORT=:8080
+      - STATCOLLECT_DB_USER=statcollect
+      - STATCOLLECT_DB_PASSWORD=Statgate
+      - STATCOLLECT_DB_NAME=statcollect
+      - STATCOLLECT_DB_HOST=postgres
+      - STATCOLLECT_API_KEY=${STATCOLLECT_API_KEY:-changeme}
+      - STATCOLLECT_USE_S3=false
+      - STATCOLLECT_ADMIN_KEYS=${STATCOLLECT_ADMIN_KEYS:-changeme}
+
+      # ── StatGate Platform Integration ──
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
+      - STATGATE_TENANT_ID=${STATGATE_TENANT_ID:-default}
+      - STATCOLLECT_ENABLE_EVENTS=true
+      - STATCOLLECT_ENABLE_STATCHAT=true
+      - REDIS_ADDR=redis:6379
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - statgate-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: statcollect
+      POSTGRES_PASSWORD: Statgate
+      POSTGRES_DB: statcollect
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - statgate-network
+
+  redis:
+    image: redis:7
+    networks:
+      - statgate-network
+
+networks:
+  statgate-network:
+    external: true
+    name: statgate-network
+
+volumes:
+  pgdata:
