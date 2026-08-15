@@ -1,0 +1,26 @@
+{
+  "schema": "statgate-service-security-matrix",
+  "version": "1.0",
+  "directive": "SG-SEC-2026-08",
+  "defaults": {
+    "jwt_algorithm": "HS256",
+    "jwt_issuer": "statgate-registry",
+    "jwt_audience": "statgate",
+    "jwt_secret_env": "STATGATE_REGISTRY_JWT_SECRET",
+    "event_channel_env": "STATGATE_EVENT_CHANNEL",
+    "event_channel_default": "statgate:events"
+  },
+  "services": [
+    {"name":"registry","language":"Go","port":9090,"database":"kaggle","database_user":"Kaggle","jwt":"sign_and_verify","internal_api":true,"redis":false,"event_channel":null,"health":"/health","readiness":"/ready","metrics":"/metrics","cors":["http://localhost:3000","http://localhost:5000"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET","STATGATE_INTERNAL_API_KEY","REGISTRY_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"core","language":"Go","port":8080,"database":"statgate_ml_staging","database_user":"Kaggle","jwt":"verify","internal_api":true,"redis":false,"event_channel":null,"health":"/health","readiness":"/ready","metrics":"/metrics/prometheus","cors":["http://localhost:5000"],"uploads":null,"secrets":["STATGATE_INTERNAL_API_KEY","KAGGLE_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"analytics","language":"Python/Flask","port":5000,"database":"statgate_ml_staging","database_user":"Kaggle","jwt":"verify","internal_api":true,"redis":true,"event_channel":null,"health":"/health","readiness":null,"metrics":"/metrics","cors":["http://localhost:5000"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET","FLASK_SECRET_KEY","STATGATE_INTERNAL_API_KEY","KAGGLE_DB_PASSWORD"],"deps":["core","postgres"]},
+    {"name":"pms","language":"Go","port":8091,"database":"pms","database_user":"PMS","jwt":"verify","internal_api":false,"redis":false,"event_channel":"pulses","health":"/health","readiness":null,"metrics":"/metrics","cors":["http://localhost:3010"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET","PMS_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"rms","language":"Go","port":8092,"database":"rms","database_user":"RMS","jwt":"verify","internal_api":false,"redis":false,"event_channel":"pulses","health":"/health","readiness":null,"metrics":"/metrics","cors":["http://localhost:3011"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET","RMS_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"governance","language":"Go","port":8093,"database":"statgovernance","database_user":"StatGovernance","jwt":"verify","internal_api":false,"redis":true,"event_channel":"pulses","health":"/health","readiness":"/ready","metrics":"/metrics","cors":["http://localhost:3012"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET","GOVERNANCE_DB_PASSWORD"],"deps":["postgres","redis"]},
+    {"name":"enterprise-core","language":"Go","port":8096,"database":"statgate_enterprise","database_user":"statgate","jwt":"verify","internal_api":true,"redis":true,"event_channel":"statgate:events","health":"/health","readiness":"/ready","metrics":"/metrics","cors":["http://localhost:3006","http://localhost:3012"],"uploads":"ENTERPRISE_UPLOAD_DIR","secrets":["STATGATE_REGISTRY_JWT_SECRET","STATGATE_INTERNAL_API_KEY","STATGATE_DB_PASSWORD"],"deps":["postgres","redis"]},
+    {"name":"enterprise-search","language":"Go","port":8095,"database":null,"database_user":null,"jwt":"verify","internal_api":false,"redis":false,"event_channel":null,"health":"/health","readiness":null,"metrics":null,"cors":["http://localhost:3006"],"uploads":null,"secrets":["STATGATE_REGISTRY_JWT_SECRET"],"deps":[]},
+    {"name":"statchat","language":"Go","port":4000,"database":"statchat","database_user":"Statchat","jwt":"verify","internal_api":true,"redis":false,"event_channel":null,"health":"/health","readiness":"/readyz","metrics":null,"cors":["http://localhost:3009"],"uploads":"STATCHAT_UPLOAD_DIR","secrets":["STATGATE_REGISTRY_JWT_SECRET","STATGATE_INTERNAL_API_KEY","STATCHAT_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"helpdesk","language":"Node/Express","port":5006,"database":"statgate","database_user":"statgate","jwt":"verify","internal_api":false,"redis":false,"event_channel":null,"health":"/api-docs","readiness":null,"metrics":null,"cors":["http://localhost:3005"],"uploads":"uploads/","secrets":["STATGATE_REGISTRY_JWT_SECRET","HELPDESK_DB_PASSWORD"],"deps":["postgres"]},
+    {"name":"statcollect","language":"Go","port":8080,"database":"statcollect","database_user":"statcollect","jwt":"verify","internal_api":true,"redis":true,"event_channel":"opt-in","health":"/health","readiness":null,"metrics":"/metrics","cors":[],"uploads":"STATCOLLECT_DATA_DIR","secrets":["STATCOLLECT_API_KEY","STATCOLLECT_ADMIN_KEYS","STATGATE_REGISTRY_JWT_SECRET","STATGATE_INTERNAL_API_KEY","STATCOLLECT_DB_PASSWORD"],"deps":["postgres","redis"]}
+  ]
+}

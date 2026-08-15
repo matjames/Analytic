@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,14 +19,65 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Default password used for CSV-uploaded users (e.g. district). If a district user logs in with this, they must change password.
-const defaultPassword = "REDACTED_PLACEHOLDER"
+// publicRegistrationRoles is the role whitelist enforceable by PUBLIC
+// registration (SG-SEC-2026-08). Privileged roles are provisioned only by an
+// authenticated administrator.
+var publicRegistrationRoles = map[string]bool{
+	"viewer": true, "analyst": true, "agent": true, "district": true,
+}
 
 // toSafeUser removes password from user object
 func toSafeUser(u models.User) models.User {
 	u.Password = ""
 	u.PasswordHash = ""
 	return u
+}
+
+// passwordMeetsPolicy enforces the platform password policy (>=10 chars with
+// upper case, lower case and digit).
+func passwordMeetsPolicy(p string) bool {
+	if len(p) < 10 {
+		return false
+	}
+	hasUpper, hasLower, hasDigit := false, false, false
+	for _, r := range p {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			hasUpper = true
+		case r >= 'a' && r <= 'z':
+			hasLower = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit
+}
+
+// isValidEmail performs a lightweight email format check.
+func isValidEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if len(email) < 5 || !strings.Contains(email, "@") {
+		return false
+	}
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	domain := parts[1]
+	if !strings.Contains(domain, ".") || strings.Contains(domain, " ") {
+		return false
+	}
+	return true
+}
+
+// randomTemporaryPassword generates a policy-compliant one-time password for
+// provisioned accounts (must be changed on first login).
+func randomTemporaryPassword() string {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "TmpRngFail9a" // non-secret fallback only used on RNG failure
+	}
+	return "Tmp" + hex.EncodeToString(b) + "1a"
 }
 
 // RegisterUser - POST /users/register - Register a new user
@@ -46,6 +99,27 @@ func RegisterUser(c *gin.Context) {
 		return
 	}
 
+	// SG-SEC-2026-08: public registration may only grant limited roles.
+	// Privileged roles (admin, governance_officer, etc.) are provisioned by
+	// an authenticated administrator, never via self-registration.
+	role := "viewer"
+	if req.Role != nil && strings.TrimSpace(*req.Role) != "" {
+		candidate := strings.ToLower(strings.TrimSpace(*req.Role))
+		if !publicRegistrationRoles[candidate] {
+			c.JSON(http.StatusForbidden, gin.H{"error": "role is not permitted for public registration"})
+			return
+		}
+		role = candidate
+	}
+	if !isValidEmail(req.Email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid email address is required"})
+		return
+	}
+	if !passwordMeetsPolicy(req.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 10 characters and include upper/lower case and a digit"})
+		return
+	}
+
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -57,7 +131,7 @@ func RegisterUser(c *gin.Context) {
 		`INSERT INTO users (role, first_name, last_name, email, username, password, organisation, phoneno, district_id, "createdAt", "updatedAt")
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
 		 RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`,
-		req.Role, req.FirstName, req.LastName, req.Email, req.Username, string(hashed), req.Organisation, req.Phoneno, req.DistrictID,
+		role, req.FirstName, req.LastName, req.Email, req.Username, string(hashed), req.Organisation, req.Phoneno, req.DistrictID,
 	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
@@ -66,7 +140,7 @@ func RegisterUser(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "email or username already exists"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "registration failed"})
 		return
 	}
 
@@ -114,16 +188,8 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
-	// District users logging in with the default password must change password (works for existing users and when DB flag is missing)
-	roleStr := ""
-	if user.Role != nil {
-		roleStr = strings.TrimSpace(strings.ToLower(*user.Role))
-	}
-	if roleStr == "district" && req.Password == defaultPassword {
-		user.MustChangePassword = true
-		// Persist so /users/me and future logins reflect it (ignore error if column missing)
-		_, _ = configs.DB.Exec("UPDATE users SET must_change_password = true WHERE id = $1", user.ID)
-	}
+	// Temporary credentials require a change on first login; the flag is
+	// persisted with the account (SG-SEC-2026-08 removes default passwords).
 
 	user = toSafeUser(user)
 	token, err := utils.SignUserToken(user)
@@ -378,8 +444,8 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if len(req.NewPassword) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 6 characters long"})
+	if !passwordMeetsPolicy(req.NewPassword) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 10 characters and include upper/lower case and a digit"})
 		return
 	}
 
@@ -520,6 +586,16 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
+	// Validation applies to administrator provisioning too (SG-SEC-2026-08).
+	if !isValidEmail(req.Email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid email address is required"})
+		return
+	}
+	if !passwordMeetsPolicy(req.Password) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 10 characters and include upper/lower case and a digit"})
+		return
+	}
+
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -611,11 +687,11 @@ func UploadUsersCSV(c *gin.Context) {
 	phoneIdx, hasPhone := lookupCol("phoneno", "phone", "phone_number", "phone number")
 	districtIdx, hasDistrict := lookupCol("district_id", "district", "districtid")
 
-	// Pre-hash the default password once
-	hashed, err := bcrypt.GenerateFromPassword([]byte(defaultPassword), 10)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash default password"})
-		return
+	// ROLE ALLOWLIST: CSV-provisioned roles are limited to the non-privileged
+	// registry roles. Privileged roles require an administrator-created account.
+	provisionedRoles := map[string]bool{
+		"viewer": true, "analyst": true, "agent": true, "district": true,
+		"district_admin": true, "tenant_admin": true,
 	}
 
 	type failure struct {
@@ -626,9 +702,10 @@ func UploadUsersCSV(c *gin.Context) {
 	}
 
 	var (
-		totalRows int
-		created   int
-		failed    []failure
+		totalRows   int
+		created     int
+		failed      []failure
+		tempCredentials []gin.H
 	)
 
 	for {
@@ -714,21 +791,37 @@ func UploadUsersCSV(c *gin.Context) {
 			}
 		}
 
-		var user models.User
-		// District users created with default password must change password on first login
-		mustChange := role != nil && strings.EqualFold(*role, "district")
-		var mustChangeVal interface{}
-		if mustChange {
-			mustChangeVal = true
-		} else {
-			mustChangeVal = false
+		// Role allowlist enforcement for bulk-provisioned accounts
+		if role != nil {
+			roleName := strings.ToLower(strings.TrimSpace(*role))
+			if roleName != "" && !provisionedRoles[roleName] {
+				failed = append(failed, failure{
+					Row:      totalRows + 1,
+					Email:    email,
+					Username: username,
+					Error:    "role is not permitted for bulk provisioning",
+				})
+				continue
+			}
 		}
+
+		// Every provisioned account receives a unique one-time password and
+		// must change it on first login (SG-SEC-2026-08 removes default passwords).
+		tempPassword := randomTemporaryPassword()
+		rowHash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), 10)
+		if err != nil {
+			failed = append(failed, failure{Row: totalRows + 1, Email: email, Username: username, Error: "failed to hash password"})
+			continue
+		}
+
+		var user models.User
+		mustChangeVal := true
 
 		err = configs.DB.QueryRow(
 			`INSERT INTO users (role, first_name, last_name, email, username, password, organisation, phoneno, district_id, must_change_password, "createdAt", "updatedAt")
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 			 RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, must_change_password, "createdAt", "updatedAt"`,
-			role, firstName, lastName, email, username, string(hashed), org, phone, districtID, mustChangeVal,
+			role, firstName, lastName, email, username, string(rowHash), org, phone, districtID, mustChangeVal,
 		).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
 
 		if err != nil {
@@ -745,14 +838,23 @@ func UploadUsersCSV(c *gin.Context) {
 			continue
 		}
 
+		// Record the generated one-time credential for the requesting
+		// administrator to distribute out-of-band (never plaintext-stored).
+		tempCredentials = append(tempCredentials, gin.H{
+			"row":           totalRows + 1,
+			"email":         email,
+			"username":      username,
+			"temp_password": tempPassword,
+		})
 		created++
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"total":   totalRows,
-		"created": created,
-		"failed":  len(failed),
-		"errors":  failed,
+		"success":        true,
+		"total":          totalRows,
+		"created":        created,
+		"failed":         len(failed),
+		"errors":         failed,
+		"temp_passwords": tempCredentials,
 	})
 }

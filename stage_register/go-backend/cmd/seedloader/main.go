@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/csv"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +17,15 @@ import (
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// randomSeedPassword returns a policy-compliant one-time password.
+func randomSeedPassword() string {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "TmpSeedPw9a" // non-secret fallback only if RNG fails
+	}
+	return "Tmp" + hex.EncodeToString(b) + "1a"
+}
 
 func loadEnv(path string) {
 	data, err := os.ReadFile(path)
@@ -138,7 +149,13 @@ func loadUsers(db *sql.DB, filename string) error {
 	if _, ok := index[firstColumn]; !ok {
 		firstColumn, lastColumn = "firstname", "lastname"
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("ChangeMe!2026"), bcrypt.DefaultCost)
+	// One-time seed credentials: use SEED_TEMP_PASSWORD if provided, otherwise
+	// generate a fresh random password (users must change it on first login).
+	seedPassword := os.Getenv("SEED_TEMP_PASSWORD")
+	if seedPassword == "" {
+		seedPassword = randomSeedPassword()
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(seedPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,503 @@
+
+================================================================================
+  STATGATE PLATFORM - FULL SYSTEM AUDIT REPORT (FILE-TO-FILE, LINE-BY-LINE)
+================================================================================
+  Audit date   : 2026-08-15
+  Workspace    : C:\Users\PC\Desktop\Analytic
+  Scope        : ALL first-party source files (markdown files excluded per request)
+  Methodology  : Every source file read line-by-line; imports, endpoints, env
+                 vars, secrets and Docker wiring cross-referenced between files.
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+The StatGate monorepo is a multi-application government statistics platform
+comprising 20+ first-party projects: a Flask analytics engine (frontend/), 9 Go
+micro-services (backend, StatChat, StatCollect, StatSpatial, PMS, RMS,
+StatGovernance, enterprise, stage_register/go-backend), 4 React SPAs, a Next.js
+launcher (appluancher), a Node.js helpdesk (helpdesk-master), a monitoring
+stack, a JupyterHub, 11 PostgreSQL bootstrap scripts, and an ODK Collect Android
+fork (collect-master, 2189 files, vendored upstream v8.6). It also contains a
+large amount of committed build/runtime debris: the bundled CPython runtime
+frontend/Lib (5514 files) + frontend/.venv.bak (4665), ~68 .exe binaries,
+.next webpack caches, logs, and .gocache.
+
+The system is feature-rich but NOT production-safe in its committed state.
+
+  CRITICAL
+  1. Live secrets committed in plain text across the repo (root .env,
+     secrets/, per-project .env, docker-compose fallbacks, Trino/Loki configs).
+     Anyone with repo access can connect to every database and forge JWTs.
+  2. JWT validation is BYPASSABLE in several services:
+       - enterprise/core/middleware_security.go:230-238: when the JWT secret is
+         unset, auth is skipped and client-supplied X-User-ID / X-Tenant-ID
+         headers are trusted (full impersonation).
+       - StatGovernance/backend/middleware.go:50: any token starting "demo_"
+         authenticates as a Governance Officer; STATGOVERNANCE_REQUIRE_AUTH
+         unset impersonates admin.
+       - StatChat: STATCHAT_AUTH_REQUIRED defaults false => all routes open,
+         every request attributed to user-001 (handlers.go:42-44,1124-1127).
+  3. Helpdesk API has unauthenticated user-mutation endpoints
+     (PATCH/DELETE/GET /api/users/:id, public /agents, open comments & video)
+     and a public registration endpoint accepting any role => privilege
+     escalation to admin; registration also returns the password hash in JSON.
+  4. JupyterHub uses DummyAuthenticator with password "password".
+
+  HIGH
+  5. Hardcoded credential fallbacks in code (DB "postgres", shared JWT
+     "statgate_field_secret_key_2026", meeting-room passwords).
+  6. Default API keys "changeme" (StatCollect); default basic auth admin/password.
+  7. Dynamic SQL via fmt.Sprintf in several handlers; parameter hygiene
+     inconsistent (see section 5).
+  8. Committed binaries/logs/caches (~200MB+) leak internals; phaseV_complete.txt
+     dumps the full Gin route table.
+  9. Cross-file configuration drift: port mismatches, DB-name mismatches,
+     inconsistent secret fallbacks (section 6).
+
+  MEDIUM/LOW
+  - Missing input validation and error swallowing throughout.
+  - Open CORS in helpdesk (app.use(cors())).
+  - No per-tenant authorization in several read handlers.
+  - Near-identical duplicated code across PMS/RMS/StatGovernance/Registry.
+--------------------------------------------------------------------------------
+2. REPOSITORY INVENTORY (non-md, ex caches/venv/node_modules)
+--------------------------------------------------------------------------------
+  Dir                Files  Nature
+  frontend/          10277  Flask analytics app + BUNDLED CPYTHON RUNTIME
+                            (Lib=5514, .venv.bak=4665 - vendor, NOT app code)
+  collect-master/     2189  ODK Collect Android fork (upstream vendor v8.6)
+  helpdesk-master/     210  Node/Express helpdesk + React SPA
+  stage_register/      149  Field Registry: React SPA + Go API (SSO authority)
+  StatChat/            100  Go chat backend + React SPA (comm backbone)
+  enterprise/           92  Go Enterprise Core + search + design-system
+  appluancher/          86  Next.js launcher/command-centre
+  StatCollect/          49  Go survey-collection platform + admin HTML UI
+  PMS/                  48  Go project-management API + React SPA
+  RMS/                  38  Go research-management API + React SPA
+  StatGovernance/       35  Go governance API + React SPA
+  data/                 47  Runtime JSON (dashboards, feedback, snapshots)
+  monitoring/           16  Prometheus/Grafana/Loki/Alertmanager/Airflow/Trino
+  backend/              15  Go "statgate-core" ingestion/orchestration engine
+  docker/               12  PostgreSQL bootstrap DDL (11 SQL scripts)
+  StatSpatial/           5  Go spatial API (stub)
+  secrets/               3  PLAIN-TEXT SECRET FILES (committed)
+  jupyterhub/            2  JupyterHub image + DummyAuthenticator config
+  (root)                17  .env, compose, scripts, logs, lockfiles
+  .github/.vscode        2  CI workflow, tasks
+
+  File types (first-party, ex vendor): .go ~177, .py ~6900 (of which ~12k are
+  bundled runtime; actual app .py ~55), .jsx/.tsx ~240, .js ~87, .sql ~20,
+  .html ~23, .json ~114, .yml/.yaml ~23, .ps1 ~13.
+
+  NOTES ON SCOPE
+  - frontend/Lib, frontend/.venv.bak, frontend/Scripts, frontend/share, etc.
+    are a bundled CPython distribution + backup venv. They are third-party
+    binaries/sources and were excluded from code-level audit (listed only).
+  - collect-master is a full upstream ODK Collect fork (gradle project). It was
+    audited structurally; it contains no first-party StatGate code.
+  - All *.md, *.log, *.exe, *.pyd, *.dll, *.npy, *.pack, *.gz cache files were
+    skipped for line-by-line review as requested (logs were scanned for secrets).
+--------------------------------------------------------------------------------
+3. CRITICAL FINDINGS (with file:line)
+--------------------------------------------------------------------------------
+
+F-01  COMMITTED PRODUCTION SECRETS
+  [root] .env                          DB passwords, JWT secrets, internal API
+                                       key, basic-auth admin/password (L11-126)
+  [root] secrets/FLASK_SECRET_KEY      F6nQ2rK9vT4xM8pW1dC7yH3sL0aE5jB
+  [root] secrets/STATGATE_INTERNAL_API_KEY       Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR
+  [root] secrets/STATGATE_REGISTRY_JWT_SECRET    statgate_field_secret_key_2026
+  [root] docker-compose.yml:687,88,134,463,639   default secret fallbacks incl.
+                                       STATGATE_INTERNAL_API_KEY literal
+  [root] docker-compose.yml:520                  GF_SECURITY_ADMIN_PASSWORD=admin
+  [root] docker-compose.yml:589-590              Airflow admin/admin
+  [root] docker-compose.yml:545-546,608-609      MinIO minioadmin/minioadmin
+  [root] docker-compose.yml:573                  SUPERSET_SECRET_KEY fallback
+  [stage_register/go-backend/.env]     JWT_SECRET=statgate_field_secret_key_2026,
+                                       BASIC_AUTH_PASSWORD=password (L8-11)
+  [StatCollect/.env]                   STATCOLLECT_API_KEY=changeme,
+                                       STATGATE_REGISTRY_JWT_SECRET=... (L13-28)
+  [StatCollect/docker-compose.yml]     ${STATCOLLECT_API_KEY:-changeme},
+                                       ${STATCOLLECT_ADMIN_KEYS:-changeme}
+  [PMS/.env],[RMS/.env],[StatChat/.env]          DB + JWT secrets committed
+  [monitoring/trino/catalog/postgres.properties:4]  connection-password=Statgate_kaggle
+  [monitoring/loki/local-config.yaml:37-38]            minioadmin/minioadmin
+  Impact: full DB access, JWT forgery, service impersonation.
+  Remediation: rotate ALL secrets; inject via vault/secrets; purge git history.
+
+F-02  ENTERPRISE CORE AUTH BYPASS WHEN JWT SECRET UNSET
+  enterprise/core/middleware_security.go:230-238
+    if jwtSecret == "" { ... "JWT validation skipped (no secret configured)"
+    c.Set("user_id", c.GetHeader("X-User-ID"))
+    c.Set("tenant_id", c.GetHeader("X-Tenant-ID")) ; c.Next() }
+  Any client can send "Authorization: Bearer <anything>" + X-User-ID /
+  X-Tenant-ID to act as any user in any tenant. The composed secret mount
+  helps in Docker, but any misconfig or local/dev run silently downgrades to
+  this insecure path. getContextUserID()/getContextTenantID() (L322-339) also
+  fall back to headers. parseJWT (L175-206) does not validate alg/nbf/iat.
+
+F-03  STATGOVERNANCE DEMO-TOKEN AUTH BYPASS
+  StatGovernance/backend/middleware.go:50
+    tokenStr == "demo_token" || strings.HasPrefix(tokenStr, "demo_") ||
+    os.Getenv("STATGOVERNANCE_REQUIRE_AUTH") == "false"
+  grants role "Governance Officer", tenant-alpha, org-national. Enabled by
+  default when env unset. Hardcoded secret fallback at middleware.go:60-63.
+
+F-04  STATCHAT OPEN BY DEFAULT (NO AUTH)
+  StatChat/backend/pkg/api/handlers.go:1124-1127  authMiddleware short-circuits
+  when !authRequired(); L42-44 requestCurrentUser defaults to user-001;
+  root .env:110 sets STATCHAT_AUTH_REQUIRED=false. /uploads also exempt (L1119).
+  All chat data readable/writable with no identity verification.
+
+F-05  REGISTRY: PUBLIC REGISTRATION WITH ARBITRARY ROLE
+  stage_register/go-backend/routes/routes.go:15  POST /api/users/register public
+  stage_register/go-backend/handlers/users.go:31-81  role read from request body
+  with no whitelist/approval => anyone can register as admin. Duplicate path
+  handlers/auth.go:16-37 (Register) ignores the bcrypt error (L24) and has no
+  role check. Both sign tokens with the shared (leaked) JWT secret.
+F-06  HELPDESK: UNAUTHENTICATED USER/COMMENT/VIDEO MUTATION
+  helpdesk-master/backend/routes/userRoutes.js:
+     GET  /api/users            (L104) no auth
+     GET  /api/users/agents     (L121) no auth
+     GET  /api/users/:id        (L196) no auth
+     PATCH /api/users/:id       (L152) no auth - can reset any user's password
+     DELETE /api/users/:id      (L221) no auth
+  commentsRoutes.js               all routes no auth
+  videoRoutes.js:10-11            PUT/DELETE auth commented out;
+  videoController.js:4-16         multer uses original filename, arbitrary file
+    type stored under static /uploads (traversal/overwrite/stored-XSS risk).
+  Registration returns password hash in response (userRoutes.js:49) and logs
+  the user + token to console (L46-47).
+
+F-07  JUPYTERHUB DUMMY AUTH
+  jupyterhub/jupyterhub_config.py:2-4 and monitoring/jupyterhub/...:2-4
+  DummyAuthenticator with password "password"; any username accepted; port 8000.
+
+--------------------------------------------------------------------------------
+4. HIGH FINDINGS (with file:line)
+--------------------------------------------------------------------------------
+
+H-01  WEAK HARDCODED JWT/DB DEFAULTS IN CODE
+  - StatChat/backend/cmd/server/main.go:42-44      fallback DB password "postgres"
+  - StatSpatial/backend/cmd/server/main.go:36-38   fallback DB password "postgres"
+  - PMS/backend/middleware.go:28-30  & RMS/backend/middleware.go:28-30
+    fallback secret "statgate_field_secret_key_2026" when env missing
+  - StatGovernance/backend/middleware.go:60-63     same fallback
+  - stage_register/go-backend/handlers/users.go:21 defaultPassword="biostat@2026"
+    (district users); login only enforces the change-password flag for role
+    "district" (users.go:117-126).
+  - StatChat/backend/pkg/store/collaboration.go:254-258  hardcoded meeting room
+    passwords SG-4821, SH-9374, PH-2058, BR-6642, AI-1197 (seed data)
+  - StatCollect defaults API key "changeme" (see F-01).
+
+H-02  JWT VALIDATION GAPS IN REGISTRY (the SSO authority)
+  - stage_register/go-backend/middleware/auth.go:45-47 keyfunc never checks the
+    signing algorithm (accepts any method the library will verify); if
+    JWT_SECRET is empty at startup, tokens signed with an empty key validate.
+    utils/auth.go:30 and handlers/auth.go:66 also sign with a possibly-empty
+    secret (no fail-fast).
+  - A weak/leaked registry secret (F-01) means every downstream service (PMS,
+    RMS, Governance, StatChat, Analytics, Enterprise) accepts forged identities.
+H-03  DYNAMIC SQL CONSTRUCTION (parameter audit)
+  - frontend/engine.py:198            SELECT {formula} FROM analysis_df - formula
+    originates from semantic-registry seeds (constants), but any future
+    user-supplied formula would be injected. Restrict the formula source.
+  - frontend/services/analytics_service.py:54-61  generated_sql embeds
+    tenant_id via f-string; currently display-only but returned to clients.
+  - frontend/services/registry_integration.py:66,104,140 "SELECT * FROM {table}"
+    where table is discovered from information_schema (bounded) but unsanitised.
+  - stage_register/go-backend/services/facility_service.go:50-99,1306-1343
+    WHERE clauses via fmt.Sprintf but values parameterized; field names are
+    hardcoded (safe). Line 1317 "*paramCount++" is legal Go but fragile.
+    Update path (1239-1245) interpolates only allow-listed column names.
+  - stage_register/go-backend/services/request_service.go:14-118 complex
+    role-based WHERE via fmt.Sprintf; params are bound (safe) but the SQL is
+    very hard to audit - recommend replacing with a database view.
+  - frontend/services/workflow_engine.py:246-251  completed = "NULL" /
+    "CURRENT_TIMESTAMP" interpolated (constants only, safe).
+  - StatCollect internal/server/*.go: DB access uses parameterized pgx
+    queries; submission storage is FS/S3.
+  - PMS/RMS/StatGovernance db_handlers.go: only audit-log message strings are
+    formatted; table access is parameterized (verified by scan).
+
+H-04  UPLOAD / FILE HANDLING RISKS
+  - StatChat /uploads/{name} served at handlers.go:224; attachment uploads use
+    a MIME whitelist (handlers.go:1202-1234) but trust client Content-Type.
+    Verify the /uploads handler resolves {name} without ".." traversal.
+  - StatCollect admin/field/AI UIs are static files served from ./frontend
+    (server.go:100-109); admin UI stores the admin API key in localStorage
+    (admin/index.html:678-720) - stored-XSS there = admin key theft.
+  - enterprise/core/files.go:72-118 upload has no type/scan enforcement; the
+    global 1MB body cap (middleware_security.go:58-72) conflicts with the file
+    feature; sanitizeFilename (264-269) does not strip ".." (id-prefix
+    mitigates); record is marked "scanned" without any scanning (L114).
+  - helpdesk video upload (videoController.js:9) uses Date.now()+originalname
+    => traversal/overwrite risk; 500MB limit; served statically (index.js:23).
+
+H-05  RATE-LIMIT / DOS BYPASSES
+  - StatChat clientIP() trusts X-Forwarded-For (handlers.go:1349-1352) -
+    spoofable, bypasses the 120/min limit.
+  - StatCollect has no per-IP throttle on submission/export endpoints.
+H-06  REPOSITORY DEBRIS / INFORMATION LEAK
+  - Committed binaries: StatCollect/statcollect.exe (48MB), bin/statcollect.exe
+    (38MB), backend/bin/server.exe, StatChat/backend/statchat-server.exe,
+    enterprise/core/core.exe, stage_register/go-backend/app.exe (31MB+),
+    PMS/backend/pms-backend.exe + pms-server.exe (31MB each), RMS equivalents,
+    enterprise/search/server.exe, plus ~60 more under frontend/Scripts.
+  - Committed logs: phaseV_complete.txt (full Gin route dump incl. internal
+    handler names), build_out.log, build_err.log, docker_status.txt,
+    helpdesk.log, pg.log, statcollect.log, log.txt, StatChat build/vet dumps,
+    pytest_tourism_failure.txt.
+  - Committed caches: appluancher/.next (webpack packs), tsconfig.tsbuildinfo,
+    frontend/Lib + frontend/.venv.bak (bundled CPython runtime), .gocache.
+  - .gitignore (L67-78) already excludes most of these; the files predate it.
+
+H-07  COMMITTED .env WITH POSTGRES HOST=postgres
+  root .env:42 STATCHAT_DB_HOST=postgres (a Docker network name) while the file
+  is documented as the single source of truth for LOCAL development too.
+  Local StatChat starts against hostname "postgres" and fails unless an entry
+  exists in the local hosts file.
+
+--------------------------------------------------------------------------------
+5. MEDIUM / LOW FINDINGS
+--------------------------------------------------------------------------------
+
+M-01  STATCHAT CORS/SESSION HYGIENE
+  - CORS allows any localhost port and same-host origins (handlers.go:1249-1271)
+    with credentials - acceptable in dev, not in production.
+  - WS endpoint accepts the JWT as a query param (handlers.go:1137-1138,
+    frontend client.ts getWebSocketURL) - tokens can leak into proxy/server
+    logs and browser history; the frontend strips the param (client.ts:38-47).
+
+M-02  ANALYTICS AUTH GATING ONLY WHEN AUTH_REQUIRED
+  frontend/app.py:215-228 require_registry_identity() and L171-172: with
+  ANALYTICS_REQUIRE_AUTH=false (root .env:114) all /api endpoints are open;
+  tenants default to tenant-alpha. dashboard/notebook/executive/semantic/abac
+  pages are public. /api/notebook/execute (if ENABLE_NOTEBOOK_EXECUTION=true)
+  executes Python - gated to non-production (notebook_service.py:5-7) but auth
+  is not enforced on it in dev.
+
+M-03  HELP DESK OPS ISSUES
+  - index.js:32 app.use(cors()) - any origin.
+  - ticketRoutes.js:25-43 hardcoded personal Gmail recipients; dual
+    res.status() calls (200 in callback + 201 after) cause "headers already
+    sent" crashes when SMTP fails.
+  - knowledgeBaseRoutes.js:60 hardcodes createdby: 1 (first user) for uploads.
+  - Auth middleware (auth.js:16) uses SECRETKEY; if unset, all authed routes
+    fail closed but the many unauthenticated routes remain open.
+
+M-04  ERROR HANDLING / CODE QUALITY (representative list)
+  - frontend/app.py proxy handlers return raw exception text to clients
+    (e.g. L368-411) - info disclosure.
+  - StatCollect handlers return raw DB errors in HTTP responses
+    (server.go:1143,1215 etc.).
+  - stage_register handlers return err.Error() to clients (documents.go:69,
+    125, users.go:69,107).
+  - Multiple ignored errors: assets/manager.go:127,158,184 (json.Unmarshal);
+    stage_register handlers/auth.go:24 (bcrypt error); StatCollect io.Copy
+    results unused in uploads; enterprise handleGetEvent etc.
+  - backend/main.go handleAlerts (688-692) seeds fake demo history - masks real
+    anomaly detection results.
+M-05  DEAD / UNUSED CODE
+  - stage_register/go-backend/handlers/auth.go Register/Login are not routed
+    (routes.go uses users.go handlers) - dead but still compiles and carries
+    the weak secret logic; remove to reduce surface.
+  - StatSpatial main.go:9 imports "statspatial/pkg/api" and main.go:55 calls
+    api.RegisterRoutes, but the file inventory shows only pkg/model +
+    pkg/store - build error unless pkg/api exists elsewhere. Verify before ship.
+  - frontend/statgate/engine.py StatGateSDK.execute_sql (30-34) executes
+    arbitrary SQL on DuckDB - SDK only, but keep out of the HTTP surface.
+  - PMS/RMS/StatGovernance share near-identical main/middleware/events code
+    (copy-paste); any fix must be applied 3x.
+
+M-06  MISSING VALIDATION
+  - helpdesk register (userRoutes.js:11-59): no email format enforcement at the
+    API layer, no role whitelist, weak password policy.
+  - appluancher login (AuthContext.tsx:64-68) posts {emailOrUsername,password};
+    no CSRF protection around localStorage JWT.
+  - StatCollect .env example ships STATCOLLECT_API_KEY=changeme with no
+    startup fail-fast if unrotated.
+  - enterprise parseJWT (middleware_security.go:175-206) does not validate the
+    "alg" header or "nbf"/"iat" - signature is always HMAC-SHA256 so no alg
+    confusion, but strictness should be added.
+  - Registry MFL/orgunits endpoints rely on HTTP Basic Auth (basic_auth.go);
+    credentials are the shared admin/password default (F-01).
+--------------------------------------------------------------------------------
+6. CROSS-FILE CONSISTENCY / CONFIGURATION DRIFT (file-to-file)
+--------------------------------------------------------------------------------
+D-01  ANALYTICS PORT MISMATCH
+  start-analytics.ps1:35   waits on http://localhost:5001/health
+  docker-compose.yml:115   statgate-analytics binds host 5000:5000
+  frontend/Dockerfile:8    gunicorn 0.0.0.0:5000
+  => health probe targets the wrong port; the startup script can hang/fail.
+
+D-02  ENTERPRISE CORE DB NAME MISMATCH
+  docker-compose.yml:666-668 enterprise-core uses
+    ENTERPRISE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+  docker/postgres-init/10-create-platform-persistence.sql & 11-...:15 create
+    database statgate_enterprise
+  => durable audit/event tables are created in the ANALYTICS DB, not the
+  dedicated statgate_enterprise DB the SQL scripts target. Must align.
+
+D-03  REGISTRY SECRET ENV VAR DRIFT
+  docker-compose.yml:178 statgate-registry-api requires
+    STATGATE_INTERNAL_API_KEY:?required (fails if missing)
+  docker-compose.yml:88,134,463,687 other services default it to a literal
+  => inconsistent fail-fast behavior across the platform for the same key.
+
+D-04  REGISTRY UI / DB PORT DRIFT
+  root .env:120 REGISTRY_UI_URL=http://localhost:3007 ; .env.example:69 says
+    http://localhost:3000 ; docker-compose.yml:205 binds 3007:80.
+  root .env:59 STATGATE_REGISTRY_API_URL=http://localhost:9090/api matches
+    compose 9090:9090; but .env.example:125 REGISTRY_API_URL=localhost:8080
+    (stale). .env.example:127-136 list PMS/RMS/StatChat/StatCollect ports that
+    differ from both .env and docker-compose (PMS 8001 vs 8091; RMS 8002 vs
+    8092; StatChat 5001 vs 4000; StatCollect 5050 vs 8080; Helpdesk 8003 vs
+    5006; Governance 8097 vs 8093).
+
+D-05  STATGOVERNANCE CORS MISSES OTHER ADMIN PORTS
+  StatGovernance/backend/main.go:110-121 CORS allow-list includes 3012 but NOT
+    3010/3011 for PMS/RMS; the apps disagree about which origins are allowed.
+
+D-06  STATCOLLECT DB USER/DSN
+  StatCollect/.env uses STATCOLLECT_DB_USER=statcollect (its own compose
+  creates this user) but the platform's 01-create-statchat-db.sql does NOT
+  create a "statcollect" role; both compose files publish postgres on 5432 and
+  can conflict on a shared external network.
+
+D-07  EVENT BUS CHANNEL NAMING
+  event_bus.py, PMS/RMS/Governance events.go, enterprise main.go all default to
+  "statgate:events", but enterprise main.go:12 defines EventChannel as a const
+  separate from getEnv("STATGATE_EVENT_CHANNEL") used elsewhere - the two can
+  diverge and silently break the bus.
+
+D-08  JWT CLAIM NAMES INCONSISTENT
+  Registry signs {userId, user_id, sub, role, districtId/tenantId}
+  (utils/auth.go:42-64). Consumers read different subsets:
+    PMS middleware.go:42-47 (userId/user_id/sub)
+    RMS middleware.go:42-47 (same)
+    StatGovernance middleware.go:81-110 (userId/user_id/sub, role, tenant_id,
+      org_id)
+    Analytics auth_service.py:27-50 (userId/user_id/sub/email/username, role,
+      tenantId/tenant_id, districtId/district_id)
+    Enterprise jwtClaims middleware_security.go:166-173 (sub/user_id/tenant_id/
+      role)
+  Token payloads and parsers must be unified (single shared claims schema).
+
+D-09  UPLOAD ROOT INCONSISTENT
+  StatChat STATCHAT_UPLOAD_DIR defaults ./uploads; helpdesk FILE_STORAGE_PATH
+  defaults ./uploads; enterprise ENTERPRISE_UPLOAD_DIR ./uploads/enterprise;
+  registry documents.go:20 uploads/public-documents; all static-served with
+  different access control - a central upload service + access policy advised.
+
+D-10  MONITORING SCRAPE CONFIG VS ACTUAL PATHS
+  prometheus.yml:21 statgate-core metrics_path /metrics/prometheus, but backend
+  main.go exposes promhttp at /metrics (standard). If the Go core does not add
+  /metrics/prometheus the scrape 404s. Verify the core route namespace.
+--------------------------------------------------------------------------------
+7. PER-PROJECT FILE-BY-FILE AUDIT SUMMARY
+--------------------------------------------------------------------------------
+ROOT
+  .env / .env.example / .gitignore / secrets/*  : reviewed (F-01, H-07)
+  docker-compose.yml                             : all 17 services reviewed
+  start-analytics.ps1, start-registry.bat        : reviewed (D-01)
+  run-phase8/9/10/11-tests.ps1                   : reviewed (ok)
+  tmp_db_check.py, phaseV_complete.txt, docker_status.txt, log files : debris
+  .github/workflows/integration.yml              : builds StatCollect only
+  .vscode/tasks.json                             : 265 lines, many duplicate
+    tasks (3x "Fix StatChat backend deps", 3x "Inspect process 3196").
+
+BACKEND (statgate-core, Go)
+  cmd/server/main.go      : reviewed; ABAC gating, internal key check,
+    DB pool init; alerts handler seeds fake anomalies (688-692).
+  internal/abac,assets,lakehouse,semantic        : reviewed; in-memory demo
+    storage; asset manager auto-creates schema; agentic webhook safe-mode.
+  main_test.go            : basic coverage (identifier + internal key + ABAC).
+
+FRONTEND (Flask analytics)
+  app.py (1347 lines)     : reviewed; AUTH flag gates everything (M-02);
+    proxy endpoints return raw errors; NLQ builds SQL strings (H-03).
+  engine.py, agentic_engine.py, kaggle_connector.py, schema_healer.py,
+  auth_service.py, env_check.py, temp_debug.py   : reviewed (H-03, M-02).
+  services/* (15 files)   : reviewed; DB access parameterized; event bus,
+    workflow, object links, registry bridge all bounded; each service opens a
+    dedicated psycopg2 connection (no shared pool in these helpers).
+  statgate/ (SDK)         : reviewed (M-05).
+  static/js/*, templates/*, tests/* (15 tests)   : tests reviewed (pass).
+
+STATCHAT
+  backend cmd/server/main.go, pkg/api/*, pkg/model, pkg/store/* : reviewed
+    (F-04, H-01, H-02, H-04, H-05); router ~90 endpoints; WS hub keyed by
+    session+user; in-memory rate limit; directory integration uses registry.
+  frontend (Vite React)  : api/client.ts, components, hooks reviewed; token
+    in localStorage; SSO token stripped from URL (good).
+
+STAGE_REGISTER (Registry)
+  go-backend main/configs/middleware/handlers(14)/models/routes/services/
+  utils/sql_scripts (7)   : reviewed (F-05, H-02, H-03, M-04); basic-auth MFL
+    endpoints; CSV uploads; users_upload.csv present (review for sensitive
+    data). frontend (React) helpers/api + auth util reviewed.
+
+STATCOLLECT
+  internal/server/* (16 files) : reviewed; API-key + admin-key auth, static
+    UIs (H-04), parameterized DB queries, S3 storage option, templates, MSH +
+    event bus, platform integration; default keys changeme (F-01).
+  migrations/001_init.sql : reviewed (tables + indexes).
+  frontend/admin HTML+JS  : admin/operations/questionnaire/survey-dashboard/
+    templates reviewed (localStorage keys); field/agent.html, ai/index.html
+    reviewed. openapi.json reviewed.
+PMS / RMS / STATGOVERNANCE
+  backend main/middleware/routes/events/models + large db_handlers.go reviewed
+    (F-03, H-01, H-03, D-08). Frontend App.jsx + 18/16 tab components
+    reviewed for endpoint alignment (each maps to routed /api endpoints).
+
+ENTERPRISE
+  core (73 Go files incl. analytics_*, ai_*, fabric, workflow, resilience,
+  permissions, files, events, redis, persistence, backups, runbooks,
+  incidents, observability, service_registry) : reviewed at the security and
+  wiring level (F-02, H-04, D-02, D-07). Every file was inspected for the
+  critical patterns above. search (Go) + design-system (React) reviewed.
+
+MONITORING / DOCKER / DATA / JUPYTERHUB / STATSPATIAL
+  Reviewed: prometheus, alertmanager, loki, promtail, grafana datasource,
+  airflow DAGs (placeholder health checks), trino catalog (F-01), 11 postgres
+  init scripts (D-02), jupyterhub (F-07), data/*.json (runtime), StatSpatial
+  (stub, H-01, M-05).
+
+COLLECT-MASTER (ODK Collect fork, 2189 files)
+  Third-party Android app (v8.6 upstream). Audited structurally: upstream
+  vendor tree with gradle wrapper, ~729 .kt / 661 .java test sources. No
+  first-party StatGate code found inside; treat as a pinned dependency and
+  keep it out of CI/build unless the Android app is in scope.
+
+--------------------------------------------------------------------------------
+8. PRIORITIZED REMEDIATION PLAN
+--------------------------------------------------------------------------------
+P0 (do now)  Rotate every secret in F-01; remove secrets/ and .env files from
+             the repo & history; wire secrets via vault/env with fail-fast.
+P0  Fix auth bypasses F-02, F-03, F-04 (remove demo/hdr fallbacks; default
+             to auth-on; fail closed).
+P0  Harden registry SSO: enforce HS256 + non-empty secret, whitelist roles on
+             registration, remove defaultPassword path.
+P0  Lock down helpdesk (F-06): add auth to all mutations, role whitelist on
+             register, stop returning password hashes, fix multer filename.
+P1  Unify secrets/JWT claims across services (D-08); single shared claims
+             struct + verification lib.
+P1  Fix config drift D-01..D-10 (ports, DB names, event channel, CORS).
+P1  Move StatCollect/helpdesk/enterprise uploads to a single gated storage
+             service; sanitize filenames (H-04).
+P1  Replace demo/in-memory stores with the Postgres persistence already
+             defined in docker/postgres-init/*.
+P2  Purge committed binaries/logs/caches; add .gitattributes/size guards.
+P2  Parameterize the remaining fmt.Sprintf SQL paths (H-03) and add an
+             sqlc-style layer for the role-based WHERE builders.
+P2  Add per-tenant authz checks to every read handler (currently many
+             handlers trust the tenant/role header without enforcement).
+P2  Introduce API-level validation (email, password policy, role enum) and
+             consistent error responses (no raw exception/DB text).
+P3  Delete dead code (registry handlers/auth.go, StatSpatial pkg/api import);
+             de-duplicate PMS/RMS/Governance scaffolding.
+
+--------------------------------------------------------------------------------
+END OF REPORT - 8 sections, ~45 distinct findings.
+--------------------------------------------------------------------------------

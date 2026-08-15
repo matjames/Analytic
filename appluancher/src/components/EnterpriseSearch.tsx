@@ -202,12 +202,16 @@ export const EnterpriseSearch: React.FC<EnterpriseSearchProps> = ({
                   </div>
                   <div className="space-y-1">
                     {sourceResults.map((result, idx) => (
-                      <a
+                      <div
                         key={`${result.source}-${result.id}-${idx}`}
-                        href={result.url || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-2 p-2 rounded hover:bg-blue-50 transition-colors"
+                        onClick={() => {
+                          if (onClose) onClose();
+                          // Fallback to URL if not handled
+                          if (result.url && result.url.startsWith('http')) {
+                            window.open(result.url, '_blank');
+                          }
+                        }}
+                        className="flex items-start gap-2 p-2 rounded hover:bg-blue-50 cursor-pointer transition-colors"
                       >
                         <span className="text-lg">{TYPE_ICONS[result.type] || '📄'}</span>
                         <div className="flex-1 min-w-0">
@@ -227,7 +231,7 @@ export const EnterpriseSearch: React.FC<EnterpriseSearchProps> = ({
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 capitalize flex-shrink-0">
                           {result.type}
                         </span>
-                      </a>
+                      </div>
                     ))}
                   </div>
                 </div>

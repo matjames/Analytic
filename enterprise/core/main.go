@@ -9,10 +9,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const EventChannel = "statgate:events"
+// EventChannel is the canonical Redis event bus channel for the whole
+// platform (SG-SEC-2026-08 §14, docs/security/CONFIGURATION_STANDARD.md).
+// One source of truth: STATGATE_EVENT_CHANNEL (default "statgate:events").
+var EventChannel = getEnv("STATGATE_EVENT_CHANNEL", "statgate:events")
 
 var (
-	version   = "7.0.0"
+	version   = "12.0.0"
 	startTime = time.Now()
 )
 
@@ -69,6 +72,7 @@ type AttachmentRef struct {
 type TimelineEntry struct {
 	ID          string                 `json:"id"`
 	User        string                 `json:"user"`
+	TenantID    string                 `json:"tenant_id,omitempty"`
 	Application string                 `json:"application"`
 	Entity      string                 `json:"entity"`
 	EntityID    string                 `json:"entity_id"`
@@ -172,11 +176,18 @@ type ServiceHealth struct {
 func main() {
 	_ = godotenv.Load("../../.env")
 	_ = godotenv.Load(".env")
+
+	// ── Phase X: Sovereign Platform Hardening ──
+	validateProductionSecrets() // Fail fast on missing secrets in production
+
 	initAIPersistence()
 
 	initRedis()
 	go consumeEvents()
 	startScheduler()
+
+	// ── Phase X: PostgreSQL persistence layer ──
+	initDB()
 
 	// ── Phase IV: Enterprise Data Intelligence & Real-Time Analytics ──
 	bootstrapDataLayer()
@@ -195,6 +206,25 @@ func main() {
 	// Phase VI: Enterprise Knowledge, Collaboration & Institutional Intelligence
 	bootstrapKnowledge()
 
+	// ── Phase IX: Institutional Data, Knowledge & Interoperability Fabric ──
+	bootstrapFabric()
+
+	// ── Phase X: Service Registry & Observability ──
+	initServiceRegistry()
+	startMetricsAggregator()
+
+	// ── Phase XI: Institutional Resilience, Continuity & Autonomous Assurance ──
+	initResilienceEngine()
+	initDrillEngine()
+	initIncidentDetector()
+	initBackupAssurance()
+	initIntegrityEngine()
+	initRunbooks()
+	initEvidenceVault()
+
+	// ── Phase XII: Institutional Intelligence & Governed AI ──
+	initPhase12()
+
 	r := setupRouter()
 	registerRoutes(r)
 
@@ -206,21 +236,34 @@ func main() {
 }
 
 func setupRouter() *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+	// Phase X: security headers and correlation IDs on all responses
+	r.Use(securityHeadersMiddleware())
+	r.Use(correlationMiddleware())
+	r.Use(requestSizeMiddleware())
+	r.Use(rateLimitMiddleware())
+	r.Use(requestMetricsMiddleware())
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:3000", "http://localhost:3003", "http://localhost:3005",
 			"http://localhost:3006", "http://localhost:3007", "http://localhost:3009",
-			"http://localhost:3010", "http://localhost:3011", "http://localhost:5000",
-			"http://localhost:8088", "http://host.docker.internal:3006",
+			"http://localhost:3010", "http://localhost:3011", "http://localhost:3012",
+			"http://localhost:5000", "http://localhost:8088",
+			"http://host.docker.internal:3006",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Request-ID", "X-Correlation-ID", "X-User-ID", "X-Tenant-ID"},
-		ExposeHeaders:    []string{"Content-Disposition", "X-Report-URL"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Request-ID", "X-Correlation-ID", "X-User-ID", "X-Tenant-ID", "X-Internal-API-Key"},
+		ExposeHeaders:    []string{"Content-Disposition", "X-Report-URL", "X-Correlation-ID", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * 3600,
 	}))
+	// Probe endpoints — unauthenticated, not rate-limited by application logic
 	r.GET("/health", handleHealth)
+	r.GET("/ready", handleReadiness)
+	r.GET("/live", handleLiveness)
+	r.GET("/metrics", handlePlatformMetrics)
 	r.GET("/api/info", handleInfo)
 	return r
 }
@@ -246,7 +289,7 @@ func handleInfo(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"name":    "StatGate Enterprise Core",
 		"version": version,
-		"phase":   "PHASE_VII",
+		"phase":   "PHASE_XII",
 		"capabilities": []string{
 			"event_bus", "notifications", "timeline", "dashboards", "widgets",
 			"file_service", "permissions", "calendar", "reporting", "ai_preparation",
@@ -257,6 +300,9 @@ func handleInfo(c *gin.Context) {
 			"cross_app_intelligence", "report_builder", "scheduled_reports",
 			"data_export", "analytics_search", "ai_ready_analytics",
 			"data_lineage", "real_time_stream",
+			"universal_object_identity", "governed_relationship_graph",
+			"data_catalogue", "data_dictionary", "semantic_interoperability",
+			"governed_knowledge_fabric", "institutional_memory", "application_registry",
 			"enterprise_workflow_engine", "workflow_builder", "approval_engine",
 			"enterprise_ai_context", "grounded_ai_query", "ai_source_traceability",
 			"ai_investigations", "ai_recommendations", "ai_feedback", "ai_audit",
@@ -269,6 +315,15 @@ func handleInfo(c *gin.Context) {
 			"enterprise_knowledge_graph", "entity_context", "knowledge_search",
 			"knowledge_articles", "knowledge_versioning", "data_dictionary",
 			"permission_aware_knowledge", "sourced_ai_context", "knowledge_audit",
+			// Phase VIII
+			"command_centre", "executive_view", "operations_view", "field_view",
+			"project_portfolio", "research_portfolio", "governance_view",
+			"decision_centre", "data_intelligence_view", "service_health",
+			"outcome_monitoring", "statgovernance_integration",
+			// Phase XII
+			"institutional_intelligence", "institutional_object_registry", "knowledge_graph",
+			"institutional_condition_engine", "intelligence_signals", "objectives_kpi",
+			"risk_intelligence", "governed_ai_reasoning", "ai_audit", "named_graph_queries",
 		},
 		"started_at": startTime.UTC().Format(time.RFC3339),
 	})

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 )
 
 // ─── Phase IV: Automated Tests for Analytical Functionality ────────
@@ -13,8 +15,42 @@ import (
 // event-driven updates, dashboard rendering, export permissions,
 // search results, data lineage, alert generation.
 
+const testJWTSecret = "statgate-test-secret-0123456789abcdef"
+
+// testRouterBearerToken is a canonical StatGate JWT injected into every
+// harness request so the fail-closed middleware can authenticate (SG-SEC-2026-08).
+var testRouterBearerToken string
+
+// TestMain arms the shared identity configuration before the test suite runs.
+func TestMain(m *testing.M) {
+	os.Setenv("STATGATE_REGISTRY_JWT_SECRET", testJWTSecret)
+	// A permissive rate limit avoids test-flake 429s from the shared limiter.
+	os.Setenv("STATGATE_RATE_LIMIT_RPM", "1000000")
+	now := time.Now()
+	claims := map[string]interface{}{
+		"sub":       "test-admin",
+		"tenant_id": "tenant-alpha",
+		"org_id":    "org-national",
+		"role":      "admin",
+		"email":     "test@statgate.local",
+		"iat":       now.Unix(),
+		"nbf":       now.Add(-30 * time.Second).Unix(),
+		"exp":       now.Add(24 * time.Hour).Unix(),
+		"iss":       "statgate-registry",
+		"aud":       "statgate",
+	}
+	testRouterBearerToken = signTestJWT(testJWTSecret, "HS256", claims)
+	code := m.Run()
+	os.Unsetenv("STATGATE_REGISTRY_JWT_SECRET")
+	os.Exit(code)
+}
+
 // setupTestRouter builds a test router with all routes registered.
 func setupTestRouter() *ginTestRouter {
+	// Ensure the shared identity secret is armed for the middleware chain,
+	// regardless of which tests mutated it earlier (order independence).
+	os.Setenv("STATGATE_REGISTRY_JWT_SECRET", testJWTSecret)
+
 	// Register Phase IV bootstraps
 	bootstrapDataLayer()
 	bootstrapKPIs()
@@ -37,6 +73,12 @@ type ginTestRouter struct {
 }
 
 func (g *ginTestRouter) do(method, path, body string) *httptest.ResponseRecorder {
+	// "" -> the default administrative test token (sub=test-admin).
+	return g.doAs(method, path, body, "")
+}
+
+// doAs sends a request authenticated as the given principal (JWT sub).
+func (g *ginTestRouter) doAs(method, path, body, user string) *httptest.ResponseRecorder {
 	var reader *bytes.Reader
 	if body != "" {
 		reader = bytes.NewReader([]byte(body))
@@ -45,6 +87,26 @@ func (g *ginTestRouter) do(method, path, body string) *httptest.ResponseRecorder
 	}
 	req := httptest.NewRequest(method, path, reader)
 	req.Header.Set("Content-Type", "application/json")
+	token := testRouterBearerToken
+	if user != "" {
+		now := time.Now()
+		claims := map[string]interface{}{
+			"sub":       user,
+			"tenant_id": "tenant-alpha",
+			"org_id":    "org-national",
+			"role":      "analyst",
+			"email":     user + "@statgate.local",
+			"iat":       now.Unix(),
+			"nbf":       now.Add(-30 * time.Second).Unix(),
+			"exp":       now.Add(24 * time.Hour).Unix(),
+			"iss":       "statgate-registry",
+			"aud":       "statgate",
+		}
+		token = signTestJWT(testJWTSecret, "HS256", claims)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	w := httptest.NewRecorder()
 	g.engine.ServeHTTP(w, req)
 	return w

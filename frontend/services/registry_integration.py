@@ -32,7 +32,7 @@ def _get_registry_conn():
             port=int(os.getenv('REGISTRY_DB_PORT', '5432')),
             dbname=os.getenv('REGISTRY_DB_NAME', 'kaggle'),
             user=os.getenv('REGISTRY_DB_USER', 'Kaggle'),
-            password=os.getenv('REGISTRY_DB_PASSWORD', 'REDACTED_PLACEHOLDER'),
+            password=os.getenv('REGISTRY_DB_PASSWORD', ''),
             sslmode=os.getenv('REGISTRY_DB_SSLMODE', 'disable'),
         )
     except Exception as exc:

@@ -55,6 +55,10 @@ func publishEvent(ev DomainEvent) {
 			ev.TenantID = "statgate"
 		}
 	}
+
+	// Phase X: Persist BEFORE publish — Redis outage cannot destroy events.
+	persistEvent(ev)
+
 	// Process locally first so the request has deterministic, immediately
 	// visible effects. Redis remains the delivery mechanism for other service
 	// instances; the shared idempotency key prevents them repeating the work.
@@ -62,6 +66,7 @@ func publishEvent(ev DomainEvent) {
 	processKnowledgeForEvent(ev)
 	processEventIdempotent(ev)
 	if redisClient == nil {
+		// Redis unavailable: event is already persisted, will be replayed later
 		return
 	}
 	data, _ := json.Marshal(ev)

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 )
@@ -12,6 +13,7 @@ func knowledgeRequest(t *testing.T, router *ginTestRouter, method, path, body st
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-User-ID", "knowledge-test-user")
+	req.Header.Set("Authorization", "Bearer "+testRouterBearerToken)
 	w := httptest.NewRecorder()
 	router.engine.ServeHTTP(w, req)
 	return w
@@ -67,10 +69,14 @@ func TestKnowledgeGraphContext(t *testing.T) {
 }
 
 func TestKnowledgeRejectsAnonymousRead(t *testing.T) {
+	// SG-SEC-2026-08: an unauthenticated request must be DENIED (401) by the
+	// auth middleware before it reaches the knowledge handler.
 	ts := setupTestRouter()
-	w := ts.do("GET", "/api/knowledge/search?q=anything", "")
-	if w.Code != 403 {
-		t.Fatalf("expected 403 for anonymous knowledge access, got %d", w.Code)
+	req := httptest.NewRequest("GET", "/api/knowledge/search?q=anything", nil)
+	w := httptest.NewRecorder()
+	ts.engine.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for anonymous knowledge access, got %d", w.Code)
 	}
 }
 

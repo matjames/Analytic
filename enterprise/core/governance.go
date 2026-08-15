@@ -28,7 +28,12 @@ type AuditRecord struct {
 	Timestamp string                 `json:"timestamp"`
 }
 
-func recordAudit(action, app, user string, details map[string]interface{}) {
+// recordAudit and handleAuditLog are defined in audit_log.go (Phase X).
+// The in-memory auditLog store below is kept for supplementary in-process
+// access (e.g. the monitoring endpoints) but is no longer the authoritative
+// audit trail — PostgreSQL is.
+
+func appendAuditRecord(action, app, user string, details map[string]interface{}) {
 	rec := AuditRecord{
 		ID:        fmt.Sprintf("audit_%d", time.Now().UnixNano()),
 		Action:    action,
@@ -43,34 +48,6 @@ func recordAudit(action, app, user string, details map[string]interface{}) {
 		auditLog.entries = auditLog.entries[len(auditLog.entries)-10000:]
 	}
 	auditLog.Unlock()
-}
-
-func handleAuditLog(c *gin.Context) {
-	app := c.Query("app")
-	user := c.Query("user")
-	action := c.Query("action")
-	limit := parseIntDefault(c.Query("limit"), 100)
-
-	auditLog.RLock()
-	entries := make([]AuditRecord, 0, len(auditLog.entries))
-	for i := len(auditLog.entries) - 1; i >= 0; i-- {
-		e := auditLog.entries[i]
-		if app != "" && e.App != app {
-			continue
-		}
-		if user != "" && e.User != user {
-			continue
-		}
-		if action != "" && e.Action != action {
-			continue
-		}
-		entries = append(entries, e)
-		if len(entries) >= limit {
-			break
-		}
-	}
-	auditLog.RUnlock()
-	c.JSON(200, gin.H{"count": len(entries), "audit_entries": entries})
 }
 
 func handleListAPIs(c *gin.Context) {
@@ -134,6 +111,7 @@ func checkAllServices() []ServiceHealth {
 	serviceURLs := []ServiceHealth{
 		{Name: "pms", URL: getEnv("PMS_API_URL", "http://localhost:8091")},
 		{Name: "rms", URL: getEnv("RMS_API_URL", "http://localhost:8092")},
+		{Name: "statgovernance", URL: getEnv("STATGOVERNANCE_API_URL", "http://localhost:8093")},
 		{Name: "registry", URL: getEnv("REGISTRY_API_URL", "http://localhost:9090")},
 		{Name: "statchat", URL: getEnv("STATCHAT_API_URL", "http://localhost:4000")},
 		{Name: "helpdesk", URL: getEnv("HELPDESK_API_URL", "http://localhost:5006")},

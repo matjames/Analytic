@@ -35,6 +35,7 @@ func handleActionCentre(c *gin.Context) {
 		"helpdesk":         userHelpDeskActions(userID),
 		"project_actions":  userProjectActions(userID),
 		"research_actions": userResearchActions(userID),
+		"governance_actions": userGovernanceActions(userID),
 		"survey_actions":   userSurveyActions(userID),
 		"workflows":        userWorkflows(userID),
 		"summary": map[string]interface{}{
@@ -335,6 +336,30 @@ func userResearchActions(userID string) []map[string]interface{} {
 					"id": research["id"], "title": fmt.Sprintf("Research requires review: %v", research["name"]),
 					"source": "rms", "description": "Research is at Proposal stage",
 					"priority": "high",
+				})
+			}
+		}
+	}
+	return out
+}
+
+func userGovernanceActions(userID string) []map[string]interface{} {
+	out := []map[string]interface{}{}
+	govURL := getEnv("STATGOVERNANCE_API_URL", "http://localhost:8093")
+	if data := fetchJSONArray(govURL + "/api/findings?limit=10"); data != nil {
+		for _, finding := range data {
+			if status, ok := finding["status"].(string); ok && (status == "Open" || status == "In Remediation") {
+				severity, _ := finding["severity"].(string)
+				priority := "medium"
+				if severity == "Critical" {
+					priority = "critical"
+				} else if severity == "High" {
+					priority = "high"
+				}
+				out = append(out, map[string]interface{}{
+					"id": finding["id"], "title": fmt.Sprintf("Governance Action: %v", finding["title"]),
+					"source": "statgovernance", "description": fmt.Sprintf("Audit finding remediation due: %v", finding["due_date"]),
+					"priority": priority,
 				})
 			}
 		}

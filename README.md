@@ -26,6 +26,7 @@ Browser / Android collector (collect-master)
        |-> StatChat UI (:3009) <----> StatChat backend (Go :4000, WebSockets)
        |-> PMS UI (:3010)             -> PMS API (Go :8091)
        |-> RMS UI (:3011)             -> RMS API (Go :8092)
+       |-> StatGovernance UI (:3012)  -> StatGovernance API (Go :8093)
        |-> Enterprise Search (:8095)  / Enterprise Core (:8096)
        `-> StatCollect (:8080) -> Redis event bus -> StatChat discussions / Registry identity
 ```
@@ -43,6 +44,7 @@ All services share the `statgate-network`, PostgreSQL (databases created by `doc
 | `helpdesk-master/` | Operations Helpdesk: Node/Express `backend` (:5006) + React `frontend` (:3005). |
 | `StatChat/` | StatChat collaboration platform: Go `backend` (:4000) + React/Vite `frontend` (:3009). |
 | `PMS/`, `RMS/` | Projects and Research management: Go backends + React/Vite UIs. |
+| `StatGovernance/` | Phase VIII Institutional Governance, Compliance, Risk & Internal Control Platform: Go backend (:8093) + React/Vite frontend (:3012). |
 | `StatCollect/` | Data-collection adapter for ODK multipart submissions (Go, :8080). |
 | `StatSpatial/` | Early-stage spatial/GIS Go backend. |
 | `collect-master/` | Android field-capture app (ODK Collect fork, Gradle). |

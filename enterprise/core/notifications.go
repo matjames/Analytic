@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,16 +20,34 @@ func createNotificationRecord(n Notification) (string, error) {
 	if n.Priority == "" {
 		n.Priority = "medium"
 	}
-	if redisClient == nil || n.UserID == "" {
-		return n.ID, nil
+	// Persist to PostgreSQL if available
+	if dbPool != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		metaJSON, _ := json.Marshal(n.Metadata)
+		_, err := dbPool.ExecContext(ctx,
+			`INSERT INTO platform_notifications 
+				(id, user_id, title, body, priority, category, source_app, source_entity, source_entity_id, read, archived, deep_link, metadata, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)
+			ON CONFLICT (id) DO NOTHING`,
+			n.ID, n.UserID, n.Title, n.Body, n.Priority, n.Category, n.SourceApp, n.SourceEntity, n.SourceEntityID,
+			n.Read, n.Archived, n.DeepLink, string(metaJSON), n.CreatedAt,
+		)
+		if err != nil {
+			log.Printf("notifications: DB write error: %v", err)
+		}
 	}
-	key := fmt.Sprintf("statgate:notifications:%s", n.UserID)
-	data, _ := json.Marshal(n)
-	ctx := context.Background()
-	if err := redisClient.LPush(ctx, key, string(data)).Err(); err != nil {
-		return n.ID, err
+
+	if redisClient != nil && n.UserID != "" {
+		key := fmt.Sprintf("statgate:notifications:%s", n.UserID)
+		data, _ := json.Marshal(n)
+		ctx := context.Background()
+		if err := redisClient.LPush(ctx, key, string(data)).Err(); err != nil {
+			return n.ID, err
+		}
+		redisClient.LTrim(ctx, key, 0, 499)
 	}
-	redisClient.LTrim(ctx, key, 0, 499)
+
 	// Publish realtime notification event
 	publishEvent(DomainEvent{
 		ID:         fmt.Sprintf("notif_evt_%d", time.Now().UnixNano()),
@@ -70,23 +89,51 @@ func handleListNotifications(c *gin.Context) {
 }
 
 func fetchNotifications(userID string, limit int) []Notification {
-	if redisClient == nil || userID == "" {
+	if userID == "" {
 		return []Notification{}
 	}
-	key := fmt.Sprintf("statgate:notifications:%s", userID)
-	ctx := context.Background()
-	raw, err := redisClient.LRange(ctx, key, 0, int64(limit-1)).Result()
-	if err != nil {
-		return []Notification{}
-	}
-	notifs := make([]Notification, 0, len(raw))
-	for _, item := range raw {
-		var n Notification
-		if err := json.Unmarshal([]byte(item), &n); err == nil {
-			notifs = append(notifs, n)
+	if redisClient != nil {
+		key := fmt.Sprintf("statgate:notifications:%s", userID)
+		ctx := context.Background()
+		raw, err := redisClient.LRange(ctx, key, 0, int64(limit-1)).Result()
+		if err == nil && len(raw) > 0 {
+			notifs := make([]Notification, 0, len(raw))
+			for _, item := range raw {
+				var n Notification
+				if err := json.Unmarshal([]byte(item), &n); err == nil {
+					notifs = append(notifs, n)
+				}
+			}
+			return notifs
 		}
 	}
-	return notifs
+
+	// Fallback to PostgreSQL
+	if dbPool != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		rows, err := dbPool.QueryContext(ctx,
+			`SELECT id, user_id, title, body, priority, category, source_app, source_entity, source_entity_id, read, archived, deep_link, metadata, created_at
+			FROM platform_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`, userID, limit)
+		if err == nil {
+			defer rows.Close()
+			notifs := make([]Notification, 0)
+			for rows.Next() {
+				var n Notification
+				var metaJSON []byte
+				var createdAt time.Time
+				if err := rows.Scan(&n.ID, &n.UserID, &n.Title, &n.Body, &n.Priority, &n.Category, &n.SourceApp, &n.SourceEntity, &n.SourceEntityID, &n.Read, &n.Archived, &n.DeepLink, &metaJSON, &createdAt); err == nil {
+					n.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+					if len(metaJSON) > 0 {
+						_ = json.Unmarshal(metaJSON, &n.Metadata)
+					}
+					notifs = append(notifs, n)
+				}
+			}
+			return notifs
+		}
+	}
+	return []Notification{}
 }
 
 func handleGetNotification(c *gin.Context) {

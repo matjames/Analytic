@@ -11,7 +11,10 @@ import (
 
 // registerRoutes wires all enterprise API routes.
 func registerRoutes(r *gin.Engine) {
-	api := r.Group("/api")
+	// Phase X: Apply JWT validation and tenant isolation to all /api routes.
+	// Probe endpoints (/health, /ready, /live, /metrics) are excluded by the middleware itself.
+	apiAuth := r.Group("/api", jwtAuthMiddleware(), tenantIsolationMiddleware())
+	api := apiAuth
 	{
 		// Event Bus
 		api.POST("/events", handlePublishEvent)
@@ -292,6 +295,133 @@ func registerRoutes(r *gin.Engine) {
 			ai.GET("/usage", handleAIUsageV1)
 			ai.GET("/briefings", handleAIBriefingsV1)
 		}
+
+		// ── Phase VIII: Enterprise Command Centre ──
+		// The Command Centre is the institutional operating environment.
+		// All responses are role-aware and permission-filtered.
+		// Every endpoint aggregates from existing engine functions;
+		// nothing here duplicates the underlying services.
+		cc := api.Group("/command-centre")
+		{
+			cc.GET("/summary", handleCommandCentreSummary)
+			cc.GET("/executive", handleExecutiveView)
+			cc.GET("/operations", handleOperationsView)
+			cc.GET("/field", handleFieldView)
+			cc.GET("/projects", handleProjectPortfolio)
+			cc.GET("/research", handleResearchPortfolio)
+			cc.GET("/governance", handleGovernanceView)
+			cc.GET("/decisions", handleDecisionCentreView)
+			cc.GET("/data-intelligence", handleDataIntelligenceView)
+			cc.GET("/service-health", handleCommandCentreServiceHealth)
+			cc.GET("/outcomes", handleOutcomeMonitor)
+		}
+
+		// ── Phase IX: Institutional Data, Knowledge & Interoperability Fabric ──
+		fabric := api.Group("/fabric")
+		{
+			fabric.GET("/objects/resolve", handleFabricResolveObject)
+			fabric.GET("/objects", handleFabricListCanonicalObjects)
+			fabric.GET("/relationships/graph", handleFabricRelationshipGraph)
+			fabric.POST("/relationships", handleFabricCreateRelationship)
+			fabric.GET("/knowledge", handleFabricListGovernedKnowledge)
+			fabric.POST("/knowledge", handleFabricCreateGovernedKnowledge)
+			fabric.GET("/catalogue", handleFabricListCatalogue)
+			fabric.GET("/catalogue/:id", handleFabricGetCatalogueItem)
+			fabric.GET("/dictionary", handleFabricListDictionary)
+			fabric.GET("/semantic/mappings", handleFabricListSemanticMappings)
+			fabric.GET("/semantic/resolve", handleFabricResolveSemanticTerm)
+			fabric.GET("/applications", handleFabricListApplications)
+			fabric.POST("/applications/register", handleFabricRegisterApplication)
+			fabric.GET("/lineage", handleFabricFullLineage)
+			fabric.GET("/memory", handleFabricInstitutionalMemory)
+		}
+
+		// ── Phase X: Sovereign Platform Hardening ──
+		// Event Bus persistence & DLQ extended API
+		api.POST("/events/replay", handleEventReplay)
+		api.GET("/events/dead-letter", handleListDeadLetterDB)
+		api.POST("/events/dead-letter/:id/retry", handleRetryDeadLetterEvent)
+
+		// Service Registry
+		registry := api.Group("/registry")
+		{
+			registry.GET("/services", handleListRegistryServices)
+			registry.POST("/services", handleRegisterService)
+			registry.PUT("/services/:id/heartbeat", handleServiceHeartbeat)
+			registry.GET("/services/:id/health", handleServiceHealthProxy)
+		}
+
+		// Platform admin summary (admin-only)
+		api.GET("/platform/summary", handlePlatformSummary)
+
+		// ── Phase XI: Institutional Resilience, Continuity & Autonomous Assurance ──
+		// Resilience Profiles & Institutional Score
+		resilience := api.Group("/resilience")
+		{
+			resilience.GET("/overview", handleResilienceOverview)
+			resilience.GET("/services", handleListResilienceServices)
+			resilience.GET("/services/:id", handleGetResilienceService)
+			resilience.PUT("/services/:id", handleUpdateResilienceService)
+			resilience.GET("/score", handleResilienceScore)
+		}
+
+		// Disaster Recovery Drills
+		recovery := api.Group("/recovery")
+		{
+			recovery.GET("/drills", handleListDrills)
+			recovery.POST("/drills", handleCreateDrill)
+			recovery.GET("/drills/:id", handleGetDrill)
+			recovery.POST("/drills/:id/start", handleStartDrill)
+		}
+
+		// Autonomous Incident Lifecycle
+		incidents := api.Group("/incidents")
+		{
+			incidents.GET("", handleListIncidents)
+			incidents.POST("", handleCreateIncident)
+			incidents.GET("/:id", handleGetIncident)
+			incidents.POST("/:id/acknowledge", handleAcknowledgeIncident)
+			incidents.POST("/:id/mitigate", handleMitigateIncident)
+			incidents.POST("/:id/resolve", handleResolveIncident)
+			incidents.POST("/:id/close", handleCloseIncident)
+			incidents.POST("/:id/actions", handleAddIncidentAction)
+		}
+
+		// Backup Assurance & Restore Tests
+		backups := api.Group("/backups")
+		{
+			backups.GET("", handleListBackups)
+			backups.POST("", handleCreateBackupRecord)
+			backups.GET("/:id", handleGetBackup)
+			backups.POST("/:id/verify", handleVerifyBackup)
+			backups.POST("/:id/restore-test", handleRunRestoreTest)
+		}
+
+		// Automated Data Integrity Engine
+		integrity := api.Group("/integrity")
+		{
+			integrity.GET("", handleGetIntegrity)
+			integrity.POST("/run", handleRunIntegrity)
+			integrity.GET("/results", handleGetIntegrityResults)
+		}
+
+		// Operational Recovery Runbooks
+		runbooks := api.Group("/runbooks")
+		{
+			runbooks.GET("", handleListRunbooks)
+			runbooks.GET("/:id", handleGetRunbook)
+			runbooks.POST("/:id/execute", handleExecuteRunbook)
+		}
+
+		// Institutional Resilience Evidence Vault
+		evidence := api.Group("/evidence")
+		{
+			evidence.GET("", handleListEvidence)
+			evidence.GET("/:id", handleGetEvidence)
+		}
+
+		// ── Phase XII: Institutional Intelligence & Governed AI ──
+		registerPhase12Routes(api)
 	}
 }
 
@@ -346,6 +476,12 @@ func handleEventTypes(c *gin.Context) {
 		"report.generated", "dashboard.refreshed",
 		"file.uploaded", "file.updated",
 		"approval.requested", "approval.approved", "approval.rejected",
+		"policy.created", "policy.updated", "policy.approved", "policy.published", "policy.expired",
+		"risk.created", "risk.updated", "risk.escalated", "risk.closed",
+		"control.created", "control.tested", "control.failed",
+		"compliance.assessment.created", "compliance.finding.created", "compliance.finding.closed",
+		"audit.created", "audit.finding.created", "audit.closed",
+		"governance.meeting.created", "governance.decision.created", "governance.delegation.created",
 	}})
 }
 

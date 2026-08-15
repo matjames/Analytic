@@ -1403,4 +1403,144 @@ func bootstrapWorkflowTemplates() {
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
+
+	// ── Phase VIII: Policy Approval Workflow ──
+	registerWorkflowDefinition(WorkflowDefinition{
+		ID:          "wf_policy_approval",
+		Name:        "Policy Review & Approval",
+		Description: "Multi-stage institutional policy review: department review -> compliance/legal review -> executive board approval -> publish",
+		Category:    "governance",
+		Version:     1,
+		Status:      "active",
+		Trigger: WorkflowTrigger{
+			Type:      "event",
+			EventType: "policy.created",
+			SourceApp: "statgovernance",
+		},
+		Steps: []WorkflowStep{
+			{ID: "s1", Name: "Departmental Review", Type: "action", Action: "notify", Order: 1,
+				Params: map[string]interface{}{
+					"title": "New Policy Requiring Review", "body": "A new institutional policy has been drafted and requires review.",
+					"priority": "high",
+				}},
+			{ID: "s2", Name: "Compliance & Legal Review", Type: "action", Action: "create_task", Order: 2,
+				Params: map[string]interface{}{
+					"title": "Perform Policy Compliance Analysis", "description": "Verify policy against Data Protection Act and institutional standards.",
+					"priority": "high",
+				}},
+			{ID: "s3", Name: "Executive Board Approval", Type: "approval", Action: "create_approval", Order: 3,
+				Params: map[string]interface{}{
+					"title": "Policy Formal Determination & Approval", "description": "Review and grant institutional approval to the policy.",
+				}},
+		},
+		Assignment: WorkflowAssignment{Type: "manager", AllowReassign: true},
+		Approval: &ApprovalConfig{
+			Type: "single", MinApprovals: 1, ExpiryHours: 120,
+			AllowReject: true, AllowChanges: true,
+		},
+		Deadline:   &WorkflowDeadline{DurationHours: 120, From: "start", ReminderHours: 24},
+		Completion: &WorkflowCompletion{Type: "all_steps"},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
+
+	// ── Phase VIII: Risk Escalation Workflow ──
+	registerWorkflowDefinition(WorkflowDefinition{
+		ID:          "wf_risk_escalation",
+		Name:        "Risk Escalation & Treatment",
+		Description: "Escalates Critical/High institutional risks to Management Board, opens StatChat coordination, and provisions mitigation tasks",
+		Category:    "governance",
+		Version:     1,
+		Status:      "active",
+		Trigger: WorkflowTrigger{
+			Type:      "event",
+			EventType: "risk.escalated",
+			SourceApp: "statgovernance",
+		},
+		Steps: []WorkflowStep{
+			{ID: "s1", Name: "Notify Executive Board", Type: "action", Action: "notify", Order: 1,
+				Params: map[string]interface{}{
+					"title": "Critical Risk Escalated", "body": "A critical risk has been escalated for executive treatment determination.",
+					"priority": "critical",
+				}},
+			{ID: "s2", Name: "Open StatChat Coordination", Type: "action", Action: "create_chat", Order: 2,
+				Params: map[string]interface{}{
+					"title": "Critical Risk Escalation Coordination",
+				}},
+			{ID: "s3", Name: "Create Treatment Action Task", Type: "action", Action: "create_task", Order: 3,
+				Params: map[string]interface{}{
+					"title": "Implement Risk Mitigation Controls", "description": "Execute risk treatment action plan and verify residual impact reduction.",
+					"priority": "critical",
+				}},
+		},
+		Assignment: WorkflowAssignment{Type: "manager", AllowReassign: true},
+		Deadline:   &WorkflowDeadline{DurationHours: 48, From: "start", ReminderHours: 12},
+		Completion: &WorkflowCompletion{Type: "all_steps"},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
+
+	// ── Phase VIII: Compliance Finding Resolution Workflow ──
+	registerWorkflowDefinition(WorkflowDefinition{
+		ID:          "wf_compliance_finding_resolution",
+		Name:        "Compliance Finding Resolution (CAPA)",
+		Description: "Tracks audit non-conformances from finding creation -> task remediation -> evidence submission -> verification -> closure",
+		Category:    "governance",
+		Version:     1,
+		Status:      "active",
+		Trigger: WorkflowTrigger{
+			Type:      "event",
+			EventType: "compliance.finding.created",
+			SourceApp: "statgovernance",
+		},
+		Steps: []WorkflowStep{
+			{ID: "s1", Name: "Assign Remediation Task", Type: "action", Action: "create_task", Order: 1,
+				Params: map[string]interface{}{
+					"title": "Resolve Audit Finding (CAPA)", "description": "Implement corrective actions and gather verification evidence.",
+					"priority": "high",
+				}},
+			{ID: "s2", Name: "Audit Verification Review", Type: "action", Action: "create_decision", Order: 2,
+				Params: map[string]interface{}{
+					"decision": "Finding Remediation Verification", "context": "Verification of CAPA evidence by lead auditor",
+					"action_required": "Verify remediation effectiveness and record closure determination",
+				}},
+		},
+		Assignment: WorkflowAssignment{Type: "manager", AllowReassign: true},
+		Deadline:   &WorkflowDeadline{DurationHours: 168, From: "start", ReminderHours: 24},
+		Completion: &WorkflowCompletion{Type: "all_steps"},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
+
+	// ── Phase VIII: Control Failure Remediation Workflow ──
+	registerWorkflowDefinition(WorkflowDefinition{
+		ID:          "wf_control_failure_remediation",
+		Name:        "Control Failure Remediation",
+		Description: "Triggers on automated or manual control failure: evaluates risk impact, assigns emergency remediation, and schedules retest",
+		Category:    "governance",
+		Version:     1,
+		Status:      "active",
+		Trigger: WorkflowTrigger{
+			Type:      "event",
+			EventType: "control.failed",
+			SourceApp: "statgovernance",
+		},
+		Steps: []WorkflowStep{
+			{ID: "s1", Name: "Alert Control Owner", Type: "action", Action: "notify", Order: 1,
+				Params: map[string]interface{}{
+					"title": "Internal Control Failure Detected", "body": "A key institutional control probe has reported failure.",
+					"priority": "critical",
+				}},
+			{ID: "s2", Name: "Create Emergency Remediation Task", Type: "action", Action: "create_task", Order: 2,
+				Params: map[string]interface{}{
+					"title": "Fix Failed Control Mechanism", "description": "Restore control effectiveness and prepare evidence for re-testing.",
+					"priority": "critical",
+				}},
+		},
+		Assignment: WorkflowAssignment{Type: "manager", AllowReassign: true},
+		Deadline:   &WorkflowDeadline{DurationHours: 24, From: "start", ReminderHours: 6},
+		Completion: &WorkflowCompletion{Type: "all_steps"},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	})
 }

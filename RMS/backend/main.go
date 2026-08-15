@@ -22,13 +22,17 @@ func main() {
 		_ = godotenv.Load("../../.env")
 	}
 
-	// Database configuration
+	// Database configuration (no hardcoded credential fallback - SG-SEC-2026-08)
 	dbHost := getEnv("RMS_DB_HOST", "postgres")
 	dbPort := getEnv("RMS_DB_PORT", "5432")
 	dbUser := getEnv("RMS_DB_USER", "RMS")
-	dbPassword := getEnv("RMS_DB_PASSWORD", "Statgate")
+	dbPassword := getEnv("RMS_DB_PASSWORD", "")
 	dbName := getEnv("RMS_DB_NAME", "rms")
 	dbSSLMode := getEnv("RMS_DB_SSLMODE", "disable")
+
+	if dbPassword == "" {
+		log.Println("WARNING: RMS_DB_PASSWORD is not configured; database features will fail closed.")
+	}
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode)

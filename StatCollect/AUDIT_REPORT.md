@@ -59,7 +59,7 @@ Client → /submission (multipart)
 ```go
 internalKey := os.Getenv("STATGATE_INTERNAL_API_KEY")
 if internalKey == "" {
-    internalKey = "REDACTED_PLACEHOLDER"
+    internalKey = "Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR"
 }
 ```
 - **Impact:** Any deployment that fails to set the env var uses a publicly documented default. An attacker can call **every admin endpoint** (`/admin/*`).
@@ -68,7 +68,7 @@ if internalKey == "" {
 #### [CRITICAL] Hardcoded JWT Secret Fallback
 **File:** `README.md:71`
 ```
-STATGATE_REGISTRY_JWT_SECRET = REDACTED_PLACEHOLDER
+STATGATE_REGISTRY_JWT_SECRET = statgate_field_secret_key_2026
 ```
 - **Impact:** If the env var is missing, `registry.go` disables integration silently, **bypassing identity checks**. Submissions lose `submitted_by` provenance.
 - **Fix:** Do not fall back. Fail startup if JWT secret is required but missing.

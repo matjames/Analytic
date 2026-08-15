@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -98,8 +102,10 @@ func main() {
 			dbUser = "Kaggle"
 		}
 		dbPass := os.Getenv("KAGGLE_DB_PASSWORD")
-		if dbPass == "" {
-			dbPass = "REDACTED_PLACEHOLDER"
+		// No hardcoded fallback credential (SG-SEC-2026-08): if the password is
+		// missing in production the core engine fails closed at startup.
+		if dbPass == "" && os.Getenv("STATGATE_ENV") == "production" {
+			log.Fatal("KAGGLE_DB_PASSWORD must be set when STATGATE_ENV=production")
 		}
 		dbName := os.Getenv("KAGGLE_DB_NAME")
 		if dbName == "" {
@@ -222,8 +228,16 @@ func enableCORS(next http.Handler) http.Handler {
 
 func (s *Server) requireInternalKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" || s.internalAPIKey == "" {
+		// Probe endpoints (health/ready/metrics) are always allowed.
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" || r.URL.Path == "/metrics/prometheus" {
 			next.ServeHTTP(w, r)
+			return
+		}
+		// Fail closed (SG-SEC-2026-08): if the internal API key is not
+		// configured, every protected request is rejected. There is NO
+		// silent downgrade to caller-supplied identity headers.
+		if s.internalAPIKey == "" {
+			http.Error(w, `{"error":"service_misconfigured","message":"STATGATE_INTERNAL_API_KEY is not configured"}`, http.StatusServiceUnavailable)
 			return
 		}
 		provided := r.Header.Get("X-StatGate-Internal-Key")
@@ -231,8 +245,116 @@ func (s *Server) requireInternalKey(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"unauthorized internal request"}`, http.StatusUnauthorized)
 			return
 		}
+		// Mark the request as an authenticated service-to-service call so the
+		// identity layer may accept trusted-intermediary forwarding headers.
+		r = r.WithContext(context.WithValue(r.Context(), internalKeyContextKey{}, true))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// internalKeyContextKey marks a request that presented a valid internal API key.
+type internalKeyContextKey struct{}
+
+// validCoreClaims mirrors the canonical StatGate JWT claim names
+// (docs/security/JWT_STANDARD.md) for the core engine.
+type validCoreClaims struct {
+	Sub      string `json:"sub"`
+	UserID   string `json:"user_id"`
+	TenantID string `json:"tenant_id"`
+	Role     string `json:"role"`
+	Exp      int64  `json:"exp"`
+	Nbf      int64  `json:"nbf"`
+	Iss      string `json:"iss"`
+	Aud      string `json:"aud"`
+}
+
+// parseCoreBearerJWT verifies a compact JWS (HS256) against the shared
+// STATGATE_REGISTRY_JWT_SECRET and enforces the canonical token contract.
+func parseCoreBearerJWT(tokenStr, secret string) (*validCoreClaims, error) {
+	parts := strings.Split(tokenStr, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("malformed token")
+	}
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("malformed header")
+	}
+	var header struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return nil, fmt.Errorf("unparseable header")
+	}
+	if header.Alg != "HS256" {
+		return nil, fmt.Errorf("unsupported algorithm")
+	}
+
+	signingInput := parts[0] + "." + parts[1]
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signingInput))
+	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(expectedSig), []byte(parts[2])) {
+		return nil, fmt.Errorf("invalid signature")
+	}
+
+	claimBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("malformed claims")
+	}
+	var claims validCoreClaims
+	if err := json.Unmarshal(claimBytes, &claims); err != nil {
+		return nil, fmt.Errorf("unparseable claims")
+	}
+
+	now := time.Now().Unix()
+	if claims.Exp == 0 || now > claims.Exp {
+		return nil, fmt.Errorf("invalid or expired token")
+	}
+	if claims.Nbf != 0 && now < claims.Nbf {
+		return nil, fmt.Errorf("token not yet valid")
+	}
+	issuer := getCoreEnv("STATGATE_JWT_ISSUER", "statgate-registry")
+	audience := getCoreEnv("STATGATE_JWT_AUDIENCE", "statgate")
+	if claims.Iss != issuer {
+		return nil, fmt.Errorf("invalid issuer")
+	}
+	if claims.Aud != audience {
+		return nil, fmt.Errorf("invalid audience")
+	}
+	userID := claims.UserID
+	if userID == "" {
+		userID = claims.Sub
+	}
+	if userID == "" {
+		return nil, fmt.Errorf("token missing subject")
+	}
+	if claims.TenantID == "" {
+		return nil, fmt.Errorf("token missing tenant")
+	}
+	claims.UserID = userID
+	return &claims, nil
+}
+
+func getCoreEnv(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+// clearanceForRole maps the canonical StatGate roles to ABAC clearance levels.
+func clearanceForRole(role string) int {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "admin", "superadmin", "platform_admin":
+		return 5
+	case "tenant_admin", "district_admin", "manager":
+		return 4
+	case "analyst", "editor", "operator", "governance_officer":
+		return 3
+	case "viewer", "agent", "district":
+		return 2
+	}
+	return 1
 }
 
 func isSafeIdentifier(value string) bool {
@@ -247,34 +369,68 @@ func isSafeIdentifier(value string) bool {
 	return true
 }
 
+// getUserContext derives the request identity from a verified StatGate JWT
+// (Authorization: Bearer). Client-supplied identity headers (X-User-ID,
+// X-User-Role, X-User-Clearance) are ONLY honoured when the request has
+// already passed the internal service key gate (authenticated intermediary)
+// AND no bearer JWT is present. Without either, an empty identity is
+// returned so every data-access handler fails closed (SG-SEC-2026-08).
 func getUserContext(r *http.Request) abac.UserAttributes {
-	tenantID := r.Header.Get("X-Tenant-ID")
-	if tenantID == "" {
-		tenantID = r.URL.Query().Get("tenant_id")
-	}
-	if tenantID == "" {
-		tenantID = "tenant-alpha"
+	empty := abac.UserAttributes{}
+
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	internalCall := false
+	if v, ok := r.Context().Value(internalKeyContextKey{}).(bool); ok && v {
+		internalCall = true
 	}
 
-	role := r.Header.Get("X-User-Role")
-	if role == "" {
-		role = "analyst"
-	}
-
-	clearanceStr := r.Header.Get("X-User-Clearance")
-	clearance := 2
-	if clearanceStr != "" {
-		if c, err := strconv.Atoi(clearanceStr); err == nil {
-			clearance = c
+	// Prefer the canonical bearer JWT (verified against the shared secret).
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		secret := strings.TrimSpace(os.Getenv("STATGATE_REGISTRY_JWT_SECRET"))
+		if secret == "" {
+			return empty // fail closed: no signing secret configured
+		}
+		claims, err := parseCoreBearerJWT(strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer ")), secret)
+		if err != nil {
+			return empty
+		}
+		return abac.UserAttributes{
+			UserID:    claims.UserID,
+			TenantID:  claims.TenantID,
+			Role:      claims.Role,
+			Clearance: clearanceForRole(claims.Role),
 		}
 	}
 
-	return abac.UserAttributes{
-		UserID:    "user-001",
-		TenantID:  tenantID,
-		Role:      role,
-		Clearance: clearance,
+	// Authenticated service-to-service calls (valid internal key) may forward
+	// tenant scoping for the downstream principal. This is NOT a client
+	// identity path — the internal key is required.
+	if internalCall {
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" {
+			tenantID = r.URL.Query().Get("tenant_id")
+		}
+		role := strings.TrimSpace(r.Header.Get("X-User-Role"))
+		if role == "" {
+			role = "operator"
+		}
+		clearanceStr := r.Header.Get("X-User-Clearance")
+		clearance := clearanceForRole(role)
+		if clearanceStr != "" {
+			if c, err := strconv.Atoi(clearanceStr); err == nil && c >= 0 && c <= 5 {
+				clearance = c
+			}
+		}
+		return abac.UserAttributes{
+			UserID:    strings.TrimSpace(r.Header.Get("X-User-ID")),
+			TenantID:  tenantID,
+			Role:      role,
+			Clearance: clearance,
+		}
 	}
+
+	// No verified principal — fail closed.
+	return empty
 }
 
 func (s *Server) requireUserAccess(w http.ResponseWriter, r *http.Request, resource, action string) (abac.UserAttributes, bool) {
@@ -684,12 +840,8 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	detector := lakehouse.GetAnomalyDetector()
 	alerts := detector.GetAlerts(uCtx.TenantID)
 
-	// If empty, generate a seed 3-sigma alert for active tenant
-	if len(alerts) == 0 {
-		history := []float64{100.0, 102.5, 98.0, 101.2, 99.5, 103.0}
-		detector.EvaluateDataPoint(uCtx.TenantID, "covid_19_data", "Confirmed Cases Spike", 285.0, history)
-		alerts = detector.GetAlerts(uCtx.TenantID)
-	}
+	// NOTE: demo/seed alert generation was removed (SG-SEC-2026-08). The
+	// production path must never fabricate operational alerts.
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

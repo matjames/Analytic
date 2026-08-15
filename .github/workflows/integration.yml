@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Integration & Security Tests
 
 on:
   push:
@@ -7,13 +7,56 @@ on:
     branches: [ main ]
 
 jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: StatGate secret scan (SG-SEC-2026-08)
+        shell: pwsh
+        run: |
+          ./scripts/secret-scan.ps1 -RepoRoot $PWD
+      - name: Go build (all modules)
+        shell: bash
+        run: |
+          set -e
+          for m in enterprise/core PMS/backend RMS/backend StatGovernance/backend backend StatChat/backend stage_register/go-backend StatCollect enterprise/search; do
+            echo "building $m"
+            (cd "$m" && go build ./...)
+          done
+      - name: docker-compose configuration validation
+        shell: bash
+        run: |
+          set -e
+          # structurally-valid placeholder secrets let compose validate the
+          # required-variable mechanism.
+          for v in KAGGLE_DB_PASSWORD HELPDESK_DB_PASSWORD REGISTRY_DB_PASSWORD STATCHAT_DB_PASSWORD \
+                    PMS_DB_PASSWORD RMS_DB_PASSWORD GOVERNANCE_DB_PASSWORD STATCOLLECT_DB_PASSWORD \
+                    STATGATE_INTERNAL_API_KEY STATGATE_REGISTRY_JWT_SECRET FLASK_SECRET_KEY \
+                    BASIC_AUTH_USERNAME BASIC_AUTH_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD \
+                    GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD AIRFLOW_USER AIRFLOW_PASSWORD \
+                    SUPERSET_SECRET_KEY STATCOLLECT_API_KEY STATCOLLECT_ADMIN_KEYS; do
+            export $v=placeholder-value-0123456789abcdef
+          done
+          docker compose -f docker-compose.yml config --quiet
+
   integration:
     runs-on: ubuntu-latest
+    needs: security-scan
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build and run services
+      - name: Build and run services (secrets injected from env)
+        env:
+          STATCOLLECT_DB_PASSWORD: statcollect-ci-local
+          STATCOLLECT_API_KEY: statcollect-ci-key
+          STATCOLLECT_ADMIN_KEYS: statcollect-ci-key
+          STATGATE_REGISTRY_JWT_SECRET: ci-shared-jwt-secret-0123456789abcdef
+          STATGATE_INTERNAL_API_KEY: ci-internal-key-0123456789abcdef
         run: |
           cd StatCollect
           docker compose up --build -d
@@ -22,7 +65,7 @@ jobs:
       - name: Run integration script
         run: |
           chmod +x StatCollect/tests/integration/run_integration.sh
-          StatCollect/tests/integration/run_integration.sh
+          STATCOLLECT_API_KEY=statcollect-ci-key StatCollect/tests/integration/run_integration.sh
       - name: Tear down
         if: always()
         run: |

@@ -38,9 +38,8 @@ export default function UserUpload() {
       <div className="card-header">
         <div className="fw-semibold">Bulk User Upload</div>
         <div className="text-muted small">
-          Upload a CSV file to create multiple users at once. All users will be
-          created with the default password{" "}
-          <code>REDACTED_PLACEHOLDER</code>.
+          Upload a CSV file to create multiple users at once. Each account receives a
+          unique temporary password and must change it on first login.
         </div>
       </div>
 
@@ -70,8 +69,8 @@ export default function UserUpload() {
             columns are <code>first_name</code>, <code>last_name</code>,{" "}
             <code>role</code>, <code>organisation</code>,{" "}
             <code>phoneno</code>, and <code>district_id</code>. Passwords
-            are not read from the file; all accounts will use the default
-            password.
+            are not read from the file; each account receives a generated
+            temporary credential that must be changed on first login.
           </div>
           <input
             type="file"

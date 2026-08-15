@@ -19,6 +19,7 @@ import (
 
 func main() {
 	godotenv.Load()
+
 	// Read JWT secret from Docker secret file if not in env
 	if os.Getenv("STATGATE_REGISTRY_JWT_SECRET") == "" {
 		secretPath := "/run/secrets/STATGATE_REGISTRY_JWT_SECRET"
@@ -26,6 +27,25 @@ func main() {
 			os.Setenv("STATGATE_REGISTRY_JWT_SECRET", strings.TrimSpace(string(b)))
 		}
 	}
+
+	// Fail fast: the Registry is the identity authority. In production it MUST
+	// have a signing secret, an internal API key and a database password.
+	// A blank secret is worse than no service (SG-SEC-2026-08).
+	if strings.EqualFold(os.Getenv("STATGATE_ENV"), "production") {
+		if strings.TrimSpace(os.Getenv("STATGATE_REGISTRY_JWT_SECRET")) == "" {
+			fmt.Println("FATAL: STATGATE_REGISTRY_JWT_SECRET is required in production. Startup aborted.")
+			os.Exit(1)
+		}
+		if strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY")) == "" {
+			fmt.Println("FATAL: STATGATE_INTERNAL_API_KEY is required in production. Startup aborted.")
+			os.Exit(1)
+		}
+		if strings.TrimSpace(os.Getenv("REGISTRY_DB_PASSWORD")) == "" {
+			fmt.Println("FATAL: REGISTRY_DB_PASSWORD is required in production. Startup aborted.")
+			os.Exit(1)
+		}
+	}
+
 	configs.ConnectDB()
 
 	r := gin.Default()

@@ -23,13 +23,17 @@ func main() {
 		_ = godotenv.Load("../../.env")
 	}
 
-	// Database configuration
+	// Database configuration (no hardcoded credential fallbacks - SG-SEC-2026-08)
 	dbHost := getEnv("PMS_DB_HOST", "postgres")
 	dbPort := getEnv("PMS_DB_PORT", "5432")
 	dbUser := getEnv("PMS_DB_USER", "PMS")
-	dbPassword := getEnv("PMS_DB_PASSWORD", "Statgate")
+	dbPassword := getEnv("PMS_DB_PASSWORD", "")
 	dbName := getEnv("PMS_DB_NAME", "pms")
 	dbSSLMode := getEnv("PMS_DB_SSLMODE", "disable")
+
+	if dbPassword == "" {
+		log.Println("WARNING: PMS_DB_PASSWORD is not configured; database features will fail closed.")
+	}
 
 	// Initialize database connection
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",

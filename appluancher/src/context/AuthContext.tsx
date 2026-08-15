@@ -92,7 +92,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
   const logout = useCallback(async () => {
     localStorage.removeItem('registry_jwt');
+    localStorage.removeItem('statgate_active_tab');
+    localStorage.removeItem('statgate_user_prefs');
+    sessionStorage.clear();
     setUser(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('statgate-logout'));
+    }
   }, []);
 
   const hasPermission = useCallback(

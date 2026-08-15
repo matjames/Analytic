@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func aiRequest(t *testing.T, method, path, body, user, tenant string) *httptest.ResponseRecorder {
@@ -12,11 +13,25 @@ func aiRequest(t *testing.T, method, path, body, user, tenant string) *httptest.
 	r := setupTestRouter().engine
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+
+	// SG-SEC-2026-08: identity comes from the verified JWT, not headers.
 	if user != "" {
+		now := time.Now()
+		claims := map[string]interface{}{
+			"sub":       user,
+			"tenant_id": tenant,
+			"org_id":    "org-national",
+			"role":      "viewer",
+			"email":     user + "@statgate.local",
+			"iat":       now.Unix(),
+			"nbf":       now.Add(-30 * time.Second).Unix(),
+			"exp":       now.Add(6 * time.Hour).Unix(),
+			"iss":       "statgate-registry",
+			"aud":       "statgate",
+		}
+		req.Header.Set("Authorization", "Bearer "+signTestJWT(testJWTSecret, "HS256", claims))
+	} else {
 		req.Header.Set("X-User-ID", user)
-	}
-	if tenant != "" {
-		req.Header.Set("X-Tenant-ID", tenant)
 	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

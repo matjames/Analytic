@@ -68,8 +68,8 @@ See `.env.example` for all configuration options.
 ### StatGate Integration
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `STATGATE_REGISTRY_JWT_SECRET` | Unified identity JWT secret | `REDACTED_PLACEHOLDER` |
-| `STATGATE_INTERNAL_API_KEY` | Service-to-service key | `REDACTED_PLACEHOLDER` |
+| `STATGATE_REGISTRY_JWT_SECRET` | Unified identity JWT secret | `statgate_field_secret_key_2026` |
+| `STATGATE_INTERNAL_API_KEY` | Service-to-service key | `Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR` |
 | `STATGATE_TENANT_ID` | Tenant for multi-tenant isolation | `default` |
 | `STATCOLLECT_ENABLE_EVENTS` | Enable Redis event bus | `false` |
 | `REDIS_ADDR` | Redis address | `localhost:6379` |

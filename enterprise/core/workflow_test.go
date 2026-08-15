@@ -224,8 +224,8 @@ func TestApprovalApprove(t *testing.T) {
 	var req ApprovalRequest
 	_ = json.Unmarshal(w.Body.Bytes(), &req)
 
-	// Approve it
-	w2 := ts.do("POST", "/api/approvals/"+req.ID+"/approve?user_id=approver-2", `{"comment": "Approved"}`)
+	// Approve it (acting as the configured approver via verified JWT)
+	w2 := ts.doAs("POST", "/api/approvals/"+req.ID+"/approve", `{"comment": "Approved"}`, "approver-2")
 	if w2.Code != 200 {
 		t.Fatalf("expected 200, got %d", w2.Code)
 	}
@@ -254,7 +254,7 @@ func TestApprovalReject(t *testing.T) {
 	var req ApprovalRequest
 	_ = json.Unmarshal(w.Body.Bytes(), &req)
 
-	w2 := ts.do("POST", "/api/approvals/"+req.ID+"/reject?user_id=approver-3", `{"comment": "Rejected"}`)
+	w2 := ts.doAs("POST", "/api/approvals/"+req.ID+"/reject", `{"comment": "Rejected"}`, "approver-3")
 	if w2.Code != 200 {
 		t.Fatalf("expected 200, got %d", w2.Code)
 	}
@@ -281,8 +281,8 @@ func TestApprovalUnauthorized(t *testing.T) {
 	var req ApprovalRequest
 	_ = json.Unmarshal(w.Body.Bytes(), &req)
 
-	// Try to approve with wrong user
-	w2 := ts.do("POST", "/api/approvals/"+req.ID+"/approve?user_id=wrong-user", `{"comment": "Approved"}`)
+	// Try to approve with a user who is not on the approver list
+	w2 := ts.doAs("POST", "/api/approvals/"+req.ID+"/approve", `{"comment": "Approved"}`, "wrong-user")
 	if w2.Code != 400 {
 		t.Fatalf("expected 400 for unauthorized approver, got %d", w2.Code)
 	}

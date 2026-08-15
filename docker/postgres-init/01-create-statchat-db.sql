@@ -3,23 +3,18 @@ CREATE DATABASE statchat;
 CREATE DATABASE kaggle;
 CREATE DATABASE statgate;
 
+-- Passwords are injected from the container environment (fail-closed via
+-- docker-compose). Never hardcode credentials in init scripts.
+\getenv statgate_pw HELPDESK_DB_PASSWORD
+\getenv statchat_pw STATCHAT_DB_PASSWORD
+
 -- Create the statgate user if it doesn't exist, and grant privileges
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'statgate') THEN
-    CREATE ROLE statgate WITH LOGIN PASSWORD 'REDACTED_PLACEHOLDER';
-  END IF;
-END
-$$;
+SELECT format('CREATE ROLE statgate WITH LOGIN PASSWORD %L', :'statgate_pw')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'statgate') \gexec
 
 -- Create the Statchat user if it doesn't exist
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'Statchat') THEN
-    CREATE ROLE "Statchat" WITH LOGIN PASSWORD 'Statgate';
-  END IF;
-END
-$$;
+SELECT format('CREATE ROLE "Statchat" WITH LOGIN PASSWORD %L', :'statchat_pw')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'Statchat') \gexec
 
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE statgate TO statgate;

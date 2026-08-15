@@ -9,6 +9,15 @@ import Auth from "../middleware/auth.js";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
+// ── Mutation gate (SG-SEC-2026-08): every write to the ticket system
+// requires authentication. Unauthenticated POST/PUT/PATCH/DELETE → 401.
+router.use((req, res, next) => {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    return Auth(req, res, next);
+  }
+  return next();
+});
+
 router.post("/", upload.single("image"), async (req, res) => {
   try {
     let imageUrl = null;

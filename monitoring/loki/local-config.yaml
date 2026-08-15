@@ -34,8 +34,11 @@ storage_config:
     s3: s3
     endpoint: http://minio:9000
     bucketnames: loki
-    access_key_id: minioadmin
-    secret_access_key: minioadmin
+    # Credentials are injected via the AWS credential chain
+    # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / MINIO env overrides).
+    # Never hardcode secrets in configuration files.
+    access_key_id:
+    secret_access_key:
     insecure: true
     s3forcepathstyle: true
     region: us-east-1

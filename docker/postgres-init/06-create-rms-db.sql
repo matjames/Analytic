@@ -6,14 +6,10 @@
 -- Create RMS database
 CREATE DATABASE rms;
 
--- Create RMS role/user
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'RMS') THEN
-    CREATE ROLE "RMS" WITH LOGIN PASSWORD 'Statgate';
-  END IF;
-END
-$$;
+-- Password injected from environment (RMS_DB_PASSWORD), never hardcoded.
+\getenv RMS_PW RMS_DB_PASSWORD
+SELECT format('CREATE ROLE "RMS" WITH LOGIN PASSWORD %L', :'RMS_PW')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'RMS') \gexec
 
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE rms TO "RMS";

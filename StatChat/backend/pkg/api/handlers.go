@@ -32,16 +32,17 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// authRequired is permanently true. StatChat operates in AUTHENTICATION
+// REQUIRED mode in every environment (SG-SEC-2026-08). The demo identity
+// fallback has been removed.
 func authRequired() bool {
-	return strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true")
+	return true
 }
 
 func requestCurrentUser(r *http.Request) (model.User, error) {
 	userID := requestUserID(r)
 	if strings.TrimSpace(userID) == "" {
-		if !authRequired() {
-			return model.User{ID: "user-001", Name: "StatChat User"}, nil
-		}
+		// Authentication is mandatory; no anonymous/demo identities exist.
 		return model.User{}, fmt.Errorf("missing user identity")
 	}
 	user, err := store.GetUserByID(userID)
@@ -51,9 +52,6 @@ func requestCurrentUser(r *http.Request) (model.User, error) {
 				return model.User{}, syncErr
 			}
 			return identity, nil
-		}
-		if !authRequired() {
-			return model.User{ID: userID, Name: "StatChat User"}, nil
 		}
 		return model.User{}, err
 	}
@@ -129,7 +127,7 @@ func requestUserID(r *http.Request) string {
 	if userID, ok := r.Context().Value(requestUserIDKey).(string); ok && strings.TrimSpace(userID) != "" {
 		return userID
 	}
-	return "user-001"
+	return ""
 }
 
 func requestUserName(r *http.Request) string {
@@ -230,7 +228,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		"status":       "ok",
 		"service":      "statchat",
 		"ready":        store.IsReady(),
-		"authRequired": strings.EqualFold(os.Getenv("STATCHAT_AUTH_REQUIRED"), "true"),
+		"authRequired": authRequired(),
 	})
 }
 
@@ -1121,11 +1119,6 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !authRequired() {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		secret := sharedJWTSecret()
 		if secret == "" || secret == "statchat-dev-secret" {
 			writeError(w, http.StatusInternalServerError, "jwt secret must be configured when auth is enabled")
@@ -1133,9 +1126,30 @@ func authMiddleware(next http.Handler) http.Handler {
 		}
 
 		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		tokenString := ""
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenString = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		}
 		if tokenString == "" && (r.URL.Path == "/ws" || r.URL.Path == "/ws/chat") {
-			tokenString = strings.TrimSpace(r.URL.Query().Get("access_token"))
+			// WebSocket clients cannot set HTTP headers; the token is carried in
+			// the Sec-WebSocket-Protocol field as "Bearer.<token>". Long-lived
+			// JWTs are never placed in query strings (SG-SEC-2026-08).
+			protocols := strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",")
+			for _, p := range protocols {
+				if strings.HasPrefix(strings.TrimSpace(p), "Bearer.") {
+					tokenString = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(p), "Bearer."))
+					break
+				}
+			}
+			if tokenString == "" {
+				// A short-lived one-time handshake ticket (expires <= 5 min) may
+				// be supplied as ?ticket= for browser clients. Query-string JWTs
+				// with longer lifetimes are rejected below.
+				ticket := strings.TrimSpace(r.URL.Query().Get("ticket"))
+				if ticket != "" {
+					tokenString = ticket
+				}
+			}
 		}
 		if tokenString == "" {
 			writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
@@ -1146,7 +1160,7 @@ func authMiddleware(next http.Handler) http.Handler {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
 			return []byte(sharedJWTSecret()), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
 			writeError(w, http.StatusUnauthorized, "invalid bearer token")
 			return
@@ -1157,6 +1171,18 @@ func authMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "invalid bearer token")
 			return
 		}
+
+		// Query-string tickets must be short-lived (<6 minutes) so a token can
+		// never be harvested from logs/URL bars and replayed later.
+		if r.URL.Path == "/ws" || r.URL.Path == "/ws/chat" {
+			if ticket := strings.TrimSpace(r.URL.Query().Get("ticket")); ticket != "" {
+				if exp, ok := claims["exp"].(float64); ok && int64(exp) > time.Now().Add(6*time.Minute).Unix() {
+					writeError(w, http.StatusUnauthorized, "web socket ticket must be short-lived")
+					return
+				}
+			}
+		}
+
 		userID := strings.TrimSpace(fmt.Sprint(claims["sub"]))
 		if userID == "" {
 			userID = strings.TrimSpace(fmt.Sprint(claims["user_id"]))

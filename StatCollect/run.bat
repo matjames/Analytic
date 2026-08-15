@@ -1,18 +1,21 @@
 @echo off
 cd /d "%~dp0"
+REM StatCollect local launcher.
+REM Secret values have been removed (SG-SEC-2026-08). Set them in the
+REM process environment or via a git-ignored local .env before running.
 set STATCOLLECT_PORT=:8080
 set STATCOLLECT_DATA_DIR=./data
 set STATCOLLECT_DB_HOST=localhost
 set STATCOLLECT_DB_USER=statcollect
-set STATCOLLECT_DB_PASSWORD=Statgate
+if "%STATCOLLECT_DB_PASSWORD%"=="" set STATCOLLECT_DB_PASSWORD=
 set STATCOLLECT_DB_NAME=statcollect
-set STATCOLLECT_API_KEY=changeme
-set STATCOLLECT_ADMIN_KEYS=changeme
+if "%STATCOLLECT_API_KEY%"=="" set STATCOLLECT_API_KEY=
+set STATCOLLECT_ADMIN_KEYS=
 set STATCOLLECT_USE_S3=false
 
-REM ── StatGate Platform Integration ──
-set STATGATE_REGISTRY_JWT_SECRET=REDACTED_PLACEHOLDER
-set STATGATE_INTERNAL_API_KEY=REDACTED_PLACEHOLDER
+REM ── StatGate Platform Integration (injected, never committed) ──
+set STATGATE_REGISTRY_JWT_SECRET=
+set STATGATE_INTERNAL_API_KEY=
 set STATGATE_TENANT_ID=default
 set STATCOLLECT_ENABLE_EVENTS=true
 set STATCOLLECT_ENABLE_STATCHAT=true

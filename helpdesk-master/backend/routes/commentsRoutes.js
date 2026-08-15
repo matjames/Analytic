@@ -1,24 +1,26 @@
 import express from "express";
 import CommentModel from "../models/commentsModel.js";
+import Auth, { requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+// Mutations are protected (SG-SEC-2026-08): unauthenticated writes are DENIED.
+router.post('/', Auth, async (req, res) => {
     try {
-        const comment = await CommentModel.create(req.body);
+        const comment = await CommentModel.create({
+            ...req.body,
+            createdBy: req.user ? req.user.id : null,
+        });
         res.status(201).json({
             status: "success",
             comment
         });
     } catch (error) {
-        res.status(500).json({
-            status: "error",
-            message: error.message,
-        });
+        res.status(500).json({ status: "error", message: "Failed to create comment" });
     }
 });
 
-router.get("/ticket/:id", async (req, res) => {
+router.get("/ticket/:id", Auth, async (req, res) => {
     try {
         const comments = await CommentModel.findAll({
             where: { ticketId: req.params.id },
@@ -30,37 +32,25 @@ router.get("/ticket/:id", async (req, res) => {
             comments,
         });
     } catch (error) {
-        res.status(500).json({
-            status: "error",
-            message: error.message,
-        });
+        res.status(500).json({ status: "error", message: "Failed to load comments" });
     }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", Auth, async (req, res) => {
     try {
         const comment = await CommentModel.findByPk(req.params.id);
 
         if (!comment) {
-            return res.status(404).json({
-                status: "fail",
-                message: "Ticket with that ID not found",
-            });
+            return res.status(404).json({ status: "error", message: "Comment not found" });
         }
 
-        res.status(200).json({
-            status: "success",
-            comment,
-        });
+        res.status(200).json({ status: "success", comment });
     } catch (error) {
-        res.status(500).json({
-            status: "error",
-            message: error.message,
-        });
+        res.status(500).json({ status: "error", message: "Failed to load comment" });
     }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", Auth, requireAdmin, async (req, res) => {
     try {
         const result = await CommentModel.destroy({
             where: { id: req.params.id },
@@ -68,18 +58,12 @@ router.delete("/:id", async (req, res) => {
         });
 
         if (result === 0) {
-            return res.status(404).json({
-                status: "fail",
-                message: "Ticket with that ID not found",
-            });
+            return res.status(404).json({ status: "error", message: "Comment not found" });
         }
 
-        res.status(204).json();
+        res.status(204).end();
     } catch (error) {
-        res.status(500).json({
-            status: "error",
-            message: error.message,
-        });
+        res.status(500).json({ status: "error", message: "Failed to delete comment" });
     }
 });
 

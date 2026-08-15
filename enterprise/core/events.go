@@ -7,19 +7,25 @@ import (
 	"time"
 )
 
-// processEvent derives timeline, notifications, calendar, analytics
-// and alert entries from domain events.
+// processEvent derives timeline, notifications, calendar, analytics,
+// workflows, and fabric updates from domain events.
 func processEvent(ev DomainEvent) {
 	recordTimelineFromEvent(ev)
-	// Phase VI: events keep the enterprise knowledge graph synchronized with
-	// the source systems, without copying their data into a parallel store.
+	// Phase VI: events keep the enterprise knowledge graph synchronized
 	processKnowledgeForEvent(ev)
+
+	// Phase IX: events update canonical objects, catalogue freshness & fabric
+	processFabricForEvent(ev)
 
 	// ── Phase IV: Feed the enterprise data layer & analytics ──
 	processAnalyticsForEvent(ev)
 
 	// ── Phase V: Trigger enterprise workflows ──
 	processWorkflowForEvent(ev)
+
+	// ── Phase XII: Institutional intelligence signal & condition derivation ──
+	processIntelligenceForEvent(ev)
+
 
 	switch ev.EventType {
 	case "user.created", "user.updated":
@@ -172,3 +178,54 @@ func recordTimelineFromEvent(ev DomainEvent) {
 		redisClient.LTrim(ctx, "statgate:timeline", 0, 4999)
 	}
 }
+
+func processFabricForEvent(ev DomainEvent) {
+	if ev.ObjectType == "" || ev.ObjectID == "" {
+		return
+	}
+
+	canonicalID := fmt.Sprintf("%s:%s:%s:%s", ev.TenantID, ev.Source, ev.ObjectType, ev.ObjectID)
+	if ev.TenantID == "" {
+		canonicalID = fmt.Sprintf("tenant_uganda_inst:%s:%s:%s", ev.Source, ev.ObjectType, ev.ObjectID)
+	}
+
+	title := fmt.Sprintf("%s %s", ev.ObjectType, ev.ObjectID)
+	if t, ok := ev.Payload["name"].(string); ok && t != "" {
+		title = t
+	} else if t, ok := ev.Payload["title"].(string); ok && t != "" {
+		title = t
+	}
+
+	fabricStore.Lock()
+	fabricStore.objects[canonicalID] = CanonicalObject{
+		CanonicalID:       canonicalID,
+		ObjectID:          ev.ObjectID,
+		ObjectType:        ev.ObjectType,
+		SourceApplication: ev.Source,
+		TenantID:          "tenant_uganda_inst",
+		OrganizationID:    "MOH_UG",
+		ProjectID:         ev.ProjectID,
+		Title:             title,
+		CreatedBy:         ev.Actor,
+		CreatedAt:         nowUTC(),
+		UpdatedAt:         nowUTC(),
+		Version:           1,
+		Status:            "active",
+		Classification:    "verified",
+		Sensitivity:       "official",
+		CanonicalURL:      buildDeepLink(ev),
+	}
+	fabricStore.Unlock()
+
+	// Update catalogue freshness if dataset
+	if ev.ObjectType == "dataset" {
+		fabricStore.Lock()
+		if ds, ok := fabricStore.catalogue[ev.ObjectID]; ok {
+			ds.LastRefresh = nowUTC()
+			ds.FreshnessStatus = "live"
+			fabricStore.catalogue[ev.ObjectID] = ds
+		}
+		fabricStore.Unlock()
+	}
+}
+

@@ -1,22 +1,27 @@
 services:
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # UNIFIED STATGATE PLATFORM - ALL SERVICES
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # NOTE: All DB credentials are sourced from .env (single source of truth).
   # The DB *host* is set to the `postgres` service name inside Docker networking.
 
-  # ── PostgreSQL (existing databases with data) ───────────────
-  # Databases created by ./docker/postgres-init/01-create-statchat-db.sql:
-  #   - statgate_ml_staging (user: Kaggle, password: REDACTED_PLACEHOLDER)
-  #   - statgate (user: statgate, password: REDACTED_PLACEHOLDER)
-  #   - kaggle (user: Kaggle, password: REDACTED_PLACEHOLDER)
-  #   - statchat (user: Statchat, password: Statgate)
+  # â”€â”€ PostgreSQL (existing databases with data) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # Databases and roles are created by ./docker/postgres-init/*.sql.
+  # Passwords are NOT stored in this file. They are injected from the
+  # environment at runtime and FAIL CLOSED when missing.
   postgres:
     image: postgres:15
     environment:
       - POSTGRES_USER=${KAGGLE_DB_USER:-Kaggle}
-      - POSTGRES_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - POSTGRES_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - POSTGRES_DB=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      # Per-database credentials injected for bootstrap scripts (fail-closed):
+      - HELPDESK_DB_PASSWORD=${HELPDESK_DB_PASSWORD:?HELPDESK_DB_PASSWORD must be set}
+      - REGISTRY_DB_PASSWORD=${REGISTRY_DB_PASSWORD:?REGISTRY_DB_PASSWORD must be set}
+      - STATCHAT_DB_PASSWORD=${STATCHAT_DB_PASSWORD:?STATCHAT_DB_PASSWORD must be set}
+      - PMS_DB_PASSWORD=${PMS_DB_PASSWORD:?PMS_DB_PASSWORD must be set}
+      - RMS_DB_PASSWORD=${RMS_DB_PASSWORD:?RMS_DB_PASSWORD must be set}
+      - GOVERNANCE_DB_PASSWORD=${GOVERNANCE_DB_PASSWORD:?GOVERNANCE_DB_PASSWORD must be set}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
@@ -32,7 +37,7 @@ services:
     networks:
       - statgate-network
 
-  # ── Redis (shared cache) ─────────────────────────────────────
+  # â”€â”€ Redis (shared event bus & cache) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   redis:
     image: redis:7
     ports:
@@ -47,9 +52,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 1. APP LAUNCHER (Next.js - main entry point)
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-launcher:
     build:
       context: ./appluancher
@@ -69,9 +74,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 2. STATGATE ANALYTICS - Go Core Engine
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-core:
     build:
       context: ./backend
@@ -82,16 +87,14 @@ services:
       - STATGATE_ENV=production
       - BIND_ADDRESS=0.0.0.0
       - CORS_ALLOWED_ORIGIN=http://localhost:5000
-      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - FLASK_BACKEND_URL=http://statgate-analytics:5000
       - KAGGLE_DB_HOST=postgres
       - KAGGLE_DB_PORT=${KAGGLE_DB_PORT:-5432}
       - KAGGLE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
       - KAGGLE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
-      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
-    secrets:
-      - STATGATE_INTERNAL_API_KEY
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
@@ -102,9 +105,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 3. STATGATE ANALYTICS - Flask UI
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-analytics:
     build:
       context: ./frontend
@@ -113,7 +116,7 @@ services:
     environment:
       - FLASK_PORT=5000
       - GO_BACKEND_URL=http://statgate-core:8080
-      - ANALYTICS_REQUIRE_AUTH=${ANALYTICS_REQUIRE_AUTH:-false}
+      - ANALYTICS_REQUIRE_AUTH=${ANALYTICS_REQUIRE_AUTH:-true}
       - STATCHAT_API_URL=http://statchat-backend:4000
       - STATCHAT_UI_URL=http://statchat-frontend:80
       - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
@@ -123,22 +126,16 @@ services:
       - KAGGLE_DB_PORT=${KAGGLE_DB_PORT:-5432}
       - KAGGLE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
       - KAGGLE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
-      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
       - KAGGLE_STAGING_SCHEMA=${KAGGLE_STAGING_SCHEMA:-ml_staging}
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
-      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
-      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-REDACTED_PLACEHOLDER}
-    secrets:
-      - FLASK_SECRET_KEY
-      - STATGATE_INTERNAL_API_KEY
-      - STATGATE_REGISTRY_JWT_SECRET
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:?FLASK_SECRET_KEY must be set}
     volumes:
       - ./data:/app/data
-      # Keep launcher/service-discovery URLs aligned with Compose without a
-      # full Analytics image rebuild.
       - ./frontend/config/services.json:/app/config/services.json:ro
     depends_on:
       statgate-core:
@@ -155,9 +152,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 4. FIELD OPERATIONS REGISTRY - Go API
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-registry-api:
     build:
       context: ./stage_register/go-backend
@@ -168,17 +165,14 @@ services:
       - REGISTRY_DB_HOST=postgres
       - REGISTRY_DB_PORT=${REGISTRY_DB_PORT:-5432}
       - REGISTRY_DB_USER=${REGISTRY_DB_USER:-Kaggle}
-      - REGISTRY_DB_PASSWORD=${REGISTRY_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - REGISTRY_DB_PASSWORD=${REGISTRY_DB_PASSWORD:?REGISTRY_DB_PASSWORD must be set}
       - REGISTRY_DB_NAME=${REGISTRY_DB_NAME:-kaggle}
       - DB_SSLMODE=${REGISTRY_DB_SSLMODE:-disable}
-      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:-admin}
-      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:-password}
-      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME:?BASIC_AUTH_USERNAME must be set}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD:?BASIC_AUTH_PASSWORD must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?required}
-      # The Go app signs/verifies tokens with JWT_SECRET (not STATGATE_REGISTRY_JWT_SECRET)
-      - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
-    secrets:
-      - STATGATE_REGISTRY_JWT_SECRET
+      - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,9 +186,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 5. FIELD OPERATIONS REGISTRY - React UI
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-registry-ui:
     build:
       context: ./stage_register/frontend
@@ -216,11 +210,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 6. OPERATIONS HELPDESK - Node.js Backend
-  # ══════════════════════════════════════════════════════════════
-  # NOTE: The app reads POSTGRES_* env vars. We map HELPDESK_DB_* from
-  # .env to POSTGRES_* here so the container gets the right credentials.
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-helpdesk-api:
     build:
       context: ./helpdesk-master/backend
@@ -233,11 +225,9 @@ services:
       - POSTGRES_PORT=${HELPDESK_DB_PORT:-5432}
       - POSTGRES_DB=${HELPDESK_DB_NAME:-statgate}
       - POSTGRES_USER=${HELPDESK_DB_USER:-statgate}
-      - POSTGRES_PASSWORD=${HELPDESK_DB_PASSWORD:-REDACTED_PLACEHOLDER}
-      # Unified identity: Helpdesk validates the same Registry JWT as
-      # the rest of the StatGate ecosystem so users move seamlessly.
-      - SECRETKEY=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
-      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - POSTGRES_PASSWORD=${HELPDESK_DB_PASSWORD:?HELPDESK_DB_PASSWORD must be set}
+      - SECRETKEY=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
     depends_on:
       postgres:
         condition: service_healthy
@@ -251,9 +241,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 7. OPERATIONS HELPDESK - React UI
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-helpdesk-ui:
     build:
       context: ./helpdesk-master/frontend
@@ -274,9 +264,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 8. STATCHAT - Real-Time Collaboration Platform
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statchat-backend:
     build:
       context: ./StatChat/backend
@@ -288,7 +278,7 @@ services:
       - STATCHAT_DB_PORT=${STATCHAT_DB_PORT:-5432}
       - STATCHAT_DB_NAME=${STATCHAT_DB_NAME:-statchat}
       - STATCHAT_DB_USER=${STATCHAT_DB_USER:-Statchat}
-      - STATCHAT_DB_PASSWORD=${STATCHAT_DB_PASSWORD:-Statgate}
+      - STATCHAT_DB_PASSWORD=${STATCHAT_DB_PASSWORD:?STATCHAT_DB_PASSWORD must be set}
       - STATCHAT_DB_SSLMODE=${STATCHAT_DB_SSLMODE:-disable}
       - STATCHAT_AUTH_REQUIRED=${STATCHAT_AUTH_REQUIRED:-true}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?required}
@@ -326,9 +316,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 9. PROJECTS MANAGEMENT SYSTEM (PMS)
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-pms-api:
     build:
       context: ./PMS/backend
@@ -342,7 +332,7 @@ services:
       - PMS_DB_PORT=${PMS_DB_PORT:-5432}
       - PMS_DB_NAME=${PMS_DB_NAME:-pms}
       - PMS_DB_USER=${PMS_DB_USER:-PMS}
-      - PMS_DB_PASSWORD=${PMS_DB_PASSWORD:-Statgate}
+      - PMS_DB_PASSWORD=${PMS_DB_PASSWORD:?PMS_DB_PASSWORD must be set}
       - PMS_DB_SSLMODE=${PMS_DB_SSLMODE:-disable}
       - STATCHAT_API_URL=http://statchat-backend:4000
       - STATCHAT_UI_URL=http://statchat-frontend:80
@@ -383,9 +373,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # 10. RESEARCH MANAGEMENT SYSTEM (RMS)
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-rms-api:
     build:
       context: ./RMS/backend
@@ -399,7 +389,7 @@ services:
       - RMS_DB_PORT=${RMS_DB_PORT:-5432}
       - RMS_DB_NAME=${RMS_DB_NAME:-rms}
       - RMS_DB_USER=${RMS_DB_USER:-RMS}
-      - RMS_DB_PASSWORD=${RMS_DB_PASSWORD:-Statgate}
+      - RMS_DB_PASSWORD=${RMS_DB_PASSWORD:?RMS_DB_PASSWORD must be set}
       - RMS_DB_SSLMODE=${RMS_DB_SSLMODE:-disable}
       - STATCHAT_API_URL=http://statchat-backend:4000
       - STATCHAT_UI_URL=http://statchat-frontend:80
@@ -440,9 +430,70 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  # 11. INSTITUTIONAL GOVERNANCE PLATFORM (StatGovernance) - PHASE VIII
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  statgate-governance-api:
+    build:
+      context: ./StatGovernance/backend
+    ports:
+      - "8093:8080"
+    environment:
+      - PORT=8080
+      - STATGOVERNANCE_ENV=production
+      - BIND_ADDRESS=0.0.0.0
+      - GOVERNANCE_DB_HOST=postgres
+      - GOVERNANCE_DB_PORT=${GOVERNANCE_DB_PORT:-5432}
+      - GOVERNANCE_DB_NAME=${GOVERNANCE_DB_NAME:-statgovernance}
+      - GOVERNANCE_DB_USER=${GOVERNANCE_DB_USER:-StatGovernance}
+      - GOVERNANCE_DB_PASSWORD=${GOVERNANCE_DB_PASSWORD:?GOVERNANCE_DB_PASSWORD must be set}
+      - GOVERNANCE_DB_SSLMODE=${GOVERNANCE_DB_SSLMODE:-disable}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATCHAT_UI_URL=http://statchat-frontend:80
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statgate-governance-ui:
+    build:
+      context: ./StatGovernance/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_GOVERNANCE_API_URL: http://localhost:8093
+    ports:
+      - "3012:80"
+    depends_on:
+      statgate-governance-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # MONITORING & OBSERVABILITY
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -460,7 +511,7 @@ services:
     ports:
       - "3003:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}`n      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}
     restart: unless-stopped
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
@@ -478,15 +529,15 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # OPTIONAL ANALYTICS SERVICES
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -497,8 +548,15 @@ services:
       - statgate-network
 
   jupyterhub:
+    profiles:
+      - "analytics-labs"
     build:
       context: ./jupyterhub
+    environment:
+      - STATGATE_JUPYTERHUB_ENABLED=${STATGATE_JUPYTERHUB_ENABLED:-true}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
     ports:
       - "8000:8000"
     volumes:
@@ -513,7 +571,7 @@ services:
     ports:
       - "8088:8088"
     environment:
-      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-REDACTED_PLACEHOLDER}
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY must be set}
       - SUPERSET_LOAD_EXAMPLES=no
     volumes:
       - superset_data:/var/lib/superset
@@ -526,11 +584,11 @@ services:
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${KAGGLE_DB_USER:-Kaggle}:${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}@postgres:5432/${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${KAGGLE_DB_USER:-Kaggle}:${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}@postgres:5432/${KAGGLE_DB_NAME:-statgate_ml_staging}
       - _AIRFLOW_DB_MIGRATE=true
       - _AIRFLOW_WWW_USER_CREATE=true
-      - _AIRFLOW_WWW_USER_USERNAME=admin
-      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_USER:?AIRFLOW_USER must be set}
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_PASSWORD:?AIRFLOW_PASSWORD must be set}
     command: standalone
     ports:
       - "8085:8080"
@@ -548,8 +606,8 @@ services:
       - "5002:5000"
     environment:
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
       - MLFLOW_DEFAULT_ARTIFACT_ROOT=s3://mlflow/artifacts
     volumes:
       - mlflow_data:/mlflow
@@ -557,9 +615,9 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # ENTERPRISE SEARCH & INTEGRATION SERVICE
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-enterprise:
     build:
       context: ./enterprise/search
@@ -572,12 +630,14 @@ services:
       - REGISTRY_API_URL=http://statgate-registry-api:9090
       - STATCHAT_API_URL=http://statchat-backend:4000
       - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+      - GOVERNANCE_API_URL=http://statgate-governance-api:8080
       - PMS_UI_URL=http://localhost:3010
       - RMS_UI_URL=http://localhost:3011
       - REGISTRY_UI_URL=http://localhost:3007
       - STATCHAT_UI_URL=http://localhost:3009
       - HELPDESK_UI_URL=http://localhost:3005
-      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-REDACTED_PLACEHOLDER}
+      - GOVERNANCE_UI_URL=http://localhost:3012
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8095/health >/dev/null 2>&1 || exit 1"]
@@ -588,11 +648,11 @@ services:
     networks:
       - statgate-network
 
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # ENTERPRISE CORE - PHASE II (Event Bus, Notifications, Timeline,
   # Dashboards, Widgets, Files, Permissions, Calendar, Reporting,
   # AI Preparation, API Governance, Monitoring)
-  # ══════════════════════════════════════════════════════════════
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-enterprise-core:
     build:
       context: ./enterprise/core
@@ -606,7 +666,7 @@ services:
       - ENTERPRISE_DB_PORT=5432
       - ENTERPRISE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
       - ENTERPRISE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
-      - ENTERPRISE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:-REDACTED_PLACEHOLDER}
+      - ENTERPRISE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - ENTERPRISE_DB_SSLMODE=disable
       - PMS_API_URL=http://statgate-pms-api:8080
       - RMS_API_URL=http://statgate-rms-api:8080
@@ -615,16 +675,17 @@ services:
       - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
       - ANALYTICS_API_URL=http://statgate-analytics:5000
       - STATCOLLECT_API_URL=http://statcollect:8080
+      - GOVERNANCE_API_URL=http://statgate-governance-api:8080
+      - STATGOVERNANCE_API_URL=http://statgate-governance-api:8080
       - PMS_UI_URL=http://localhost:3010
       - RMS_UI_URL=http://localhost:3011
       - REGISTRY_UI_URL=http://localhost:3007
       - STATCHAT_UI_URL=http://localhost:3009
       - HELPDESK_UI_URL=http://localhost:3005
       - ANALYTICS_UI_URL=http://localhost:5000
+      - GOVERNANCE_UI_URL=http://localhost:3012
       - ENTERPRISE_UPLOAD_DIR=/app/uploads/enterprise
-      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:-REDACTED_PLACEHOLDER}
-    secrets:
-      - STATGATE_INTERNAL_API_KEY
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
     volumes:
       - enterprise_uploads:/app/uploads/enterprise
     depends_on:
@@ -647,13 +708,6 @@ networks:
     driver: bridge
     name: statgate-network
 
-secrets:
-  FLASK_SECRET_KEY:
-    file: ./secrets/FLASK_SECRET_KEY
-  STATGATE_INTERNAL_API_KEY:
-    file: ./secrets/STATGATE_INTERNAL_API_KEY
-  STATGATE_REGISTRY_JWT_SECRET:
-    file: ./secrets/STATGATE_REGISTRY_JWT_SECRET
 
 volumes:
   pgdata:

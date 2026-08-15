@@ -61,16 +61,35 @@ func TestAuthMiddlewareAcceptsValidToken(t *testing.T) {
 func TestAuthMiddlewareAcceptsWebSocketQueryToken(t *testing.T) {
 	t.Setenv("STATCHAT_AUTH_REQUIRED", "true")
 	t.Setenv("STATCHAT_JWT_SECRET", "test-secret")
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-001", "exp": time.Now().Add(time.Hour).Unix()})
+	// WebSocket tickets in the query string MUST be short-lived (<= 6 min).
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-001", "exp": time.Now().Add(2 * time.Minute).Unix()})
 	encoded, err := token.SignedString([]byte("test-secret"))
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/ws?access_token="+encoded, nil)
+	req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+encoded, nil)
 	rr := httptest.NewRecorder()
 	authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rr.Code)
+	}
+}
+
+func TestAuthMiddlewareRejectsLongLivedWebSocketQueryToken(t *testing.T) {
+	t.Setenv("STATCHAT_AUTH_REQUIRED", "true")
+	t.Setenv("STATCHAT_JWT_SECRET", "test-secret")
+	// A long-lived JWT in the WebSocket query string must be rejected
+	// (no long-lived credentials in URLs - SG-SEC-2026-08).
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "user-001", "exp": time.Now().Add(6 * time.Hour).Unix()})
+	encoded, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+encoded, nil)
+	rr := httptest.NewRecorder()
+	authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d for long-lived ws query token, got %d", http.StatusUnauthorized, rr.Code)
 	}
 }
 

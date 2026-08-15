@@ -808,6 +808,9 @@ type Summary struct {
 }
 
 func GetSummary(ctx context.Context) (*Summary, error) {
+	if db == nil {
+		return nil, errors.New("database not initialized")
+	}
 	s := &Summary{}
 	counts := []struct {
 		query string

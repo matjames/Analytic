@@ -128,6 +128,18 @@ func getServiceConfigs() []ServiceConfig {
 			Search:  "/api/search",
 			Timeout: 3 * time.Second,
 		},
+		{
+			Name:    "statgovernance",
+			BaseURL: getEnv("STATGOVERNANCE_API_URL", "http://localhost:8093"),
+			Search:  "/api/search",
+			Timeout: 3 * time.Second,
+		},
+		{
+			Name:    "enterprise_core",
+			BaseURL: getEnv("ENTERPRISE_CORE_URL", "http://localhost:8096"),
+			Search:  "/api/knowledge/search",
+			Timeout: 3 * time.Second,
+		},
 	}
 }
 

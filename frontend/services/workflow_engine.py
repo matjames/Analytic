@@ -29,7 +29,7 @@ def _get_conn():
             port=int(os.getenv('KAGGLE_DB_PORT', '5432')),
             dbname=os.getenv('KAGGLE_DB_NAME', 'statgate_ml_staging'),
             user=os.getenv('KAGGLE_DB_USER', 'Kaggle'),
-            password=os.getenv('KAGGLE_DB_PASSWORD', 'REDACTED_PLACEHOLDER'),
+            password=os.getenv('KAGGLE_DB_PASSWORD', ''),
             sslmode=os.getenv('KAGGLE_DB_SSLMODE', 'disable'),
         )
     except Exception as exc:

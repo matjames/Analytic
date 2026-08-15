@@ -1,14 +1,10 @@
 -- Create PMS database and schema
 CREATE DATABASE pms;
 
--- Create PMS user if needed
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'PMS') THEN
-    CREATE ROLE "PMS" WITH LOGIN PASSWORD 'Statgate';
-  END IF;
-END
-$$;
+-- Password injected from environment (PMS_DB_PASSWORD), never hardcoded.
+\getenv PMS_PW PMS_DB_PASSWORD
+SELECT format('CREATE ROLE "PMS" WITH LOGIN PASSWORD %L', :'PMS_PW')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'PMS') \gexec
 
 -- Grant privileges
 GRANT ALL PRIVILEGES ON DATABASE pms TO "PMS";
