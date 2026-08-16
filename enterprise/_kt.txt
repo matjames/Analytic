@@ -1,8 +1,0 @@
-﻿=== RUN   TestKnowledgeGraphContext
-2026/08/15 17:56:42 analytics: bootstrapping enterprise data layer
-[GIN] 2026/08/15 - 17:56:42 | 401 |            0s |       192.0.2.1 | POST     "/api/knowledge/relationships"
-    knowledge_test.go:54: expected 201, got 401
---- FAIL: TestKnowledgeGraphContext (0.00s)
-FAIL
-FAIL	statgate/enterprise/core	4.000s
-FAIL

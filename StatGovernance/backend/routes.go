@@ -76,6 +76,20 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/delegations", dbGetDelegations)
 		api.POST("/delegations", dbCreateDelegation)
 
+		// ─── Whistleblower & Integrity ────────────────────────────
+		api.GET("/whistleblower", dbGetWhistleblowerReports)
+		api.POST("/whistleblower", dbSubmitWhistleblowerReport)
+
+		// ─── Conflict of Interest (COI) ───────────────────────────
+		api.GET("/conflict-declarations", dbGetConflictDeclarations)
+		api.POST("/conflict-declarations", dbSubmitConflictDeclaration)
+
+		// ─── Feature Flags & Parameters ───────────────────────────
+		api.GET("/feature-flags", dbGetFeatureFlags)
+		api.POST("/feature-flags", dbCreateFeatureFlag)
+		api.GET("/system-parameters", dbGetSystemParameters)
+		api.POST("/system-parameters", dbSaveSystemParameter)
+
 		// ─── Cross-Application Search & Activity Timeline ─────────
 		api.GET("/search", dbSearch)
 		api.GET("/activity", dbGetActivity)

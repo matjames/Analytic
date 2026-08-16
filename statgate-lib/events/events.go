@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +19,54 @@ const (
 	DefaultChannel = "statgate:events"
 	DLQChannel     = "statgate:events:dlq"
 )
+
+// ── In-process pub/sub broker ──────────────────────────────────────────────
+// When Redis is unavailable (local development, CI, tests) the EventBus
+// falls back to this process-local broker so that all app instances running
+// in the same process can STILL exchange domain events on the canonical
+// channel. This makes cross-application communication verifiable everywhere,
+// not only in full-stack deployments.
+type memoryBroker struct {
+	mu   sync.Mutex
+	subs map[string]map[chan EnterpriseEvent]struct{}
+}
+
+var inMemoryBroker = &memoryBroker{subs: make(map[string]map[chan EnterpriseEvent]struct{})}
+
+func (b *memoryBroker) publish(channel string, evt EnterpriseEvent) {
+	b.mu.Lock()
+	targets := make([]chan EnterpriseEvent, 0, 8)
+	for c := range b.subs[channel] {
+		targets = append(targets, c)
+	}
+	b.mu.Unlock()
+	for _, c := range targets {
+		select {
+		case c <- evt:
+		default:
+			log.Printf("[EventBus] in-memory subscriber queue full on %s; dropping event %s", channel, evt.EventID)
+		}
+	}
+}
+
+func (b *memoryBroker) subscribe(channel string) chan EnterpriseEvent {
+	c := make(chan EnterpriseEvent, 256)
+	b.mu.Lock()
+	if b.subs[channel] == nil {
+		b.subs[channel] = make(map[chan EnterpriseEvent]struct{})
+	}
+	b.subs[channel][c] = struct{}{}
+	b.mu.Unlock()
+	return c
+}
+
+func (b *memoryBroker) unsubscribe(channel string, c chan EnterpriseEvent) {
+	b.mu.Lock()
+	if set := b.subs[channel]; set != nil {
+		delete(set, c)
+	}
+	b.mu.Unlock()
+}
 
 // Standard Event Type Constants across StatGate
 const (
@@ -81,6 +128,45 @@ const (
 	EventSpatialLayerCreated   = "spatial.layer.created"
 	EventSpatialFeatureUpdated = "spatial.feature.updated"
 	EventSpatialNodeSynced     = "spatial.node.synced"
+
+	// Knowledge Portal (content / open data / library)
+	EventContentPublished       = "content.published"
+	EventDatasetPublished       = "dataset.published"
+	EventRepositoryArchived     = "repository.item.archived"
+	EventSubscriptionCreated    = "subscription.created"
+	EventFeedbackReceived       = "feedback.received"
+	EventObjectLinkCreated      = "object.link.created"
+
+	// AI & Autonomy (App 5: P22 Digital Twins & Analytics, P31 Agents, P39 Knowledge Graph)
+	EventPredictionGenerated    = "prediction.generated"
+	EventSimulationCompleted    = "simulation.completed"
+	EventAgentTaskCreated       = "agent.task.created"
+	EventAgentTaskCompleted     = "agent.task.completed"
+	EventAgentActionTaken       = "agent.action.taken"
+	EventGraphEntityRegistered  = "graph.entity.registered"
+
+	// Learning, Community & Commercial (App 7: P24 LMS/CPD, P26 CRM, P35 Stewardship)
+	EventCourseCompleted        = "course.completed"
+	EventCertificateIssued      = "certificate.issued"
+	EventBadgeIssued            = "badge.issued"
+	EventEnrollmentCreated      = "enrollment.created"
+	EventLeadConverted          = "lead.converted"
+	EventPartnerRegistered      = "partner.registered"
+	EventServiceRequestCreated  = "service_request.created"
+
+	// Geospatial & Remote Sensing (App 9: P44 GIS / Drone / Remote Sensing)
+	EventSceneIngested          = "scene.ingested"
+	EventDroneFlightCompleted   = "drone.flight.completed"
+	EventSpatialAnalysisDone    = "spatial.analysis.completed"
+	EventMapTileRegistered      = "tile.registered"
+
+	// Business Process Management (App 11: P48 BPM / Case / Process Mining)
+	EventProcessStarted         = "process.started"
+	EventProcessCompleted       = "process.completed"
+	EventWorkItemCreated        = "task.created"
+	EventWorkItemCompleted      = "task.completed"
+	EventCaseCreated            = "case.created"
+	EventAutomationTriggered    = "automation.triggered"
 )
 
 // EnterpriseEvent represents the universal message schema.
@@ -108,6 +194,7 @@ type EventBus struct {
 	seenCache    map[string]time.Time
 	seenMu       sync.RWMutex
 	pruneTimeout time.Duration
+	localStop    chan struct{} // closes the in-memory consumer goroutine
 }
 
 // Config holds EventBus initialization options.
@@ -183,11 +270,14 @@ func (b *EventBus) Publish(ctx context.Context, evt EnterpriseEvent) error {
 
 	if b.client != nil {
 		if err := b.client.Publish(ctx, b.channel, string(data)).Err(); err != nil {
-			log.Printf("[EventBus] Redis publish error: %v. Storing locally.", err)
+			log.Printf("[EventBus] Redis publish error: %v. Delivering via in-memory broker.", err)
+			inMemoryBroker.publish(b.channel, evt)
 			return err
 		}
 	} else {
-		log.Printf("[EventBus:Local] Published event %s (%s) for object %s:%s", evt.EventID, evt.EventType, evt.ObjectType, evt.ObjectID)
+		// No Redis: still deliver in-process so sibling app instances can react.
+		inMemoryBroker.publish(b.channel, evt)
+		log.Printf("[EventBus:InMemory] broadcast event %s (%s) for object %s:%s", evt.EventType, evt.EventID, evt.ObjectType, evt.ObjectID)
 	}
 
 	return nil
@@ -244,16 +334,40 @@ func CalculateEventHash(tenantID, eventType, objectID string, timestamp time.Tim
 // SubscribeHandler represents a callback for incoming domain events.
 type SubscribeHandler func(ctx context.Context, evt EnterpriseEvent) error
 
-// Subscribe listens to Redis channel and executes handlers with deduplication.
+// Subscribe listens to the canonical channel and executes handlers with
+// deduplication. It works with a physical Redis pub/sub connection OR the
+// in-process broker (when Redis is absent) so cross-app communication can be
+// verified in any environment.
 func (b *EventBus) Subscribe(ctx context.Context, handler SubscribeHandler) error {
 	if b.client == nil {
-		return errors.New("cannot subscribe: redis client is not connected")
+		ch := inMemoryBroker.subscribe(b.channel)
+		b.localStop = make(chan struct{})
+		go func() {
+			defer inMemoryBroker.unsubscribe(b.channel, ch)
+			for {
+				select {
+				case <-b.localStop:
+					return
+				case evt := <-ch:
+					if b.IsDuplicate(evt.EventID) {
+						log.Printf("[EventBus] Skipping duplicate event %s (%s)", evt.EventID, evt.EventType)
+						continue
+					}
+					if err := handler(ctx, evt); err != nil {
+						log.Printf("[EventBus] Handler error on event %s: %v. Routing to DLQ.", evt.EventID, err)
+						_ = b.PublishDLQ(ctx, evt, err.Error())
+					}
+				}
+			}
+		}()
+		return nil
 	}
 
 	pubsub := b.client.Subscribe(ctx, b.channel)
 	ch := pubsub.Channel()
 
 	go func() {
+		defer pubsub.Close()
 		for msg := range ch {
 			var evt EnterpriseEvent
 			if err := json.Unmarshal([]byte(msg.Payload), &evt); err != nil {

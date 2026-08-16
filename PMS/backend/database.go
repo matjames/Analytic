@@ -576,6 +576,78 @@ func migrateDB() error {
 		return err
 	}
 
+	// ─── Phase 4 Extensions: LogFrames, Theory of Change, Donors ───
+
+	// LogFrames table
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pms.logframes (
+			id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+			title VARCHAR(255) NOT NULL,
+			description TEXT,
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	// LogFrame Items table
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pms.logframe_items (
+			id VARCHAR(36) PRIMARY KEY,
+			logframe_id VARCHAR(36) REFERENCES pms.logframes(id) ON DELETE CASCADE,
+			level VARCHAR(50) NOT NULL,
+			code VARCHAR(50),
+			description TEXT NOT NULL,
+			indicators TEXT[],
+			means_of_verification TEXT[],
+			assumptions TEXT[],
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	// Theory of Change table
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pms.theory_of_change (
+			id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+			title VARCHAR(255) NOT NULL,
+			narrative TEXT,
+			inputs TEXT[],
+			activities TEXT[],
+			outputs TEXT[],
+			short_term_outcomes TEXT[],
+			long_term_outcomes TEXT[],
+			impact TEXT[],
+			assumptions TEXT[],
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	// Donors CRM table
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pms.donors (
+			id VARCHAR(36) PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			code VARCHAR(50) UNIQUE,
+			type VARCHAR(100) DEFAULT 'Bilateral',
+			contact_person VARCHAR(255),
+			email VARCHAR(255),
+			phone VARCHAR(50),
+			website VARCHAR(255),
+			total_funding FLOAT DEFAULT 0.0,
+			currency VARCHAR(10) DEFAULT 'USD',
+			status VARCHAR(50) DEFAULT 'Active',
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
 	// Seed data if projects table is empty
 	var count int
 	err = DB.QueryRow(`SELECT COUNT(*) FROM pms.projects`).Scan(&count)

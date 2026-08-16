@@ -484,3 +484,61 @@ type SearchItem struct {
 	Score       int    `json:"score"`
 }
 
+// ─── Phase 13 Extensions: Whistleblower, COI, Feature Flags, Parameters ───
+
+type WhistleblowerReport struct {
+	ID             string    `json:"id"`
+	TicketNumber   string    `json:"ticket_number"`
+	Title          string    `json:"title"`
+	Category       string    `json:"category"` // Fraud, Corruption, Harassment, Safety, Breach, Other
+	Description    string    `json:"description"`
+	EvidenceFiles  []string  `json:"evidence_files,omitempty"`
+	Status         string    `json:"status"` // Submitted, Under Investigation, Action Taken, Closed
+	EncryptedNotes string    `json:"encrypted_notes,omitempty"`
+	AssignedTo     string    `json:"assigned_to,omitempty"`
+	TenantID       string    `json:"tenant_id"`
+	CreatedTime    time.Time `json:"created_time"`
+	UpdatedTime    time.Time `json:"updated_time"`
+}
+
+type ConflictDeclaration struct {
+	ID              string    `json:"id"`
+	UserID          string    `json:"user_id"`
+	UserName        string    `json:"user_name"`
+	Department      string    `json:"department"`
+	DeclarationType string    `json:"declaration_type"` // Annual, Ad-Hoc, Procurement, Recruitment
+	EntityName      string    `json:"entity_name"`
+	NatureOfInterest string   `json:"nature_of_interest"` // Financial, Directorship, Family, Shareholding
+	Description     string    `json:"description"`
+	MitigationPlan  string    `json:"mitigation_plan"`
+	Status          string    `json:"status"` // Declared, Under Review, Approved, Mitigated, Rejected
+	ReviewedBy      string    `json:"reviewed_by,omitempty"`
+	ReviewedAt      string    `json:"reviewed_at,omitempty"`
+	TenantID        string    `json:"tenant_id"`
+	CreatedTime     time.Time `json:"created_time"`
+}
+
+type FeatureFlag struct {
+	ID          string    `json:"id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Enabled     bool      `json:"enabled"`
+	TenantID    string    `json:"tenant_id"`
+	Module      string    `json:"module"`
+	RolloutPct  int       `json:"rollout_pct"`
+	CreatedTime time.Time `json:"created_time"`
+}
+
+type SystemParameter struct {
+	ID          string    `json:"id"`
+	ParamKey    string    `json:"param_key"`
+	ParamValue  string    `json:"param_value"`
+	Description string    `json:"description"`
+	DataType    string    `json:"data_type"` // string, number, boolean, json
+	Category    string    `json:"category"`
+	TenantID    string    `json:"tenant_id"`
+	UpdatedTime time.Time `json:"updated_time"`
+}
+
+

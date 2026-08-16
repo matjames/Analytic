@@ -61,6 +61,19 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/projects/:id/procurement", dbGetProcurementRefs)
 		api.POST("/procurement", dbCreateProcurementRef)
 
+		// ─── Donors CRM ──────────────────────────────────────────
+		api.GET("/donors", dbGetDonors)
+		api.POST("/donors", dbCreateDonor)
+		api.PUT("/donors/:id", dbUpdateDonor)
+		api.DELETE("/donors/:id", dbDeleteDonor)
+
+		// ─── LogFrame & Theory of Change ─────────────────────────
+		api.GET("/projects/:id/logframes", dbGetLogFrames)
+		api.POST("/logframes", dbCreateLogFrame)
+		api.POST("/logframe-items", dbCreateLogFrameItem)
+		api.GET("/projects/:id/theory-of-change", dbGetTheoryOfChange)
+		api.POST("/theory-of-change", dbSaveTheoryOfChange)
+
 		// ─── Risks & Issues ──────────────────────────────────────
 		api.POST("/risks", dbCreateRisk)
 		api.PUT("/risks/:id", dbUpdateRisk)

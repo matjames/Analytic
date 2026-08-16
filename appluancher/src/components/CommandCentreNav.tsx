@@ -30,6 +30,10 @@ import {
   ShieldAlert,
   GitBranch,
   Target,
+  FileText,
+  Table,
+  DollarSign,
+  FolderArchive,
 } from 'lucide-react';
 
 
@@ -43,6 +47,10 @@ export type CommandCentreTab =
   | 'field'
   | 'projects'
   | 'research'
+  | 'finance'
+  | 'edms'
+  | 'form-designer'
+  | 'pivot-studio'
   | 'data-intelligence'
   | 'fabric'
   | 'governance'
@@ -104,8 +112,15 @@ const NAV_GROUPS: { groupLabel: string; items: NavItem[] }[] = [
       { id: 'field', label: 'Field & Facilities', icon: MapPin },
       { id: 'projects', label: 'Project Portfolio', icon: FolderGit2 },
       { id: 'research', label: 'Research (RMS)', icon: FlaskConical },
+      { id: 'finance', label: 'Financial & Grants Hub', icon: DollarSign },
+      { id: 'edms', label: 'Documents & EDMS Hub', icon: FolderArchive },
+      { id: 'form-designer', label: 'Survey Form Designer', icon: FileText },
+      { id: 'pivot-studio', label: 'OLAP Tabulation Studio', icon: Table },
     ],
   },
+
+
+
   {
     groupLabel: 'Intelligence & Decision',
     items: [

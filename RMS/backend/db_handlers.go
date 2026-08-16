@@ -1743,3 +1743,180 @@ func dbSearch(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, results)
 }
+
+// ─── Phase 5 Handlers: Ethics Committees, DOI, Citation, Open Science ───
+
+func dbGetEthicsCommittees(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, name, institution, COALESCE(chair_person,''), COALESCE(email,''), members, active, created_time FROM rms.ethics_committees ORDER BY name ASC`)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var committees []EthicsCommittee
+	for rows.Next() {
+		var ec EthicsCommittee
+		var members pq.StringArray
+		rows.Scan(&ec.ID, &ec.Name, &ec.Institution, &ec.ChairPerson, &ec.Email, &members, &ec.Active, &ec.CreatedTime)
+		ec.Members = members
+		committees = append(committees, ec)
+	}
+	c.JSON(200, committees)
+}
+
+func dbCreateEthicsCommittee(c *gin.Context) {
+	var ec EthicsCommittee
+	if err := c.ShouldBindJSON(&ec); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if ec.ID == "" {
+		ec.ID = "irb-" + newID()
+	}
+	ec.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO rms.ethics_committees (id, name, institution, chair_person, email, members, active, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		ec.ID, ec.Name, ec.Institution, ec.ChairPerson, ec.Email, pq.Array(ec.Members), ec.Active, ec.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, ec)
+}
+
+func dbGetDOIRecords(c *gin.Context) {
+	researchID := c.Param("id")
+	rows, err := DB.Query(`SELECT id, research_id, COALESCE(publication_id,''), doi, title, authors, year, publisher, COALESCE(url,''), status, created_time 
+		FROM rms.doi_records WHERE research_id = $1`, researchID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var dois []DOIRecord
+	for rows.Next() {
+		var d DOIRecord
+		var authors pq.StringArray
+		rows.Scan(&d.ID, &d.ResearchID, &d.PublicationID, &d.DOI, &d.Title, &authors, &d.Year, &d.Publisher, &d.URL, &d.Status, &d.CreatedTime)
+		d.Authors = authors
+		dois = append(dois, d)
+	}
+	c.JSON(200, dois)
+}
+
+func dbCreateDOIRecord(c *gin.Context) {
+	var d DOIRecord
+	if err := c.ShouldBindJSON(&d); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if d.ID == "" {
+		d.ID = "doi-" + newID()
+	}
+	if d.DOI == "" {
+		d.DOI = fmt.Sprintf("10.5849/statgate.%s", newID()[:8])
+	}
+	if d.Publisher == "" {
+		d.Publisher = "StatGate Open Science"
+	}
+	if d.Year == 0 {
+		d.Year = time.Now().Year()
+	}
+	d.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO rms.doi_records (id, research_id, publication_id, doi, title, authors, year, publisher, url, status, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		d.ID, d.ResearchID, d.PublicationID, d.DOI, d.Title, pq.Array(d.Authors), d.Year, d.Publisher, d.URL, d.Status, d.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, d)
+}
+
+func dbFormatCitation(c *gin.Context) {
+	var req struct {
+		Authors string `json:"authors"`
+		Title   string `json:"title"`
+		Journal string `json:"journal"`
+		Year    string `json:"year"`
+		Volume  string `json:"volume"`
+		Issue   string `json:"issue"`
+		Pages   string `json:"pages"`
+		DOI     string `json:"doi"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Year == "" {
+		req.Year = "2026"
+	}
+	if req.Authors == "" {
+		req.Authors = "StatGate Research Team"
+	}
+
+	apa := fmt.Sprintf("%s (%s). %s. %s, %s(%s), %s. https://doi.org/%s",
+		req.Authors, req.Year, req.Title, req.Journal, req.Volume, req.Issue, req.Pages, req.DOI)
+	chicago := fmt.Sprintf("%s. \"%s.\" %s %s, no. %s (%s): %s. https://doi.org/%s.",
+		req.Authors, req.Title, req.Journal, req.Volume, req.Issue, req.Year, req.Pages, req.DOI)
+	harvard := fmt.Sprintf("%s, %s. %s. %s, %s(%s), pp.%s.",
+		req.Authors, req.Year, req.Title, req.Journal, req.Volume, req.Issue, req.Pages)
+	vancouver := fmt.Sprintf("%s. %s. %s. %s;%s(%s):%s.",
+		req.Authors, req.Title, req.Journal, req.Year, req.Volume, req.Issue, req.Pages)
+	bibtex := fmt.Sprintf("@article{statgate_%s,\n  author = {%s},\n  title = {%s},\n  journal = {%s},\n  year = {%s},\n  volume = {%s},\n  number = {%s},\n  pages = {%s},\n  doi = {%s}\n}",
+		newID()[:6], req.Authors, req.Title, req.Journal, req.Year, req.Volume, req.Issue, req.Pages, req.DOI)
+
+	c.JSON(200, CitationOutput{
+		APA:       apa,
+		Chicago:   chicago,
+		Harvard:   harvard,
+		Vancouver: vancouver,
+		BibTeX:    bibtex,
+	})
+}
+
+func dbGetOpenAccessRepo(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, research_id, title, COALESCE(abstract,''), license, COALESCE(access_url,''), COALESCE(download_url,''), COALESCE(file_size,''), format, views, downloads, created_time FROM rms.open_access_repo ORDER BY created_time DESC`)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var items []OpenAccessRepoItem
+	for rows.Next() {
+		var item OpenAccessRepoItem
+		rows.Scan(&item.ID, &item.ResearchID, &item.Title, &item.Abstract, &item.License, &item.AccessURL, &item.DownloadURL, &item.FileSize, &item.Format, &item.Views, &item.Downloads, &item.CreatedTime)
+		items = append(items, item)
+	}
+	c.JSON(200, items)
+}
+
+func dbCreateOpenAccessRepo(c *gin.Context) {
+	var item OpenAccessRepoItem
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if item.ID == "" {
+		item.ID = "repo-" + newID()
+	}
+	if item.License == "" {
+		item.License = "CC-BY-4.0"
+	}
+	item.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO rms.open_access_repo (id, research_id, title, abstract, license, access_url, download_url, file_size, format, views, downloads, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		item.ID, item.ResearchID, item.Title, item.Abstract, item.License, item.AccessURL, item.DownloadURL, item.FileSize, item.Format, 0, 0, item.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, item)
+}
+

@@ -108,8 +108,11 @@ export const WorkspaceDashboard: React.FC<{ user: User }> = ({ user }) => {
   ];
 
   const frequentApps = [
+    { name: 'StatOps', url: 'http://localhost:3015', desc: 'Platform Ops', icon: '⚙️' },
     { name: 'PMS', url: 'http://localhost:3010', desc: 'Projects', icon: '🏗️' },
     { name: 'RMS', url: 'http://localhost:3011', desc: 'Research', icon: '🔬' },
+    { name: 'StatTrust', url: 'http://localhost:3013', desc: 'Security & Trust', icon: '🛡️' },
+    { name: 'StatGovernance', url: 'http://localhost:3012', desc: 'Governance', icon: '⚖️' },
     { name: 'StatChat', url: 'http://localhost:3009', desc: 'Messages', icon: '💬' },
     { name: 'HelpDesk', url: 'http://localhost:3005', desc: 'Support', icon: '🎫' },
     { name: 'Analytics', url: 'http://localhost:5000', desc: 'Dashboards', icon: '📊' },

@@ -496,3 +496,57 @@ func (sa StringArray) Value() (driver.Value, error) {
 	}
 	return "{" + strings.Join(sa, ",") + "}", nil
 }
+
+// ─── Phase 4 Extensions: LogFrame, Theory of Change, Donors ─────────
+
+type LogFrame struct {
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"projectId"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Items       []LogFrameItem `json:"items,omitempty"`
+	CreatedTime time.Time      `json:"createdTime"`
+}
+
+type LogFrameItem struct {
+	ID          string      `json:"id"`
+	LogFrameID  string      `json:"logframeId"`
+	Level       string      `json:"level"` // Goal, Outcome, Output, Activity
+	Code        string      `json:"code"`
+	Description string      `json:"description"`
+	Indicators  StringArray `json:"indicators"`
+	MeansOfVer  StringArray `json:"meansOfVerification"`
+	Assumptions StringArray `json:"assumptions"`
+	CreatedTime time.Time   `json:"createdTime"`
+}
+
+type TheoryOfChange struct {
+	ID                 string      `json:"id"`
+	ProjectID          string      `json:"projectId"`
+	Title              string      `json:"title"`
+	Narrative          string      `json:"narrative"`
+	Inputs             StringArray `json:"inputs"`
+	Activities         StringArray `json:"activities"`
+	Outputs            StringArray `json:"outputs"`
+	ShortTermOutcomes  StringArray `json:"shortTermOutcomes"`
+	LongTermOutcomes   StringArray `json:"longTermOutcomes"`
+	Impact             StringArray `json:"impact"`
+	Assumptions        StringArray `json:"assumptions"`
+	CreatedTime        time.Time   `json:"createdTime"`
+}
+
+type Donor struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Code          string    `json:"code"`
+	Type          string    `json:"type"` // Bilateral, Multilateral, Foundation, NGO, Private
+	ContactPerson string    `json:"contactPerson"`
+	Email         string    `json:"email"`
+	Phone         string    `json:"phone"`
+	Website       string    `json:"website"`
+	TotalFunding  float64   `json:"totalFunding"`
+	Currency      string    `json:"currency"`
+	Status        string    `json:"status"`
+	CreatedTime   time.Time `json:"createdTime"`
+}
+

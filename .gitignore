@@ -96,3 +96,27 @@ frontend/.venv.bak/
 *.pyd
 *.egg-info/
 .pip/
+
+# ---- StatGate hygiene: temp logs & build/test checkpoints ----
+*.log
+log.txt
+build_out.txt
+build_err.log
+docker_status.txt
+phaseV_*.txt
+trim.txt
+**/build-check*.txt
+**/build_check*.txt
+**/build-err.txt
+**/backend-build.txt
+**/final-test.txt
+**/final-frontend-build.txt
+**/frontend-build-check.txt
+**/frontend-build.txt
+**/test-check.txt
+**/vet-output.txt
+**/fe_build.txt
+enterprise/_kt.txt
+!**/requirements.txt
+!**/proguard-rules.txt
+!**/robots.txt

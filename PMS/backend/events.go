@@ -2,42 +2,37 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"os"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/matjames/statgate-lib/events"
 )
 
-var redisClient *redis.Client
+// eventBus is the shared Enterprise Event Bus (statgate-lib). Redis-backed with
+// an in-memory fallback so publishing is graceful when Redis is unavailable.
+var eventBus *events.EventBus
 
 func initRedis() error {
-	if os.Getenv("REDIS_HOST") == "" {
-		return nil
+	bus, err := events.InitFromEnv("pms")
+	if err != nil {
+		return err
 	}
-	redisClient = redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDIS_HOST") + ":" + os.Getenv("REDIS_PORT"),
-		Password: "",
-		DB:       0,
-	})
-	ctx := context.Background()
-	return redisClient.Ping(ctx).Err()
+	eventBus = bus
+	return nil
 }
 
 func publishEvent(eventType, objectType, objectID string, payload map[string]interface{}) {
-	if redisClient == nil {
+	if eventBus == nil {
 		return
 	}
-	ctx := context.Background()
-	event := map[string]interface{}{
-		"event_type":  eventType,
-		"source":      "pms",
-		"object_type": objectType,
-		"object_id":   objectID,
-		"tenant_id":   getEnv("PMS_TENANT_ID", "tenant-alpha"),
-		"payload":     payload,
-		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	evt := events.EnterpriseEvent{
+		EventType:  eventType,
+		Source:     "pms",
+		ObjectType: objectType,
+		ObjectID:   objectID,
+		TenantID:   getEnv("PMS_TENANT_ID", "tenant-alpha"),
+		Payload:    payload,
+		Timestamp:  time.Now().UTC(),
+		Version:    "1.0",
 	}
-	data, _ := json.Marshal(event)
-	_ = redisClient.Publish(ctx, getEnv("STATGATE_EVENT_CHANNEL", "statgate:events"), string(data)).Err()
+	_ = eventBus.Publish(context.Background(), evt)
 }

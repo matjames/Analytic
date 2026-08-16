@@ -34,9 +34,15 @@ import { ObjectivesKPIView } from '@components/cc/ObjectivesKPIView';
 import { RiskIntelligenceView } from '@components/cc/RiskIntelligenceView';
 import { AIRecommendationsView } from '@components/cc/AIRecommendationsView';
 import { DataLineageView } from '@components/cc/DataLineageView';
+import { FinanceCommandView } from '@components/cc/FinanceCommandView';
+import { DocumentCommandView } from '@components/cc/DocumentCommandView';
+import { FormDesigner } from '@components/FormDesigner';
+import { PivotStudio } from '@components/PivotStudio';
 import { ObjectContextProvider } from '@context/ObjectContext';
 import { ObjectContextModal } from '@components/ObjectContextModal';
 import { Radio } from 'lucide-react';
+
+
 
 const API_BASE = process.env.NEXT_PUBLIC_ENTERPRISE_CORE_URL || 'http://localhost:8096';
 
@@ -135,6 +141,14 @@ export const CommandCentre: React.FC<{ user: User }> = ({ user }) => {
         return <ProjectView user={user} />;
       case 'research':
         return <ResearchView user={user} />;
+      case 'finance':
+        return <FinanceCommandView user={user} />;
+      case 'edms':
+        return <DocumentCommandView user={user} />;
+      case 'form-designer':
+        return <FormDesigner />;
+      case 'pivot-studio':
+        return <PivotStudio />;
       case 'data-intelligence':
         return <DataIntelligenceView user={user} />;
       case 'governance':

@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// All StatGate apps for the switcher overlay — connected via docker-compose
+// All StatGate apps for the switcher overlay — mirrors the platform service
+// registry (single source: frontend/config/services.json, served live via the
+// launcher). Keep this list in sync with that registry.
 const STATGATE_APPS = [
   { id: 'analytics',  name: 'Analytics',           icon: '📊', url: 'http://localhost:5000' },
   { id: 'registry',   name: 'Field Registry',       icon: '🏥', url: 'http://localhost:3007' },
   { id: 'helpdesk',   name: 'Operations Helpdesk',  icon: '🎫', url: 'http://localhost:3005' },
   { id: 'statchat',   name: 'StatChat',             icon: '💬', url: 'http://localhost:3009' },
   { id: 'pms',        name: 'PMS',                  icon: '🏗️', url: 'http://localhost:3010', current: true },
+  { id: 'rms',        name: 'RMS',                  icon: '🔬', url: 'http://localhost:3011' },
+  { id: 'governance', name: 'StatGovernance',       icon: '🛡️', url: 'http://localhost:3012' },
+  { id: 'statcollect',name: 'StatCollect',          icon: '📥', url: 'http://localhost:8080' },
+  { id: 'statspatial',name: 'StatSpatial',          icon: '🗺️', url: 'http://localhost:4200' },
+  { id: 'enterprise', name: 'Enterprise',           icon: '🧩', url: 'http://localhost:8096' },
   { id: 'jupyter',    name: 'JupyterHub',           icon: '📓', url: 'http://localhost:8000' },
   { id: 'superset',   name: 'Superset BI',          icon: '📈', url: 'http://localhost:8088' },
   { id: 'grafana',    name: 'Grafana',              icon: '📉', url: 'http://localhost:3003' },

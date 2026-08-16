@@ -51,6 +51,13 @@ func main() {
 		log.Fatalf("failed to initialize store: %v", err)
 	}
 
+	// Enterprise convergence: attach StatSpatial to the shared Event Bus and
+	// Audit Service (statgate-lib). InitFromEnv only returns an error on
+	// invalid configuration; an unreachable Redis falls back to in-memory.
+	if err := api.InitEnterprise(); err != nil {
+		log.Printf("warning: failed to initialise enterprise services: %v", err)
+	}
+
 	router := mux.NewRouter()
 	api.RegisterRoutes(router)
 

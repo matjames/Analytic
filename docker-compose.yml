@@ -22,6 +22,15 @@ services:
       - PMS_DB_PASSWORD=${PMS_DB_PASSWORD:?PMS_DB_PASSWORD must be set}
       - RMS_DB_PASSWORD=${RMS_DB_PASSWORD:?RMS_DB_PASSWORD must be set}
       - GOVERNANCE_DB_PASSWORD=${GOVERNANCE_DB_PASSWORD:?GOVERNANCE_DB_PASSWORD must be set}
+      - STATSPATIAL_DB_PASSWORD=${STATSPATIAL_DB_PASSWORD:?STATSPATIAL_DB_PASSWORD must be set}
+      - KNOWLEDGE_DB_PASSWORD=${KNOWLEDGE_DB_PASSWORD:?KNOWLEDGE_DB_PASSWORD must be set}
+      - AIENG_DB_PASSWORD=${AIENG_DB_PASSWORD:?AIENG_DB_PASSWORD must be set}
+      - LMS_DB_PASSWORD=${LMS_DB_PASSWORD:?LMS_DB_PASSWORD must be set}
+      - GIS_DB_PASSWORD=${GIS_DB_PASSWORD:?GIS_DB_PASSWORD must be set}
+      - BPM_DB_PASSWORD=${BPM_DB_PASSWORD:?BPM_DB_PASSWORD must be set}
+      - STATFEDERATION_DB_PASSWORD=${STATFEDERATION_DB_PASSWORD:?STATFEDERATION_DB_PASSWORD must be set}
+      - STATIOT_DB_PASSWORD=${STATIOT_DB_PASSWORD:?STATIOT_DB_PASSWORD must be set}
+      - STATDATA_DB_PASSWORD=${STATDATA_DB_PASSWORD:?STATDATA_DB_PASSWORD must be set}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
@@ -491,6 +500,66 @@ services:
     networks:
       - statgate-network
 
+  # ══════════════════════════════════════════════════════════════════════════
+  # 12. SECURITY, DIGITAL TRUST & IDENTITY PLATFORM (StatTrust) — APP 3 (P19 & P28)
+  # ══════════════════════════════════════════════════════════════════════════
+  statgate-trust-api:
+    build:
+      context: ./StatTrust/backend
+    ports:
+      - "8094:8080"
+    environment:
+      - PORT=8080
+      - STATTRUST_ENV=production
+      - BIND_ADDRESS=0.0.0.0
+      - DB_HOST=postgres
+      - DB_PORT=${POSTGRES_PORT:-5432}
+      - DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - ENTERPRISE_CORE_URL=http://statgate-enterprise-core:8096
+      - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statgate-trust-ui:
+    build:
+      context: ./StatTrust/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8094/api/v1
+    ports:
+      - "3013:80"
+    depends_on:
+      statgate-trust-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
   # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   # MONITORING & OBSERVABILITY
   # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -703,11 +772,482 @@ services:
     networks:
       - statgate-network
 
+  # App 4: Platform Engineering / RunOps (P20, P25, P34, P49)
+  statgate-runops-api:
+    build:
+      context: ./PlatformEngineering/backend
+    ports:
+      - "8100:8080"
+    environment:
+      - PORT=8080
+      - RUNOPS_DB_HOST=postgres
+      - RUNOPS_DB_PORT=5432
+      - RUNOPS_DB_NAME=${RUNOPS_DB_NAME:-statgate_enterprise}
+      - RUNOPS_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - RUNOPS_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - RUNOPS_DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STATGATE_EVENT_CHANNEL=statgate:events
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # PHASE 16/18/42 — Integration Fabric (EIP)
+  statgate-integration-fabric:
+    build:
+      context: ./enterprise/integration
+    ports:
+      - "8097:8097"
+    environment:
+      - INTEGRATION_HUB_PORT=8097
+      - INTEGRATION_DB_HOST=postgres
+      - INTEGRATION_DB_PORT=5432
+      - INTEGRATION_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - INTEGRATION_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - INTEGRATION_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - INTEGRATION_DB_SSLMODE=disable
+      - ENTERPRISE_CORE_URL=http://statgate-enterprise-core:8096
+      - PMS_API_URL=http://statgate-pms-api:8080
+      - RMS_API_URL=http://statgate-rms-api:8080
+      - REGISTRY_API_URL=http://statgate-registry-api:9090
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+      - GOVERNANCE_API_URL=http://statgate-governance-api:8080
+      - ANALYTICS_API_URL=http://statgate-analytics:5000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8097/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # PHASE 20/25/34/49 — StatOps Platform Engineering & RunOps API
+  statgate-ops-api:
+    build:
+      context: ./StatOps/backend
+    ports:
+      - "8098:8080"
+    environment:
+      - PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=statops
+      - DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:-statgate-dev-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  # PHASE 20/25/34/49 — StatOps Platform Engineering & RunOps UI
+  statgate-ops-ui:
+    build:
+      context: ./StatOps/frontend
+    ports:
+      - "3015:80"
+    depends_on:
+      statgate-ops-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 2: PUBLIC KNOWLEDGE & OPEN DATA (P17 Portals/CMS, P40 Digital
+  # Library, P41 Open Data) — communicates via the Redis event bus
+  # (statgate:events), Registry JWT, object_links and Enterprise Core.
+  # ══════════════════════════════════════════════════════════════════════
+  knowledge-portal:
+    build:
+      context: .
+      dockerfile: knowledge-portal/backend/Dockerfile
+    ports:
+      - "8099:8099"
+    environment:
+      - KNOWLEDGE_PORT=8099
+      - KNOWLEDGE_DB_HOST=postgres
+      - KNOWLEDGE_DB_PORT=5432
+      - KNOWLEDGE_DB_USER=KnowledgePortal
+      - KNOWLEDGE_DB_PASSWORD=${KNOWLEDGE_DB_PASSWORD:?KNOWLEDGE_DB_PASSWORD must be set}
+      - KNOWLEDGE_DB_NAME=knowledge_portal
+      - KNOWLEDGE_DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
+      - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8099/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 5: AI & AUTONOMY (P22 Digital Twins & Decision Intelligence, P31
+  # Multi-Agent Systems, P39 Knowledge Graph) — consumes statgate:events to
+  # auto-trigger agent tasks/simulations; emits prediction/agent/simulation
+  # events back; registers entities in object_links.
+  # ══════════════════════════════════════════════════════════════════════
+  ai-autonomy:
+    build:
+      context: .
+      dockerfile: ai-autonomy/backend/Dockerfile
+    ports:
+      - "8101:8101"
+    environment:
+      - AIENG_PORT=8101
+      - AIENG_DB_HOST=postgres
+      - AIENG_DB_PORT=5432
+      - AIENG_DB_USER=AIEngine
+      - AIENG_DB_PASSWORD=${AIENG_DB_PASSWORD:?AIENG_DB_PASSWORD must be set}
+      - AIENG_DB_NAME=ai_intelligence
+      - AIENG_DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
+      - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8101/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 7: LEARNING, COMMUNITY & COMMERCIAL (P24 LMS/CPD Certificates &
+  # Badges, P26 CRM/Partners/Billing, P35 Stakeholder Stewardship) — emits
+  # course.completed / certificate.issued / lead.converted events to
+  # statgate:events and registers entities in object_links.
+  # ══════════════════════════════════════════════════════════════════════
+  learning-crm:
+    build:
+      context: .
+      dockerfile: learning-crm/backend/Dockerfile
+    ports:
+      - "8102:8102"
+    environment:
+      - LMS_PORT=8102
+      - LMS_DB_HOST=postgres
+      - LMS_DB_PORT=5432
+      - LMS_DB_USER=LearningCRM
+      - LMS_DB_PASSWORD=${LMS_DB_PASSWORD:?LMS_DB_PASSWORD must be set}
+      - LMS_DB_NAME=learning_crm
+      - LMS_DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
+      - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8102/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 9: GEOSPATIAL & REMOTE SENSING (P44 GIS Layers & Features, Spatial
+  # Analytics, Remote Sensing & NDVI processing, Drone Integration, Map Tiles,
+  # Geocoding) — emits spatial.*/scene.ingested/drone.flight.completed events
+  # and registers entities in object_links.
+  # ══════════════════════════════════════════════════════════════════════
+  geointel:
+    build:
+      context: .
+      dockerfile: geointel/backend/Dockerfile
+    ports:
+      - "8103:8103"
+    environment:
+      - GIS_PORT=8103
+      - GIS_DB_HOST=postgres
+      - GIS_DB_PORT=5432
+      - GIS_DB_USER=GISEngine
+      - GIS_DB_PASSWORD=${GIS_DB_PASSWORD:?GIS_DB_PASSWORD must be set}
+      - GIS_DB_NAME=gis_intelligence
+      - GIS_DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
+      - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8103/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 11: BUSINESS PROCESS MANAGEMENT (P48 BPM Engine, Case Management,
+  # Task Management, Process Mining, Automation) — emits process.started/
+  # process.completed/task.created/task.completed/automation.triggered events
+  # and registers entities in object_links.
+  # ══════════════════════════════════════════════════════════════════════
+  bpm-hub:
+    build:
+      context: .
+      dockerfile: bpm-hub/backend/Dockerfile
+    ports:
+      - "8104:8104"
+    environment:
+      - BPM_PORT=8104
+      - BPM_DB_HOST=postgres
+      - BPM_DB_PORT=5432
+      - BPM_DB_USER=BPMEngine
+      - BPM_DB_PASSWORD=${BPM_DB_PASSWORD:?BPM_DB_PASSWORD must be set}
+      - BPM_DB_NAME=bpm_hub
+      - BPM_DB_SSLMODE=disable
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
+      - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8104/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+
+# ══════════════════════════════════════════════════════════════════════
+  # APP 6: NATIONAL & GLOBAL FEDERATION (P23/P30) — statfederation :8105
+  # APP 8: IoT, SENSORS & MOBILE FIELD OPS (P27/P43) — statiot :8106
+  # APP 12: DATA ENGINEERING, SCIENCE & SEARCH (P37/P38/P47) — statdata :8107
+  # All consume statgate-lib (event bus, auth, health/metrics) and join the
+  # statgate-network so they communicate with the other apps.
+  # ══════════════════════════════════════════════════════════════════════
+  statfederation:
+    build:
+      context: .
+      dockerfile: StatFederation/backend/Dockerfile
+    ports:
+      - "8105:8105"
+    environment:
+      - PORT=8105
+      - STATGATE_ENV=${STATGATE_ENV:-production}
+      - STATFEDERATION_DB_HOST=postgres
+      - STATFEDERATION_DB_PORT=5432
+      - STATFEDERATION_DB_USER=StatFederation
+      - STATFEDERATION_DB_PASSWORD=${STATFEDERATION_DB_PASSWORD:?STATFEDERATION_DB_PASSWORD must be set}
+      - STATFEDERATION_DB_NAME=statfederation
+      - STATFEDERATION_DB_SSLMODE=disable
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATGATE_JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - STATGATE_JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+      - CORS_ALLOWED_ORIGIN=*
+      - STATGATE_NODE_ID=NODE-FED-HQ-001
+      - STATGATE_JURISDICTION=NATIONAL
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8105/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statiot:
+    build:
+      context: .
+      dockerfile: StatIoT/backend/Dockerfile
+    ports:
+      - "8106:8106"
+    environment:
+      - STATIOT_PORT=8106
+      - STATGATE_ENV=${STATGATE_ENV:-production}
+      - STATIOT_DB_HOST=postgres
+      - STATIOT_DB_PORT=5432
+      - STATIOT_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - STATIOT_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - STATIOT_DB_NAME=statiot
+      - STATIOT_DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - STATIOT_GATEWAY_SECRET=${STATIOT_GATEWAY_SECRET:-statiot-device-auth-secret-key-prod}
+      - CORS_ALLOWED_ORIGIN=*
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8106/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
+  statdata:
+    build:
+      context: .
+      dockerfile: StatData/backend/Dockerfile
+    ports:
+      - "8107:8107"
+    environment:
+      - PORT=8107
+      - APP_ENV=${STATGATE_ENV:-production}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=StatDataEngine
+      - DB_PASSWORD=${STATDATA_DB_PASSWORD:?STATDATA_DB_PASSWORD must be set}
+      - DB_NAME=statdata
+      - DB_SSLMODE=disable
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - JWT_ISSUER=${STATGATE_JWT_ISSUER:-statgate-registry}
+      - JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
+      - CORS_ALLOWED_ORIGIN=*
+      - DEFAULT_TENANT_ID=default
+      - MAX_WORKERS=32
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      statgate-enterprise-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8107/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
+
 networks:
   statgate-network:
     driver: bridge
     name: statgate-network
-
 
 volumes:
   pgdata:
@@ -717,4 +1257,3 @@ volumes:
   airflow_logs:
   mlflow_data:
   enterprise_uploads:
-

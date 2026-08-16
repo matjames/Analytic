@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { User } from '@typings/index';
 import { useObjectContext } from '@context/ObjectContext';
-import { Scale, Clock, Sparkles, Plus, ArrowRight } from 'lucide-react';
+import { 
+  Scale, Clock, Sparkles, Plus, ArrowRight, CheckCircle2, XCircle, 
+  AlertCircle, UserCheck, ShieldCheck, FileCheck, RefreshCw 
+} from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_ENTERPRISE_CORE_URL || 'http://localhost:8096';
 
@@ -14,6 +17,13 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
   const [actionRequired, setActionRequired] = useState('');
   const [deadline, setDeadline] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // Approval action modal state
+  const [selectedApproval, setSelectedApproval] = useState<any>(null);
+  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | 'changes' | 'delegate' | null>(null);
+  const [actionComment, setActionComment] = useState('');
+  const [delegateUser, setDelegateUser] = useState('');
+  const [processingAction, setProcessingAction] = useState(false);
 
   const fetchData = useCallback(() => {
     const token = localStorage.getItem('registry_jwt');
@@ -75,6 +85,44 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
     }
   };
 
+  const handleExecuteApproval = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedApproval || !approvalAction) return;
+
+    setProcessingAction(true);
+    const token = localStorage.getItem('registry_jwt');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-ID': user.id,
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const payload: Record<string, string> = {
+        comment: actionComment,
+      };
+      if (approvalAction === 'delegate') {
+        payload.delegate_to = delegateUser;
+      }
+
+      const res = await fetch(`${API_BASE}/api/approvals/${selectedApproval.id}/${approvalAction}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setSelectedApproval(null);
+        setApprovalAction(null);
+        setActionComment('');
+        setDelegateUser('');
+        fetchData();
+      }
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -88,6 +136,7 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
   const created = data?.created_by_me || [];
   const recent = data?.recent || [];
   const recommendations = data?.ai_recommendations || [];
+  const pendingApprovals = data?.approvals_awaiting_me || [];
 
   return (
     <div className="space-y-8">
@@ -96,30 +145,48 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
         <div>
           <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
             <Scale className="w-6 h-6 text-amber-600" />
-            Decision Centre & Closed-Loop Intelligence
+            Decision Centre & Universal Approval Engine
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Governed decision records: Data → Anomaly → Investigation → Evidence → Recommendation → Human Decision → Action → Outcome.
+            Governed institutional lifecycle: Data → Intelligence → Human Sign-off → Approval → Action → Outcome.
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="btn btn-primary text-xs flex items-center gap-1.5 shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Record New Decision
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Refresh Decisions & Approvals"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="btn btn-primary text-xs flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Record New Decision
+          </button>
+        </div>
       </div>
 
-      {/* Decision Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      {/* Metric Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-5">
+        <div className="stat-card border-l-4 border-l-emerald-500 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="stat-label">Pending Approvals</span>
+            <FileCheck className="w-5 h-5 text-emerald-500" />
+          </div>
+          <span className="stat-val">{pendingApprovals.length}</span>
+          <span className="text-xs text-emerald-700 font-medium mt-1">Require your authorization</span>
+        </div>
+
         <div className="stat-card border-l-4 border-l-amber-500 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="stat-label">Decisions Awaiting Action</span>
             <Clock className="w-5 h-5 text-amber-500" />
           </div>
           <span className="stat-val">{awaiting.length}</span>
-          <span className="text-xs text-gray-400 mt-1">Open decisions assigned to you</span>
+          <span className="text-xs text-gray-400 mt-1">Open items assigned to you</span>
         </div>
 
         <div className="stat-card border-l-4 border-l-blue-500 shadow-sm">
@@ -128,7 +195,7 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
             <Scale className="w-5 h-5 text-blue-500" />
           </div>
           <span className="stat-val">{created.length}</span>
-          <span className="text-xs text-gray-400 mt-1">Created by your account</span>
+          <span className="text-xs text-gray-400 mt-1">Institutional records</span>
         </div>
 
         <div className="stat-card border-l-4 border-l-purple-500 shadow-sm">
@@ -141,7 +208,104 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
         </div>
       </div>
 
-      {/* Grid: Awaiting Me & Recent Decisions */}
+      {/* Universal Approvals Section */}
+      <div className="glass-panel border-emerald-100 bg-emerald-50/20">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Universal Approvals Awaiting Your Signature</h3>
+          </div>
+          <span className="badge badge-success text-xs font-semibold px-2.5 py-0.5">
+            {pendingApprovals.length} Pending Sign-off
+          </span>
+        </div>
+
+        {pendingApprovals.length === 0 ? (
+          <div className="text-center py-6 text-sm text-gray-500">
+            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-60" />
+            No approvals currently waiting for your review. All institutional sign-offs are up to date.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingApprovals.map((req: any) => (
+              <div
+                key={req.id}
+                className="p-4 rounded-xl border border-gray-200 bg-white hover:border-emerald-300 transition-all shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-900">{req.title}</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-600 uppercase">
+                      {req.type || 'Single'}
+                    </span>
+                    {req.entity_type && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                        {req.entity_type}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 flex items-center gap-3">
+                    <span>Requested by: <strong className="text-gray-700">{req.requester || 'System'}</strong></span>
+                    <span>•</span>
+                    <span>Created: {new Date(req.created_at).toLocaleDateString()}</span>
+                    {req.project_id && (
+                      <>
+                        <span>•</span>
+                        <span>Project: <strong className="text-gray-700">{req.project_id}</strong></span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end md:self-center">
+                  <button
+                    onClick={() => {
+                      setSelectedApproval(req);
+                      setApprovalAction('approve');
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition-colors"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedApproval(req);
+                      setApprovalAction('changes');
+                    }}
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Request Changes
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedApproval(req);
+                      setApprovalAction('reject');
+                    }}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedApproval(req);
+                      setApprovalAction('delegate');
+                    }}
+                    className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    Delegate
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Grid: Decisions Awaiting Action & Governed AI Recommendations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Decisions Awaiting Action */}
         <div className="glass-panel">
@@ -238,7 +402,91 @@ export const DecisionCentreView: React.FC<{ user: User }> = ({ user }) => {
         </div>
       )}
 
-      {/* Decision Modal */}
+      {/* Approval Action Confirmation Modal */}
+      {selectedApproval && approvalAction && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <form
+            onSubmit={handleExecuteApproval}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
+          >
+            <div className="flex items-center gap-2">
+              {approvalAction === 'approve' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+              {approvalAction === 'reject' && <XCircle className="w-5 h-5 text-rose-600" />}
+              {approvalAction === 'changes' && <AlertCircle className="w-5 h-5 text-amber-600" />}
+              {approvalAction === 'delegate' && <UserCheck className="w-5 h-5 text-blue-600" />}
+              <h3 className="text-lg font-bold text-gray-900 capitalize">
+                {approvalAction === 'changes' ? 'Request Changes' : `${approvalAction} Approval`}
+              </h3>
+            </div>
+
+            <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-700 space-y-1">
+              <div><strong>Title:</strong> {selectedApproval.title}</div>
+              <div><strong>Requester:</strong> {selectedApproval.requester}</div>
+              {selectedApproval.entity_type && (
+                <div><strong>Entity:</strong> {selectedApproval.entity_type} ({selectedApproval.entity_id})</div>
+              )}
+            </div>
+
+            {approvalAction === 'delegate' && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Delegate To (User ID / Username)</label>
+                <input
+                  type="text"
+                  value={delegateUser}
+                  onChange={(e) => setDelegateUser(e.target.value)}
+                  placeholder="e.g. director_finance"
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                {approvalAction === 'reject' || approvalAction === 'changes' ? 'Reason / Required Modifications *' : 'Optional Comment'}
+              </label>
+              <textarea
+                value={actionComment}
+                onChange={(e) => setActionComment(e.target.value)}
+                placeholder="Enter audit comment or change instructions..."
+                rows={3}
+                className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required={approvalAction === 'reject' || approvalAction === 'changes'}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedApproval(null);
+                  setApprovalAction(null);
+                }}
+                className="btn btn-secondary text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={processingAction}
+                className={`btn text-xs text-white ${
+                  approvalAction === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : approvalAction === 'reject'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : approvalAction === 'changes'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {processingAction ? 'Processing...' : `Confirm ${approvalAction}`}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Record Decision Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <form

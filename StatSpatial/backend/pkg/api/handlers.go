@@ -3,11 +3,13 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"statspatial/pkg/model"
 	"statspatial/pkg/store"
 
 	"github.com/gorilla/mux"
+	"github.com/matjames/statgate-lib/events"
 )
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -234,6 +236,16 @@ func CreateGeoLayerHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Enterprise convergence: publish domain event + audit with shared library.
+	emitEvent(r.Context(), events.EventSpatialLayerCreated, "geo_layer", layer.ID, map[string]interface{}{
+		"name":          layer.Name,
+		"geometry_type": layer.GeometryType,
+		"source":        layer.Source,
+	})
+	recordAudit(r, events.EventSpatialLayerCreated, "geo_layer", layer.ID, map[string]interface{}{
+		"name":          layer.Name,
+		"geometry_type": layer.GeometryType,
+	})
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -259,6 +271,15 @@ func CreateGeoFeatureHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Enterprise convergence: publish domain event + audit with shared library.
+	emitEvent(r.Context(), events.EventSpatialFeatureUpdated, "geo_feature", feat.ID, map[string]interface{}{
+		"layer_id": feat.LayerID,
+		"name":     feat.Name,
+	})
+	recordAudit(r, events.EventSpatialFeatureUpdated, "geo_feature", feat.ID, map[string]interface{}{
+		"layer_id": feat.LayerID,
+		"name":     feat.Name,
+	})
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -423,6 +444,15 @@ func CreateSyncLogHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Enterprise convergence: nod synced propagation + audit with shared library.
+	emitEvent(r.Context(), events.EventSpatialNodeSynced, "federated_node", l.NodeID, map[string]interface{}{
+		"dataset_id": l.DatasetID,
+		"status":     l.Status,
+	})
+	recordAudit(r, events.EventSpatialNodeSynced, "federated_node", l.NodeID, map[string]interface{}{
+		"dataset_id": l.DatasetID,
+		"status":     l.Status,
+	})
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -460,3 +490,95 @@ func GetSummaryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, summary)
 }
+
+// ─── Spatial Analysis Handlers ───────────────────────────────────────────────
+
+type bufferRequest struct {
+	FeatureID      string  `json:"feature_id"`
+	DistanceMeters float64 `json:"distance_meters"`
+}
+
+func SpatialBufferHandler(w http.ResponseWriter, r *http.Request) {
+	var req bufferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+	if req.FeatureID == "" {
+		writeError(w, http.StatusBadRequest, "feature_id is required")
+		return
+	}
+	if req.DistanceMeters <= 0 {
+		req.DistanceMeters = 1000 // default 1km
+	}
+	geoJSON, err := store.SpatialBuffer(r.Context(), req.FeatureID, req.DistanceMeters)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(geoJSON))
+}
+
+func SpatialBBoxHandler(w http.ResponseWriter, r *http.Request) {
+	minLat, _ := strconv.ParseFloat(r.URL.Query().Get("min_lat"), 64)
+	minLng, _ := strconv.ParseFloat(r.URL.Query().Get("min_lng"), 64)
+	maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("max_lat"), 64)
+	maxLng, _ := strconv.ParseFloat(r.URL.Query().Get("max_lng"), 64)
+
+	if minLat == 0 && maxLat == 0 {
+		// Default bounds for East Africa / Tanzania
+		minLat, minLng, maxLat, maxLng = -12.0, 29.0, -1.0, 41.0
+	}
+
+	features, err := store.SpatialBBox(r.Context(), minLat, minLng, maxLat, maxLng)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, features)
+}
+
+type pipRequest struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+func SpatialPointInPolygonHandler(w http.ResponseWriter, r *http.Request) {
+	var req pipRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+	features, err := store.SpatialPointInPolygon(r.Context(), req.Lat, req.Lng)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, features)
+}
+
+func SpatialAreaCalcHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	featureID := vars["id"]
+	if featureID == "" {
+		featureID = r.URL.Query().Get("feature_id")
+	}
+	if featureID == "" {
+		writeError(w, http.StatusBadRequest, "feature_id is required")
+		return
+	}
+	areaKm2, err := store.SpatialAreaCalc(r.Context(), featureID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"feature_id":  featureID,
+		"area_km2":    areaKm2,
+		"area_ha":     areaKm2 * 100.0,
+		"area_sq_m":   areaKm2 * 1000000.0,
+	})
+}
+

@@ -247,3 +247,49 @@ CREATE TABLE IF NOT EXISTS rms.audit_logs (
     details      TEXT,
     created_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ─── Ethics Committees / IRB ───────────────────────────────
+CREATE TABLE IF NOT EXISTS rms.ethics_committees (
+    id                VARCHAR(36) PRIMARY KEY,
+    name              VARCHAR(255) NOT NULL,
+    code              VARCHAR(50) UNIQUE,
+    institution       VARCHAR(255),
+    chair_person      VARCHAR(255),
+    email             VARCHAR(255),
+    phone             VARCHAR(50),
+    approval_validity INTEGER DEFAULT 12,
+    status            VARCHAR(50) DEFAULT 'Active',
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ─── DOI Records ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rms.doi_records (
+    id          VARCHAR(36) PRIMARY KEY,
+    research_id VARCHAR(36) REFERENCES rms.research_projects(id) ON DELETE SET NULL,
+    doi         VARCHAR(100) UNIQUE NOT NULL,
+    title       VARCHAR(255) NOT NULL,
+    authors     VARCHAR(255),
+    journal     VARCHAR(255),
+    year        INTEGER,
+    url         TEXT,
+    abstract    TEXT,
+    keywords    TEXT,
+    output_type VARCHAR(100) DEFAULT 'Journal Article',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ─── Open Access Repository ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS rms.open_access_repo (
+    id            VARCHAR(36) PRIMARY KEY,
+    research_id   VARCHAR(36) REFERENCES rms.research_projects(id) ON DELETE SET NULL,
+    title         VARCHAR(255) NOT NULL,
+    description   TEXT,
+    resource_type VARCHAR(100) DEFAULT 'Dataset',
+    url           TEXT NOT NULL,
+    license       VARCHAR(100) DEFAULT 'CC BY 4.0',
+    access_level  VARCHAR(50) DEFAULT 'Open',
+    keywords      TEXT,
+    repo_name     VARCHAR(100),
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

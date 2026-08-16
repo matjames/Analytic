@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 
 const footerLinks = {
   Platform: ['Data Integration', 'Statistical Computing', 'AI Assistants', 'GIS', 'Reporting', 'API'],
@@ -16,9 +17,11 @@ export const Footer: React.FC = () => {
           {/* Brand */}
           <div className="col-span-2">
             <div className="flex items-center space-x-2 mb-4">
-              <img
+              <Image
                 src="/icons/logo.png"
                 alt="StatGate"
+                width={32}
+                height={32}
                 className="w-8 h-8 rounded-lg"
               />
               <span className="text-lg font-bold text-white">StatGate</span>

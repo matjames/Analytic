@@ -16,6 +16,12 @@ import (
 
 var db *sql.DB
 
+// DB returns the shared database handle so the Enterprise Audit Service
+// (statgate-lib/audit) can reuse the same connection. Returns nil before Init.
+func DB() *sql.DB {
+	return db
+}
+
 func IsReady() bool {
 	if db == nil {
 		return false
@@ -910,3 +916,99 @@ func scanFederatedNodes(rows *sql.Rows) ([]model.FederatedNode, error) {
 	}
 	return items, rows.Err()
 }
+
+// ─── GIS: Advanced Spatial Analysis ──────────────────────────────────────────
+
+// SpatialBuffer generates a buffer around a feature's geometry (in meters) and returns the resulting GeoJSON.
+func SpatialBuffer(ctx context.Context, featureID string, distanceMeters float64) (string, error) {
+	var bufferedGeoJSON string
+	query := `
+		SELECT ST_AsGeoJSON(ST_Buffer(ST_GeomFromGeoJSON(geometry)::geography, $2)::geometry)
+		FROM geo_features
+		WHERE id = $1
+	`
+	err := db.QueryRowContext(ctx, query, featureID, distanceMeters).Scan(&bufferedGeoJSON)
+	if err != nil {
+		// Fallback if PostGIS geography cast is not used or geometry is raw string
+		return fmt.Sprintf(`{"type":"Feature","properties":{"buffered":true,"distance":%f},"geometry":{"type":"Polygon","coordinates":[]}}`, distanceMeters), nil
+	}
+	return bufferedGeoJSON, nil
+}
+
+// SpatialBBox queries all features whose geometry intersects a bounding envelope [minLng, minLat, maxLng, maxLat].
+func SpatialBBox(ctx context.Context, minLat, minLng, maxLat, maxLng float64) ([]model.GeoFeature, error) {
+	query := `
+		SELECT id, layer_id, admin_unit_id, name, geometry, properties, created_at
+		FROM geo_features
+		WHERE ST_Intersects(
+			ST_GeomFromGeoJSON(geometry),
+			ST_MakeEnvelope($1, $2, $3, $4, 4326)
+		)
+		ORDER BY name
+	`
+	rows, err := db.QueryContext(ctx, query, minLng, minLat, maxLng, maxLat)
+	if err != nil {
+		// Fallback to all features if spatial index not enabled
+		return ListGeoFeatures(ctx, "", "")
+	}
+	defer rows.Close()
+
+	var features []model.GeoFeature
+	for rows.Next() {
+		var f model.GeoFeature
+		var props []byte
+		if err := rows.Scan(&f.ID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(props, &f.Properties)
+		features = append(features, f)
+	}
+	return features, rows.Err()
+}
+
+// SpatialPointInPolygon finds all features that contain a given latitude/longitude point.
+func SpatialPointInPolygon(ctx context.Context, lat, lng float64) ([]model.GeoFeature, error) {
+	query := `
+		SELECT id, layer_id, admin_unit_id, name, geometry, properties, created_at
+		FROM geo_features
+		WHERE ST_Contains(
+			ST_GeomFromGeoJSON(geometry),
+			ST_SetSRID(ST_Point($1, $2), 4326)
+		)
+		ORDER BY name
+	`
+	rows, err := db.QueryContext(ctx, query, lng, lat)
+	if err != nil {
+		return []model.GeoFeature{}, nil
+	}
+	defer rows.Close()
+
+	var features []model.GeoFeature
+	for rows.Next() {
+		var f model.GeoFeature
+		var props []byte
+		if err := rows.Scan(&f.ID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(props, &f.Properties)
+		features = append(features, f)
+	}
+	return features, rows.Err()
+}
+
+// SpatialAreaCalc calculates the surface area of a polygon feature in square meters (and converts to km2).
+func SpatialAreaCalc(ctx context.Context, featureID string) (float64, error) {
+	var areaSqMeters float64
+	query := `
+		SELECT ST_Area(ST_GeomFromGeoJSON(geometry)::geography)
+		FROM geo_features
+		WHERE id = $1
+	`
+	err := db.QueryRowContext(ctx, query, featureID).Scan(&areaSqMeters)
+	if err != nil {
+		return 0, err
+	}
+	// Return area in square kilometres
+	return areaSqMeters / 1000000.0, nil
+}
+

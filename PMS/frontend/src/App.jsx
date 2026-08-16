@@ -17,6 +17,8 @@ import AuditLogTab from './components/AuditLogTab';
 import ReportsTab from './components/ReportsTab';
 import FundingTab from './components/FundingTab';
 import LessonsTab from './components/LessonsTab';
+import LogFrameTab from './components/LogFrameTab';
+import DonorsTab from './components/DonorsTab';
 
 // API Base URL - configured for the StatGate ecosystem
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
@@ -394,6 +396,8 @@ export default function App() {
                   <div className={`workspace-tab ${activeTab === 'helpdesk' ? 'active' : ''}`} onClick={() => setActiveTab('helpdesk')}>HelpDesk</div>
                   <div className={`workspace-tab ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')}>StatChat</div>
                   <div className={`workspace-tab ${activeTab === 'surveys' ? 'active' : ''}`} onClick={() => setActiveTab('surveys')}>Surveys</div>
+                  <div className={`workspace-tab ${activeTab === 'logframe' ? 'active' : ''}`} onClick={() => setActiveTab('logframe')}>M&amp;E LogFrame</div>
+                  <div className={`workspace-tab ${activeTab === 'donors' ? 'active' : ''}`} onClick={() => setActiveTab('donors')}>Donors</div>
                 </div>
 
                 {/* Tab content rendering */}
@@ -729,6 +733,14 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {activeTab === 'logframe' && (
+                  <LogFrameTab projectId={selectedProjectId} apiBase={API_BASE} />
+                )}
+
+                {activeTab === 'donors' && (
+                  <DonorsTab apiBase={API_BASE} />
                 )}
               </div>
             )

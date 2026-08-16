@@ -491,3 +491,60 @@ CREATE INDEX IF NOT EXISTS idx_delegations_active ON statgovernance.delegations(
 CREATE INDEX IF NOT EXISTS idx_evidence_entity ON statgovernance.evidence_records(related_entity_type, related_entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON statgovernance.audit_logs(entity_type, entity_id);
 
+-- ─── 14. Whistleblower Reports (Encrypted & Anonymous) ────────
+CREATE TABLE IF NOT EXISTS statgovernance.whistleblower_reports (
+    id            VARCHAR(36) PRIMARY KEY,
+    title         VARCHAR(255) NOT NULL,
+    description   TEXT NOT NULL,
+    category      VARCHAR(100) NOT NULL,
+    severity      VARCHAR(50) DEFAULT 'Medium',
+    is_anonymous  BOOLEAN DEFAULT true,
+    status        VARCHAR(50) DEFAULT 'New',
+    investigator  VARCHAR(255),
+    outcome       TEXT,
+    tenant_id     VARCHAR(50) DEFAULT 'tenant-alpha',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ─── 15. Conflict of Interest Declarations ────────────────────
+CREATE TABLE IF NOT EXISTS statgovernance.conflict_declarations (
+    id              VARCHAR(36) PRIMARY KEY,
+    declarant_name  VARCHAR(255) NOT NULL,
+    declarant_role  VARCHAR(255) NOT NULL,
+    conflict_type   VARCHAR(100) NOT NULL,
+    description     TEXT NOT NULL,
+    project_name    VARCHAR(255),
+    has_conflict    BOOLEAN DEFAULT true,
+    mitigation_plan TEXT,
+    status          VARCHAR(50) DEFAULT 'Under Review',
+    reviewed_by     VARCHAR(255),
+    tenant_id       VARCHAR(50) DEFAULT 'tenant-alpha',
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ─── 16. Feature Flags ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS statgovernance.feature_flags (
+    id          VARCHAR(36) PRIMARY KEY,
+    name        VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    environment VARCHAR(50) DEFAULT 'Production',
+    is_enabled  BOOLEAN DEFAULT false,
+    updated_by  VARCHAR(255),
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ─── 17. Centralized System Parameters ────────────────────────
+CREATE TABLE IF NOT EXISTS statgovernance.system_parameters (
+    id          VARCHAR(36) PRIMARY KEY,
+    key         VARCHAR(100) UNIQUE NOT NULL,
+    value       TEXT NOT NULL,
+    category    VARCHAR(100) DEFAULT 'General',
+    description TEXT,
+    updated_by  VARCHAR(255),
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+

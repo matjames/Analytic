@@ -31,6 +31,12 @@ _FALLBACK_SERVICES = [
     {"id": "helpdesk", "name": "Operations Helpdesk", "ui": "http://localhost:3005", "health": "http://statgate-helpdesk-api:5000/api-docs"},
     {"id": "pms", "name": "Projects Management System", "ui": "http://localhost:3010", "health": "http://statgate-pms-api:8080/health"},
     {"id": "rms", "name": "Research Management System", "ui": "http://localhost:3011", "health": "http://statgate-rms-api:8080/health"},
+{"id": "governance", "name": "StatGovernance UI", "ui": "http://localhost:3012", "health": "http://statgate-governance-ui:80/"},
+    {"id": "governance-api", "name": "StatGovernance API", "ui": "http://localhost:8093", "health": "http://statgate-governance-api:8080/health"},
+    {"id": "statspatial", "name": "StatSpatial (GIS)", "ui": "http://localhost:4200", "health": "http://statspatial:4200/health"},
+    {"id": "statcollect", "name": "StatCollect (Field Data)", "ui": "http://localhost:8080", "health": "http://statcollect:8080/health"},
+    {"id": "enterprise", "name": "Enterprise Search", "ui": "http://localhost:8095", "health": "http://statgate-enterprise:8095/health"},
+    {"id": "enterprise-core", "name": "Enterprise Core (AI/Workflow)", "ui": "http://localhost:8096", "health": "http://statgate-enterprise-core:8096/health"}
 ]
 
 

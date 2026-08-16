@@ -31,11 +31,13 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PUT("/proposals/:id", dbUpdateProposal)
 		api.DELETE("/proposals/:id", dbDeleteProposal)
 
-		// ─── Ethics ───────────────────────────────────────────────
+		// ─── Ethics & IRB ─────────────────────────────────────────
 		api.GET("/research/:id/ethics", dbGetEthics)
 		api.POST("/ethics", dbCreateEthics)
 		api.PUT("/ethics/:id", dbUpdateEthics)
 		api.DELETE("/ethics/:id", dbDeleteEthics)
+		api.GET("/ethics-committees", dbGetEthicsCommittees)
+		api.POST("/ethics-committees", dbCreateEthicsCommittee)
 
 		// ─── Grants / Funding ─────────────────────────────────────
 		api.GET("/research/:id/grants", dbGetGrants)
@@ -43,11 +45,12 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PUT("/grants/:id", dbUpdateGrant)
 		api.DELETE("/grants/:id", dbDeleteGrant)
 
-		// ─── Literature ───────────────────────────────────────────
+		// ─── Literature & Citations ───────────────────────────────
 		api.GET("/research/:id/literature", dbGetLiterature)
 		api.POST("/literature", dbCreateLiterature)
 		api.PUT("/literature/:id", dbUpdateLiterature)
 		api.DELETE("/literature/:id", dbDeleteLiterature)
+		api.POST("/citation/format", dbFormatCitation)
 
 		// ─── Datasets ─────────────────────────────────────────────
 		api.GET("/research/:id/datasets", dbGetDatasets)
@@ -55,11 +58,17 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PUT("/datasets/:id", dbUpdateDataset)
 		api.DELETE("/datasets/:id", dbDeleteDataset)
 
-		// ─── Publications ─────────────────────────────────────────
+		// ─── Publications & DOI ───────────────────────────────────
 		api.GET("/research/:id/publications", dbGetPublications)
 		api.POST("/publications", dbCreatePublication)
 		api.PUT("/publications/:id", dbUpdatePublication)
 		api.DELETE("/publications/:id", dbDeletePublication)
+		api.GET("/research/:id/dois", dbGetDOIRecords)
+		api.POST("/dois", dbCreateDOIRecord)
+
+		// ─── Open Science Repository ──────────────────────────────
+		api.GET("/open-access", dbGetOpenAccessRepo)
+		api.POST("/open-access", dbCreateOpenAccessRepo)
 
 		// ─── Tasks ────────────────────────────────────────────────
 		api.POST("/tasks", dbCreateTask)

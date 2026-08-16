@@ -2058,3 +2058,206 @@ func dbAIAnalyze(c *gin.Context) {
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+// ─── Phase 13 Handlers: Whistleblower, COI, Feature Flags, Parameters ───
+
+func dbGetWhistleblowerReports(c *gin.Context) {
+	_, _, _, tenantID := getAuthContext(c)
+	rows, err := DB.Query(`SELECT id, ticket_number, title, category, description, evidence_files, status, COALESCE(encrypted_notes,''), COALESCE(assigned_to,''), tenant_id, created_time, updated_time 
+		FROM statgovernance.whistleblower_reports WHERE tenant_id = $1 ORDER BY created_time DESC`, tenantID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var reports []WhistleblowerReport
+	for rows.Next() {
+		var r WhistleblowerReport
+		var files pq.StringArray
+		rows.Scan(&r.ID, &r.TicketNumber, &r.Title, &r.Category, &r.Description, &files, &r.Status, &r.EncryptedNotes, &r.AssignedTo, &r.TenantID, &r.CreatedTime, &r.UpdatedTime)
+		r.EvidenceFiles = files
+		reports = append(reports, r)
+	}
+	c.JSON(200, reports)
+}
+
+func dbSubmitWhistleblowerReport(c *gin.Context) {
+	var r WhistleblowerReport
+	if err := c.ShouldBindJSON(&r); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if r.ID == "" {
+		r.ID = newID("wb")
+	}
+	if r.TicketNumber == "" {
+		r.TicketNumber = fmt.Sprintf("WB-%s-%d", time.Now().Format("2006"), time.Now().Unix()%100000)
+	}
+	if r.Status == "" {
+		r.Status = "Submitted"
+	}
+	if r.TenantID == "" {
+		r.TenantID = "tenant-alpha"
+	}
+	r.CreatedTime = time.Now()
+	r.UpdatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO statgovernance.whistleblower_reports (id, ticket_number, title, category, description, evidence_files, status, encrypted_notes, assigned_to, tenant_id, created_time, updated_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		r.ID, r.TicketNumber, r.Title, r.Category, r.Description, pq.Array(r.EvidenceFiles), r.Status, r.EncryptedNotes, r.AssignedTo, r.TenantID, r.CreatedTime, r.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, r)
+}
+
+func dbGetConflictDeclarations(c *gin.Context) {
+	_, _, _, tenantID := getAuthContext(c)
+	rows, err := DB.Query(`SELECT id, user_id, user_name, COALESCE(department,''), declaration_type, entity_name, nature_of_interest, COALESCE(description,''), COALESCE(mitigation_plan,''), status, COALESCE(reviewed_by,''), COALESCE(reviewed_at, created_time), tenant_id, created_time 
+		FROM statgovernance.conflict_declarations WHERE tenant_id = $1 ORDER BY created_time DESC`, tenantID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var declarations []ConflictDeclaration
+	for rows.Next() {
+		var cd ConflictDeclaration
+		var revAt time.Time
+		rows.Scan(&cd.ID, &cd.UserID, &cd.UserName, &cd.Department, &cd.DeclarationType, &cd.EntityName, &cd.NatureOfInterest, &cd.Description, &cd.MitigationPlan, &cd.Status, &cd.ReviewedBy, &revAt, &cd.TenantID, &cd.CreatedTime)
+		cd.ReviewedAt = revAt.Format(time.RFC3339)
+		declarations = append(declarations, cd)
+	}
+	c.JSON(200, declarations)
+}
+
+func dbSubmitConflictDeclaration(c *gin.Context) {
+	var cd ConflictDeclaration
+	if err := c.ShouldBindJSON(&cd); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if cd.ID == "" {
+		cd.ID = newID("coi")
+	}
+	if cd.Status == "" {
+		cd.Status = "Declared"
+	}
+	if cd.TenantID == "" {
+		cd.TenantID = "tenant-alpha"
+	}
+	cd.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO statgovernance.conflict_declarations (id, user_id, user_name, department, declaration_type, entity_name, nature_of_interest, description, mitigation_plan, status, tenant_id, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		cd.ID, cd.UserID, cd.UserName, cd.Department, cd.DeclarationType, cd.EntityName, cd.NatureOfInterest, cd.Description, cd.MitigationPlan, cd.Status, cd.TenantID, cd.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, cd)
+}
+
+func dbGetFeatureFlags(c *gin.Context) {
+	_, _, _, tenantID := getAuthContext(c)
+	rows, err := DB.Query(`SELECT id, key, name, COALESCE(description,''), enabled, tenant_id, COALESCE(module,''), rollout_pct, created_time 
+		FROM statgovernance.feature_flags WHERE tenant_id = $1 OR tenant_id = 'global' ORDER BY key ASC`, tenantID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var flags []FeatureFlag
+	for rows.Next() {
+		var f FeatureFlag
+		rows.Scan(&f.ID, &f.Key, &f.Name, &f.Description, &f.Enabled, &f.TenantID, &f.Module, &f.RolloutPct, &f.CreatedTime)
+		flags = append(flags, f)
+	}
+	c.JSON(200, flags)
+}
+
+func dbCreateFeatureFlag(c *gin.Context) {
+	var f FeatureFlag
+	if err := c.ShouldBindJSON(&f); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if f.ID == "" {
+		f.ID = newID("ff")
+	}
+	if f.TenantID == "" {
+		f.TenantID = "tenant-alpha"
+	}
+	if f.RolloutPct == 0 {
+		f.RolloutPct = 100
+	}
+	f.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO statgovernance.feature_flags (id, key, name, description, enabled, tenant_id, module, rollout_pct, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (key) DO UPDATE SET
+			enabled = EXCLUDED.enabled,
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			rollout_pct = EXCLUDED.rollout_pct`,
+		f.ID, f.Key, f.Name, f.Description, f.Enabled, f.TenantID, f.Module, f.RolloutPct, f.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, f)
+}
+
+func dbGetSystemParameters(c *gin.Context) {
+	_, _, _, tenantID := getAuthContext(c)
+	rows, err := DB.Query(`SELECT id, param_key, param_value, COALESCE(description,''), data_type, category, tenant_id, updated_time 
+		FROM statgovernance.system_parameters WHERE tenant_id = $1 OR tenant_id = 'global' ORDER BY category, param_key ASC`, tenantID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var params []SystemParameter
+	for rows.Next() {
+		var p SystemParameter
+		rows.Scan(&p.ID, &p.ParamKey, &p.ParamValue, &p.Description, &p.DataType, &p.Category, &p.TenantID, &p.UpdatedTime)
+		params = append(params, p)
+	}
+	c.JSON(200, params)
+}
+
+func dbSaveSystemParameter(c *gin.Context) {
+	var p SystemParameter
+	if err := c.ShouldBindJSON(&p); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if p.ID == "" {
+		p.ID = newID("param")
+	}
+	if p.TenantID == "" {
+		p.TenantID = "tenant-alpha"
+	}
+	p.UpdatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO statgovernance.system_parameters (id, param_key, param_value, description, data_type, category, tenant_id, updated_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (param_key) DO UPDATE SET
+			param_value = EXCLUDED.param_value,
+			description = EXCLUDED.description,
+			data_type = EXCLUDED.data_type,
+			category = EXCLUDED.category,
+			updated_time = EXCLUDED.updated_time`,
+		p.ID, p.ParamKey, p.ParamValue, p.Description, p.DataType, p.Category, p.TenantID, p.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, p)
+}
+

@@ -244,3 +244,56 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO pms.helpdesk_tickets (id, project_id, title, description, status, priority, created_by, created_at) VALUES
 ('hd1-1', 'proj-1', 'StatCollect sync failing on remote offline tablets', 'Enumerators in Sector 4 are getting timed-out error while trying to upload stored surveys.', 'In Progress', 'High', 'Carlos Gomez', CURRENT_TIMESTAMP - INTERVAL '5 days')
 ON CONFLICT (id) DO NOTHING;
+
+-- LogFrames & Results Frameworks
+CREATE TABLE IF NOT EXISTS pms.logframes (
+    id VARCHAR(36) PRIMARY KEY,
+    project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS pms.logframe_items (
+    id VARCHAR(36) PRIMARY KEY,
+    logframe_id VARCHAR(36) REFERENCES pms.logframes(id) ON DELETE CASCADE,
+    level VARCHAR(50) NOT NULL,
+    code VARCHAR(50),
+    description TEXT NOT NULL,
+    indicators TEXT,
+    means_of_verification TEXT,
+    assumptions TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Theory of Change
+CREATE TABLE IF NOT EXISTS pms.theory_of_change (
+    id VARCHAR(36) PRIMARY KEY,
+    project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+    inputs TEXT[],
+    activities TEXT[],
+    outputs TEXT[],
+    outcomes_short TEXT[],
+    outcomes_long TEXT[],
+    impact TEXT,
+    assumptions TEXT[],
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Donors / Funding Partners CRM
+CREATE TABLE IF NOT EXISTS pms.donors (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) UNIQUE,
+    type VARCHAR(100),
+    contact_person VARCHAR(255),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    website TEXT,
+    total_funding FLOAT DEFAULT 0.0,
+    currency VARCHAR(10) DEFAULT 'USD',
+    status VARCHAR(50) DEFAULT 'Active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

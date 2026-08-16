@@ -1,7 +1,0 @@
-2026/08/05 22:42:24 StatCollect adapter listening on :8080
-'atGate' is not recognized as an internal or external command,
-operable program or batch file.
-2026/08/05 22:57:22 warning: DB init failed: migrations: ERROR: column "tenant_id" does not exist (SQLSTATE 42703)
-2026/08/05 22:57:22 StatCollect adapter listening on :8080
-
-c:\Users\PC\Desktop\Analytic\StatCollect>

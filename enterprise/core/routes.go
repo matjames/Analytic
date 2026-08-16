@@ -86,12 +86,129 @@ func registerRoutes(r *gin.Engine) {
 		api.GET("/reports/:id/download", handleDownloadReport)
 		api.DELETE("/reports/:id", handleDeleteReport)
 
-		// AI Preparation
+		// ─── AI Gateway & Assistants (Phase 9) ────────────────────
 		api.GET("/ai/catalog", handleAICatalog)
 		api.GET("/ai/catalog/:app", handleAICatalogByApp)
 		api.GET("/ai/schema", handleAISchema)
+		api.GET("/ai/llm/models", handleLLMModels)
+		api.POST("/ai/llm/complete", handleLLMComplete)
+		api.POST("/ai/research/assist", handleResearchAIAssist)
+		api.POST("/ai/project/assist", handleProjectAIAssist)
+		api.POST("/ai/survey/assist", handleSurveyAIAssist)
+		api.POST("/ai/analytics/assist", handleAnalyticsAIAssist)
+		api.POST("/ai/governance/assist", handleGovernanceAIAssist)
+		api.POST("/ai/rag/query", handleRAGQuery)
+
+		// ─── Monitoring & Evaluation (Phase 12) ───────────────────
+		api.GET("/me/logframes", handleListLogframes)
+		api.POST("/me/logframes", handleCreateLogframe)
+		api.GET("/me/evaluations", handleListEvaluations)
+		api.POST("/me/evaluations", handleCreateEvaluation)
+		api.GET("/me/recommendations", handleListMERecommendations)
+		api.POST("/me/recommendations", handleCreateMERecommendation)
+		api.GET("/me/sdgs", handleListSDGs)
+
+		// ─── Official Statistics, Sampling & Tabulation (Phase 6 & 7) ──
+		api.GET("/statistics/question-bank", handleListQuestionBank)
+		api.POST("/statistics/question-bank", handleCreateQuestionBankItem)
+		api.GET("/statistics/sampling-frames", handleListSamplingFrames)
+		api.POST("/statistics/sampling-frames", handleCreateSamplingFrame)
+		api.GET("/statistics/enumeration-areas", handleListEnumerationAreas)
+		api.POST("/statistics/tabulate", handleTabulate)
+		api.GET("/statistics/calendar", handleListStatisticalCalendar)
+		api.POST("/statistics/calendar", handleCreateStatisticalEvent)
+		api.POST("/statistics/indicators/compute", handleComputeIndicator)
+
+		// ─── Field Operations & Mobile ODK (Phase 11) ─────────────
+		api.GET("/collect/odk-config", handleODKProjectSettings)
+
+		// ─── Financial Management, Grants, Procurement & Assets (Phase 14) ───
+		api.GET("/finance/summary", handleFinanceSummary)
+		api.GET("/finance/grants", handleListFinancialGrants)
+		api.POST("/finance/grants", handleCreateFinancialGrant)
+		api.GET("/finance/budgets", handleListBudgets)
+		api.POST("/finance/budgets", handleCreateBudget)
+		api.GET("/procurement/requests", handleListPurchaseRequests)
+		api.POST("/procurement/requests", handleCreatePurchaseRequest)
+		api.GET("/procurement/orders", handleListPurchaseOrders)
+		api.GET("/assets/registry", handleListAssets)
+		api.POST("/assets/registry", handleCreateAsset)
+		api.GET("/finance/expenses", handleListExpenses)
+		api.POST("/finance/expenses", handleCreateExpense)
+
+		// ─── Document Management (EDMS), Records & Archives (Phase 15) ───
+		// Summary & Dashboard
+		api.GET("/documents/summary", handleEDMSSummary)
+		api.GET("/documents/dashboard", handleEDMSDashboard)
+
+		// Document Repository CRUD
+		api.GET("/documents", handleListDocuments)
+		api.POST("/documents", handleCreateDocument)
+		api.GET("/documents/search", handleDocumentSearch)
+
+		// Document Templates
+		api.GET("/documents/templates", handleListDocumentTemplates)
+
+		// Digital Signatures & QR Verification
+		api.GET("/documents/signatures", handleListDigitalSignatures)
+		api.POST("/documents/sign", handleSignDocument)
+		api.GET("/documents/verify/:hash", handleVerifyDocumentHash)
+
+		// Version Control — Check-Out / Check-In
+		api.GET("/documents/:id/versions", handleListDocumentVersions)
+		api.POST("/documents/:id/checkout", handleCheckoutDocument)
+		api.POST("/documents/:id/checkin", handleCheckinDocument)
+
+		// Document Comments
+		api.GET("/documents/:id/comments", handleListDocumentComments)
+		api.POST("/documents/:id/comments", handleCreateDocumentComment)
+		api.PUT("/documents/:id/comments/:commentId/resolve", handleResolveDocumentComment)
+
+		// Document Metadata
+		api.GET("/documents/:id/metadata", handleGetDocumentMetadata)
+
+		// Archive Actions
+		api.POST("/documents/:id/archive", handleArchiveDocument)
+
+		// OCR Service
+		api.POST("/documents/:id/ocr", handleSubmitOCR)
+		api.GET("/documents/:id/ocr", handleGetOCRResult)
+
+		// Folder & Repository Management
+		api.GET("/documents/folders", handleListFolders)
+		api.POST("/documents/folders", handleCreateFolder)
+		api.GET("/documents/repositories", handleListRepositories)
+		api.POST("/documents/repositories", handleCreateRepository)
+
+		// Records — Retention Policies
+		api.GET("/records/retention-policies", handleListRetentionPolicies)
+		api.POST("/records/retention-policies", handleCreateRetentionPolicy)
+
+		// Records — Legal Holds
+		api.GET("/records/legal-holds", handleListLegalHolds)
+		api.POST("/records/legal-holds", handleCreateLegalHold)
+		api.PUT("/records/legal-holds/:id/release", handleReleaseLegalHold)
+
+		// Archive Management
+		api.GET("/archives", handleListArchives)
+		api.GET("/archives/summary", handleGetArchiveSummary)
+
+		// Disposition Workflows
+		api.GET("/records/dispositions", handleListDispositions)
+		api.POST("/records/dispositions", handleCreateDisposition)
+
+		// Knowledge Articles
+		api.GET("/knowledge/articles", handleListEDMSKnowledgeArticles)
+		api.GET("/knowledge/articles/:id", handleGetEDMSKnowledgeArticle)
+		api.POST("/knowledge/articles", handleCreateEDMSKnowledgeArticle)
+
+		// Wiki
+		api.GET("/knowledge/wiki", handleListWikiPages)
+		api.GET("/knowledge/wiki/:slug", handleGetWikiPage)
 
 		// API Governance
+
+
 		api.GET("/apis", handleListAPIs)
 		api.GET("/apis/health", handleAPIHealth)
 		api.GET("/apis/audit", handleAuditLog)

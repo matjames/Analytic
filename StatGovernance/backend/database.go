@@ -586,6 +586,79 @@ func migrateDB() error {
 		return err
 	}
 
+	// ─── Phase 13 Extensions: Whistleblower, COI, Feature Flags, System Parameters ───
+
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS statgovernance.whistleblower_reports (
+			id                  VARCHAR(36)   PRIMARY KEY,
+			ticket_number       VARCHAR(50)   UNIQUE NOT NULL,
+			title               VARCHAR(255)  NOT NULL,
+			category            VARCHAR(100)  NOT NULL,
+			description         TEXT          NOT NULL,
+			evidence_files      TEXT[],
+			status              VARCHAR(50)   DEFAULT 'Submitted',
+			encrypted_notes     TEXT,
+			assigned_to         VARCHAR(255),
+			tenant_id           VARCHAR(50)   DEFAULT 'tenant-alpha',
+			created_time        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+			updated_time        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS statgovernance.conflict_declarations (
+			id                  VARCHAR(36)   PRIMARY KEY,
+			user_id             VARCHAR(36)   NOT NULL,
+			user_name           VARCHAR(255)  NOT NULL,
+			department          VARCHAR(100),
+			declaration_type    VARCHAR(100)  NOT NULL,
+			entity_name         VARCHAR(255)  NOT NULL,
+			nature_of_interest  VARCHAR(255)  NOT NULL,
+			description         TEXT,
+			mitigation_plan     TEXT,
+			status              VARCHAR(50)   DEFAULT 'Declared',
+			reviewed_by         VARCHAR(255),
+			reviewed_at         TIMESTAMP,
+			tenant_id           VARCHAR(50)   DEFAULT 'tenant-alpha',
+			created_time        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS statgovernance.feature_flags (
+			id                  VARCHAR(36)   PRIMARY KEY,
+			key                 VARCHAR(100)  UNIQUE NOT NULL,
+			name                VARCHAR(255)  NOT NULL,
+			description         TEXT,
+			enabled             BOOLEAN       DEFAULT FALSE,
+			tenant_id           VARCHAR(50)   DEFAULT 'tenant-alpha',
+			module              VARCHAR(100),
+			rollout_pct         INTEGER       DEFAULT 100,
+			created_time        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS statgovernance.system_parameters (
+			id                  VARCHAR(36)   PRIMARY KEY,
+			param_key           VARCHAR(100)  UNIQUE NOT NULL,
+			param_value         TEXT          NOT NULL,
+			description         TEXT,
+			data_type           VARCHAR(50)   DEFAULT 'string',
+			category            VARCHAR(100)  DEFAULT 'General',
+			tenant_id           VARCHAR(50)   DEFAULT 'tenant-alpha',
+			updated_time        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
 	// Seed minimal foundational governance data if database is fresh
 	seedFoundationalData()
 

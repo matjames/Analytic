@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, LogOut, Shield, ChevronDown } from 'lucide-react';
+import Image from 'next/image';
+import { Search, Bell, LogOut, Shield, ChevronDown, Sparkles } from 'lucide-react';
 import { EnterpriseSearch } from './EnterpriseSearch';
+import { AICopilotModal } from './AICopilotModal';
 import { User } from '@typings/index';
 import { useAuth } from '@context/AuthContext';
 
@@ -14,6 +16,7 @@ const API_BASE = process.env.NEXT_PUBLIC_ENTERPRISE_CORE_URL || 'http://localhos
 export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
   const { logout } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -66,9 +69,11 @@ export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
           <div className="flex justify-between items-center h-16">
             {/* Logo & Brand */}
             <div className="flex items-center space-x-3">
-              <img
+              <Image
                 src="/icons/logo.png"
                 alt="StatGate"
+                width={32}
+                height={32}
                 className="w-8 h-8 rounded-lg"
                 style={{ boxShadow: '0 0 0 2px rgba(255,255,255,0.2)' }}
               />
@@ -97,6 +102,16 @@ export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
 
             {/* Right Navigation */}
             <div className="flex items-center space-x-3">
+              {/* Governed AI Copilot Button */}
+              <button
+                onClick={() => setAiModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 text-white text-xs font-semibold transition-all shadow-sm"
+                title="Open Governed AI Copilot"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-300 animate-pulse" />
+                <span className="hidden sm:inline">AI Copilot</span>
+              </button>
+
               {/* Notifications Bell */}
               {user && (
                 <button
@@ -209,7 +224,11 @@ export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
           </div>
         </div>
       )}
+
+      {/* Governed AI Copilot Modal */}
+      <AICopilotModal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} />
     </>
   );
 };
-
+
+

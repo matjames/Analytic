@@ -17,13 +17,21 @@ import (
 )
 
 func createTestToken(secret, userID, role, tenantID string) string {
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	claims := map[string]interface{}{
+		"sub":       userID,
 		"userId":    userID,
 		"role":      role,
 		"tenant_id": tenantID,
+		"email":     userID + "@statgate.gov",
+		"iss":       "statgate-registry",
+		"aud":       "statgate",
 		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
+	return signClaims(secret, claims)
+}
+
+func signClaims(secret string, claims map[string]interface{}) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	payloadBytes, _ := json.Marshal(claims)
 	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
@@ -80,5 +88,71 @@ func TestStatSpatialRoutesAndAuth(t *testing.T) {
 	r.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("Expected 403 for mismatched X-Tenant-ID, got %d", rr.Code)
+	}
+}
+
+func TestStatSpatialRejectsInvalidTokens(t *testing.T) {
+	secret := "test-statspatial-secret-32-chars-long"
+	os.Setenv("STATGATE_REGISTRY_JWT_SECRET", secret)
+	defer os.Unsetenv("STATGATE_REGISTRY_JWT_SECRET")
+
+	r := mux.NewRouter()
+	api.RegisterRoutes(r)
+
+	assertAuthRejection := func(name, token string) {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/v1/summary", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("%s: expected 401, got %d", name, rr.Code)
+		}
+	}
+
+	// Expired token must be rejected.
+	expired := signClaims(secret, map[string]interface{}{
+		"sub": "usr-1", "role": "admin", "tenant_id": "uganda-national",
+		"iss": "statgate-registry", "aud": "statgate",
+		"exp": time.Now().Add(-time.Hour).Unix(),
+	})
+	assertAuthRejection("expired token", expired)
+
+	// Non-canonical role must be rejected.
+	invalidRole := signClaims(secret, map[string]interface{}{
+		"sub": "usr-1", "role": "super_hacker_bypass", "tenant_id": "uganda-national",
+		"iss": "statgate-registry", "aud": "statgate",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	assertAuthRejection("non-canonical role", invalidRole)
+
+	// Missing tenant context must be rejected.
+	missingTenant := signClaims(secret, map[string]interface{}{
+		"sub": "usr-1", "role": "admin",
+		"iss": "statgate-registry", "aud": "statgate",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	assertAuthRejection("missing tenant context", missingTenant)
+
+	// Mock/demo tokens must be rejected by the shared validator.
+	assertAuthRejection("mock token", "mock_user_token")
+}
+
+func TestStatSpatialFailClosedOnMissingSecret(t *testing.T) {
+	// Ensure no secret is configured for this test.
+	os.Unsetenv("STATGATE_REGISTRY_JWT_SECRET")
+	defer os.Unsetenv("STATGATE_REGISTRY_JWT_SECRET")
+
+	r := mux.NewRouter()
+	api.RegisterRoutes(r)
+
+	req := httptest.NewRequest("GET", "/api/v1/summary", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	// Zero-default: without a signing secret the API must fail closed (503),
+	// never silently authorising anonymous access.
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected 503 ServiceUnavailable when secret missing, got %d", rr.Code)
 	}
 }

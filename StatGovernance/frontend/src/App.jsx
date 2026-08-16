@@ -13,6 +13,9 @@ import DataGovernanceTab from './components/DataGovernanceTab';
 import EvidenceTab from './components/EvidenceTab';
 import DelegationsTab from './components/DelegationsTab';
 import AIGovernancePanel from './components/AIGovernancePanel';
+import WhistleblowerTab from './components/WhistleblowerTab';
+import ConflictOfInterestTab from './components/ConflictOfInterestTab';
+import AdminConfigTab from './components/AdminConfigTab';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -26,8 +29,24 @@ export default function App() {
   // Backend API URL
   const apiBase = import.meta.env.VITE_GOVERNANCE_API_URL || 'http://localhost:8093';
 
-  // Extract or generate token
-  const token = new URLSearchParams(window.location.search).get('registry_token') || localStorage.getItem('registry_jwt') || 'demo_token';
+  // Single-sign-on bootstrap: a Registry-issued token can be handed over by the
+  // launcher via ?statgate_token (canonical) or ?registry_token (legacy alias).
+  // We persist it, strip it from the address bar immediately, and NEVER fabricate
+  // a demo token — a missing token means signed out (the fail-closed backend would
+  // reject an unauthenticated session anyway).
+  const token = (() => {
+    if (typeof window === 'undefined') return '';
+    const sp = new URLSearchParams(window.location.search);
+    const handed = sp.get('statgate_token') || sp.get('registry_token');
+    if (handed) {
+      localStorage.setItem('registry_jwt', handed);
+      const u = new URL(window.location.href);
+      u.searchParams.delete('statgate_token');
+      u.searchParams.delete('registry_token');
+      window.history.replaceState({}, document.title, `${u.pathname}${u.search}${u.hash}`);
+    }
+    return (handed || localStorage.getItem('registry_jwt') || '').trim();
+  })();
 
   // Sync tab with URL
   useEffect(() => {
@@ -168,6 +187,20 @@ export default function App() {
           <span>Delegations of Authority</span>
         </div>
 
+        <div className="sidebar-category">Accountability &amp; Config</div>
+        <div className={`nav-item ${activeTab === 'whistleblower' ? 'active' : ''}`} onClick={() => changeTab('whistleblower')}>
+          <span className="nav-icon">🔒</span>
+          <span>Whistleblower Reports</span>
+        </div>
+        <div className={`nav-item ${activeTab === 'coi' ? 'active' : ''}`} onClick={() => changeTab('coi')}>
+          <span className="nav-icon">⚖️</span>
+          <span>Conflict of Interest</span>
+        </div>
+        <div className={`nav-item ${activeTab === 'admin-config' ? 'active' : ''}`} onClick={() => changeTab('admin-config')}>
+          <span className="nav-icon">⚙️</span>
+          <span>System Configuration</span>
+        </div>
+
         <div className="sidebar-footer">
           <a href="http://localhost:3006" className="ecosystem-link">
             <span>🚀</span>
@@ -300,6 +333,18 @@ export default function App() {
 
           {activeTab === 'delegations' && (
             <DelegationsTab apiBase={apiBase} token={token} onRefreshDashboard={fetchDashboardData} />
+          )}
+
+          {activeTab === 'whistleblower' && (
+            <WhistleblowerTab apiBase={apiBase} />
+          )}
+
+          {activeTab === 'coi' && (
+            <ConflictOfInterestTab apiBase={apiBase} />
+          )}
+
+          {activeTab === 'admin-config' && (
+            <AdminConfigTab apiBase={apiBase} />
           )}
         </main>
       </div>

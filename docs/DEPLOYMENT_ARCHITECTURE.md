@@ -68,3 +68,31 @@ MINIO_DEFAULT_BUCKET=statgate-files
 Every service exposes `/health` and `/ready` endpoints:
 - Liveness Probe: Returns `200 OK` if the process HTTP runtime is responsive.
 - Readiness Probe: Returns `200 OK` if the database and required event broker connections are established. If any component is down, returns `503 Service Unavailable`.
+
+---
+
+## 4. StatSpatial Convergence (Phase y Recovery Item)
+
+StatSpatial is treated as an integration/recovery item in Phase y, not a disconnected feature. It now follows the full platform pipeline and consumes the shared `statgate-lib`:
+
+1. **BUILD** — `go build ./...` and `go test ./...` pass in `StatSpatial/backend`.
+2. **TEST** — REST handlers, Registry-JWT authentication, and security invariants are covered by `pkg/api/api_test.go`.
+3. **DEPLOY** — Registered in `docker-compose.yml` as the `statspatial` service (build context = repo root so the `statgate-lib` replace resolves) with port `4200`, and the `statspatial` database/role provisioned by `docker/postgres-init/13-create-statspatial-db.sql`.
+4. **AUTHENTICATE** — API consumes `statgate-lib/auth` (replacing the previous hand-rolled HMAC JWT validation) with fail-closed zero-defaults, tenant-header isolation (`X-Tenant-ID` vs token), CORS allow-list (`STATSPATIAL_CORS_ORIGINS`) and Registry-issued JWTs.
+5. **INTEGRATE** — Publishes `spatial.layer.created`, `spatial.feature.updated` and `spatial.node.synced` to the Enterprise Event Bus (`redis` → `statgate:events`) and writes immutable audit records via `statgate-lib/audit`; the `enterprise_audit_log` schema is materialised by the shared audit service.
+
+### StatSpatial environment
+```bash
+BACKEND_PORT=4200
+STATSPATIAL_DB_HOST=postgres
+STATSPATIAL_DB_PORT=5432
+STATSPATIAL_DB_USER=StatSpatial
+STATSPATIAL_DB_PASSWORD=<secret — fail-closed>
+STATSPATIAL_DB_NAME=statspatial
+STATSPATIAL_DB_SSLMODE=disable
+REDIS_HOST=redis
+REDIS_PORT=6379
+STATGATE_REGISTRY_JWT_SECRET=<32-char-high-entropy-secret>
+STATGATE_ENV=production
+STATSPATIAL_CORS_ORIGINS=https://<command-centre-origin>
+```

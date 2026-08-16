@@ -8,7 +8,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+func generateUUID() string {
+	return uuid.New().String()
+}
+
 
 // ═══════════════════════════════════════════════════════════════════
 // PROJECTS
@@ -2490,3 +2496,202 @@ func dbGetHelpdesk(projectID string) ([]HelpDeskTicket, error) {
 	}
 	return tickets, nil
 }
+
+// ─── Phase 4 Handlers: LogFrame, Theory of Change, Donors ─────────
+
+func dbGetLogFrames(c *gin.Context) {
+	projectID := c.Param("id")
+	rows, err := DB.Query(`SELECT id, project_id, title, description, created_time FROM pms.logframes WHERE project_id = $1`, projectID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var logframes []LogFrame
+	for rows.Next() {
+		var lf LogFrame
+		rows.Scan(&lf.ID, &lf.ProjectID, &lf.Title, &lf.Description, &lf.CreatedTime)
+		// Fetch items for this logframe
+		itemRows, err := DB.Query(`SELECT id, logframe_id, level, code, description, indicators, means_of_verification, assumptions, created_time FROM pms.logframe_items WHERE logframe_id = $1`, lf.ID)
+		if err == nil {
+			for itemRows.Next() {
+				var item LogFrameItem
+				var code sql.NullString
+				itemRows.Scan(&item.ID, &item.LogFrameID, &item.Level, &code, &item.Description, &item.Indicators, &item.MeansOfVer, &item.Assumptions, &item.CreatedTime)
+				item.Code = code.String
+				lf.Items = append(lf.Items, item)
+			}
+			itemRows.Close()
+		}
+		logframes = append(logframes, lf)
+	}
+	c.JSON(200, logframes)
+}
+
+func dbCreateLogFrame(c *gin.Context) {
+	var lf LogFrame
+	if err := c.ShouldBindJSON(&lf); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if lf.ID == "" {
+		lf.ID = generateUUID()
+	}
+	lf.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO pms.logframes (id, project_id, title, description, created_time) VALUES ($1, $2, $3, $4, $5)`,
+		lf.ID, lf.ProjectID, lf.Title, lf.Description, lf.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, lf)
+}
+
+func dbCreateLogFrameItem(c *gin.Context) {
+	var item LogFrameItem
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if item.ID == "" {
+		item.ID = generateUUID()
+	}
+	item.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO pms.logframe_items (id, logframe_id, level, code, description, indicators, means_of_verification, assumptions, created_time) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		item.ID, item.LogFrameID, item.Level, item.Code, item.Description, item.Indicators, item.MeansOfVer, item.Assumptions, item.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, item)
+}
+
+func dbGetTheoryOfChange(c *gin.Context) {
+	projectID := c.Param("id")
+	var toc TheoryOfChange
+	err := DB.QueryRow(`SELECT id, project_id, title, narrative, inputs, activities, outputs, short_term_outcomes, long_term_outcomes, impact, assumptions, created_time 
+		FROM pms.theory_of_change WHERE project_id = $1`, projectID).
+		Scan(&toc.ID, &toc.ProjectID, &toc.Title, &toc.Narrative, &toc.Inputs, &toc.Activities, &toc.Outputs, &toc.ShortTermOutcomes, &toc.LongTermOutcomes, &toc.Impact, &toc.Assumptions, &toc.CreatedTime)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(200, gin.H{"message": "No Theory of Change defined for this project yet", "projectId": projectID})
+			return
+		}
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, toc)
+}
+
+func dbSaveTheoryOfChange(c *gin.Context) {
+	var toc TheoryOfChange
+	if err := c.ShouldBindJSON(&toc); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if toc.ID == "" {
+		toc.ID = generateUUID()
+	}
+	toc.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO pms.theory_of_change (id, project_id, title, narrative, inputs, activities, outputs, short_term_outcomes, long_term_outcomes, impact, assumptions, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (id) DO UPDATE SET
+			title = EXCLUDED.title,
+			narrative = EXCLUDED.narrative,
+			inputs = EXCLUDED.inputs,
+			activities = EXCLUDED.activities,
+			outputs = EXCLUDED.outputs,
+			short_term_outcomes = EXCLUDED.short_term_outcomes,
+			long_term_outcomes = EXCLUDED.long_term_outcomes,
+			impact = EXCLUDED.impact,
+			assumptions = EXCLUDED.assumptions`,
+		toc.ID, toc.ProjectID, toc.Title, toc.Narrative, toc.Inputs, toc.Activities, toc.Outputs, toc.ShortTermOutcomes, toc.LongTermOutcomes, toc.Impact, toc.Assumptions, toc.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, toc)
+}
+
+func dbGetDonors(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time FROM pms.donors ORDER BY name ASC`)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var donors []Donor
+	for rows.Next() {
+		var d Donor
+		var code, cp, email, phone, web sql.NullString
+		rows.Scan(&d.ID, &d.Name, &code, &d.Type, &cp, &email, &phone, &web, &d.TotalFunding, &d.Currency, &d.Status, &d.CreatedTime)
+		d.Code = code.String
+		d.ContactPerson = cp.String
+		d.Email = email.String
+		d.Phone = phone.String
+		d.Website = web.String
+		donors = append(donors, d)
+	}
+	c.JSON(200, donors)
+}
+
+func dbCreateDonor(c *gin.Context) {
+	var d Donor
+	if err := c.ShouldBindJSON(&d); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if d.ID == "" {
+		d.ID = generateUUID()
+	}
+	if d.Currency == "" {
+		d.Currency = "USD"
+	}
+	if d.Status == "" {
+		d.Status = "Active"
+	}
+	d.CreatedTime = time.Now()
+
+	_, err := DB.Exec(`INSERT INTO pms.donors (id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		d.ID, d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, d.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(201, d)
+}
+
+func dbUpdateDonor(c *gin.Context) {
+	id := c.Param("id")
+	var d Donor
+	if err := c.ShouldBindJSON(&d); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	_, err := DB.Exec(`UPDATE pms.donors SET name=$1, code=$2, type=$3, contact_person=$4, email=$5, phone=$6, website=$7, total_funding=$8, currency=$9, status=$10 WHERE id=$11`,
+		d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, id)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	d.ID = id
+	c.JSON(200, d)
+}
+
+func dbDeleteDonor(c *gin.Context) {
+	id := c.Param("id")
+	_, err := DB.Exec(`DELETE FROM pms.donors WHERE id = $1`, id)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Donor deleted successfully"})
+}
+

@@ -68,4 +68,28 @@ func RegisterRoutes(r *mux.Router) {
 
 	// Summary & Intelligence
 	apiV1.HandleFunc("/summary", GetSummaryHandler).Methods("GET")
+
+	// Spatial Analysis Operations
+	apiV1.HandleFunc("/spatial/buffer", SpatialBufferHandler).Methods("POST")
+	apiV1.HandleFunc("/spatial/bbox", SpatialBBoxHandler).Methods("GET")
+	apiV1.HandleFunc("/spatial/point-in-polygon", SpatialPointInPolygonHandler).Methods("POST")
+	apiV1.HandleFunc("/spatial/area/{id}", SpatialAreaCalcHandler).Methods("GET")
+
+	// Direct /api/spatial aliases for convenient frontend mapping
+	apiSpatial := r.PathPrefix("/api/spatial").Subrouter()
+	apiSpatial.Use(CORSMiddleware)
+	apiSpatial.Use(LoggingMiddleware)
+	apiSpatial.Use(AuthMiddleware)
+
+	apiSpatial.HandleFunc("/layers", ListGeoLayersHandler).Methods("GET")
+	apiSpatial.HandleFunc("/layers", CreateGeoLayerHandler).Methods("POST")
+	apiSpatial.HandleFunc("/features", ListGeoFeaturesHandler).Methods("GET")
+	apiSpatial.HandleFunc("/features", CreateGeoFeatureHandler).Methods("POST")
+	apiSpatial.HandleFunc("/admin-units", ListAdminUnitsHandler).Methods("GET")
+	apiSpatial.HandleFunc("/buffer", SpatialBufferHandler).Methods("POST")
+	apiSpatial.HandleFunc("/bbox", SpatialBBoxHandler).Methods("GET")
+	apiSpatial.HandleFunc("/point-in-polygon", SpatialPointInPolygonHandler).Methods("POST")
+	apiSpatial.HandleFunc("/area/{id}", SpatialAreaCalcHandler).Methods("GET")
+	apiSpatial.HandleFunc("/summary", GetSummaryHandler).Methods("GET")
 }
+

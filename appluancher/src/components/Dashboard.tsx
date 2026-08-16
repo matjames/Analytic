@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 import { Application, AppCategory, AppStatus } from '@typings/index';
 import { AppCard } from './AppCard';
 import { useAuth } from '@context/AuthContext';
@@ -40,9 +41,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ apps, onAppLaunch }) => {
               </p>
             </div>
             <div className="mt-6 md:mt-0">
-              <img
+              <Image
                 src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop"
                 alt="Statistics"
+                width={256}
+                height={192}
                 className="w-64 h-48 rounded-lg object-cover shadow-md"
               />
             </div>

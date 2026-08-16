@@ -44,10 +44,11 @@ export function getWebSocketURL(): string {
 export function bootstrapSharedSignOn(): void {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
-  const token = url.searchParams.get('statgate_token') ?? url.searchParams.get('access_token');
+  const token = url.searchParams.get('statgate_token') ?? url.searchParams.get('registry_token') ?? url.searchParams.get('access_token');
   if (!token) return;
   window.localStorage.setItem('statchat_token', token);
   url.searchParams.delete('statgate_token');
+  url.searchParams.delete('registry_token');
   url.searchParams.delete('access_token');
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 }

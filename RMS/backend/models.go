@@ -416,3 +416,56 @@ type StageTransitionRequest struct {
 	Stage string `json:"stage" binding:"required"`
 	User  string `json:"user"`
 }
+
+// ─── Phase 5 Extensions: IRB, DOI, Citation Engine, Open Science ────
+
+type EthicsCommittee struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Institution string    `json:"institution"`
+	ChairPerson string    `json:"chairPerson"`
+	Email       string    `json:"email"`
+	Members     []string  `json:"members"`
+	Active      bool      `json:"active"`
+	CreatedTime time.Time `json:"createdTime"`
+}
+
+type DOIRecord struct {
+	ID            string    `json:"id"`
+	ResearchID    string    `json:"researchId"`
+	PublicationID string    `json:"publicationId,omitempty"`
+	DOI           string    `json:"doi"`
+	Title         string    `json:"title"`
+	Authors       []string  `json:"authors"`
+	Year          int       `json:"year"`
+	Publisher     string    `json:"publisher"`
+	URL           string    `json:"url"`
+	Status        string    `json:"status"` // Draft, Registered, Active
+	CreatedTime   time.Time `json:"createdTime"`
+}
+
+type CitationOutput struct {
+	ID          string `json:"id"`
+	ReferenceID string `json:"referenceId"`
+	APA         string `json:"apa"`
+	Chicago     string `json:"chicago"`
+	Harvard     string `json:"harvard"`
+	Vancouver   string `json:"vancouver"`
+	BibTeX      string `json:"bibtex"`
+}
+
+type OpenAccessRepoItem struct {
+	ID          string    `json:"id"`
+	ResearchID  string    `json:"researchId"`
+	Title       string    `json:"title"`
+	Abstract    string    `json:"abstract"`
+	License     string    `json:"license"` // CC-BY-4.0, MIT, Open Data Commons
+	AccessURL   string    `json:"accessUrl"`
+	DownloadURL string    `json:"downloadUrl"`
+	FileSize    string    `json:"fileSize"`
+	Format      string    `json:"format"`
+	Views       int       `json:"views"`
+	Downloads   int       `json:"downloads"`
+	CreatedTime time.Time `json:"createdTime"`
+}
+

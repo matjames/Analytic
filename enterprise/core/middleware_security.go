@@ -277,12 +277,26 @@ func parseJWT(tokenStr, secret string) (*jwtClaims, error) {
 
 func jwtAuthMiddleware() gin.HandlerFunc {
 	jwtSecret := strings.TrimSpace(getEnvValue("STATGATE_REGISTRY_JWT_SECRET"))
+	internalAPIKey := strings.TrimSpace(getEnvValue("STATGATE_INTERNAL_API_KEY"))
 	if jwtSecret == "" {
 		log.Println("security: STATGATE_REGISTRY_JWT_SECRET not set — ALL JWT-authenticated requests will be rejected (fail-closed)")
 	}
 	return func(c *gin.Context) {
 		// Allow internal health/readiness probes without auth
 		if isProbeEndpoint(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+		// Trusted StatGate services use the rotating internal key over the private
+		// compose network. This lets Integration Fabric publish audited platform
+		// events without forging an end-user JWT.
+		if internalAPIKey != "" && hmac.Equal([]byte(c.GetHeader("X-Internal-API-Key")), []byte(internalAPIKey)) {
+			tenantID := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
+			if tenantID == "" { tenantID = "default" }
+			c.Set("user_id", "integration-fabric")
+			c.Set("tenant_id", tenantID)
+			c.Set("org_id", "")
+			c.Set("role", "service")
 			c.Next()
 			return
 		}

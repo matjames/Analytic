@@ -21,6 +21,9 @@ import SurveysTab from './components/SurveysTab';
 import ReportsTab from './components/ReportsTab';
 import CalendarTab from './components/CalendarTab';
 import ChatTab from './components/ChatTab';
+import IRBCommitteesTab from './components/IRBCommitteesTab';
+import DOITab from './components/DOITab';
+import OpenScienceTab from './components/OpenScienceTab';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -294,6 +297,9 @@ export default function App() {
                 { key: 'reports', label: 'Reports' },
                 { key: 'calendar', label: 'Calendar' },
                 { key: 'chat', label: 'StatChat' },
+                { key: 'irb', label: 'IRB Committees' },
+                { key: 'doi', label: 'DOI Registry' },
+                { key: 'open-science', label: 'Open Science' },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -356,6 +362,15 @@ export default function App() {
               )}
               {activeTab === 'chat' && (
                 <ChatTab messages={workspaceData.chatMessages} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
+              )}
+              {activeTab === 'irb' && (
+                <IRBCommitteesTab apiBase={API_URL} />
+              )}
+              {activeTab === 'doi' && (
+                <DOITab apiBase={API_URL} />
+              )}
+              {activeTab === 'open-science' && (
+                <OpenScienceTab apiBase={API_URL} />
               )}
             </div>
           </div>

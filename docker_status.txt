@@ -1,3 +1,0 @@
-analytic-statgate-analytics-1 Up 2 hours
-analytic-statgate-core-1 Up 2 hours
-

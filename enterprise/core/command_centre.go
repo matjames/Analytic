@@ -363,15 +363,19 @@ func handleDecisionCentreView(c *gin.Context) {
 	recent := listDecisionRecords("", "", 10)
 	underReview := listDecisionRecords("under_review", "", 10)
 	recs := listAIRecommendations("")
+	pendingApprovals := listApprovalRequests(userID, "pending")
+	allMyApprovals := listApprovalRequests(userID, "")
 
 	c.JSON(200, gin.H{
-		"user_id":            userID,
-		"timestamp":          nowUTC(),
-		"awaiting_me":        awaiting,
-		"created_by_me":      created,
-		"recent":             recent,
-		"under_review":       underReview,
-		"ai_recommendations": recs,
+		"user_id":               userID,
+		"timestamp":             nowUTC(),
+		"awaiting_me":           awaiting,
+		"created_by_me":         created,
+		"recent":                recent,
+		"under_review":          underReview,
+		"ai_recommendations":    recs,
+		"approvals_awaiting_me": pendingApprovals,
+		"my_approvals":          allMyApprovals,
 	})
 }
 

@@ -411,6 +411,51 @@ func migrateDB() error {
 	DB.Exec(`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS objectives TEXT`)
 	DB.Exec(`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS methodology TEXT`)
 
+	// ─── Phase 5 Extensions: Ethics Committees, DOIs, Open Access Repository ───
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS rms.ethics_committees (
+			id           VARCHAR(36)  PRIMARY KEY,
+			name         VARCHAR(255) NOT NULL,
+			institution  VARCHAR(255) NOT NULL,
+			chair_person VARCHAR(255),
+			email        VARCHAR(255),
+			members      TEXT[],
+			active       BOOLEAN      DEFAULT TRUE,
+			created_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+		)`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS rms.doi_records (
+			id             VARCHAR(36)  PRIMARY KEY,
+			research_id    VARCHAR(36)  REFERENCES rms.research_projects(id) ON DELETE CASCADE,
+			publication_id VARCHAR(36),
+			doi            VARCHAR(100) UNIQUE NOT NULL,
+			title          VARCHAR(255) NOT NULL,
+			authors        TEXT[],
+			year           INTEGER      DEFAULT 2026,
+			publisher      VARCHAR(255) DEFAULT 'StatGate Open Science',
+			url            TEXT,
+			status         VARCHAR(50)  DEFAULT 'Registered',
+			created_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+		)`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS rms.open_access_repo (
+			id           VARCHAR(36)  PRIMARY KEY,
+			research_id  VARCHAR(36)  REFERENCES rms.research_projects(id) ON DELETE CASCADE,
+			title        VARCHAR(255) NOT NULL,
+			abstract     TEXT,
+			license      VARCHAR(100) DEFAULT 'CC-BY-4.0',
+			access_url   TEXT,
+			download_url TEXT,
+			file_size    VARCHAR(50),
+			format       VARCHAR(50)  DEFAULT 'PDF',
+			views        INTEGER      DEFAULT 0,
+			downloads    INTEGER      DEFAULT 0,
+			created_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+		)`)
+
 	log.Println("RMS database migration completed successfully")
 	return nil
 }
+
