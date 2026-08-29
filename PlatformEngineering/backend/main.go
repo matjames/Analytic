@@ -34,7 +34,7 @@ func main() {
 	defer cancel()
 	collector.Start(ctx, time.Duration(cfg.ProbeIntervalSeconds)*time.Second)
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), cors.New(cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-StatGate-Cluster", "X-StatGate-Allowed-Clusters"}, MaxAge: 12 * time.Hour}))
+	r.Use(gin.Logger(), gin.Recovery(), cors.New(cors.Config{AllowOrigins: []string{"*"}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Workspace-ID", "X-StatGate-Cluster", "X-StatGate-Allowed-Clusters"}, MaxAge: 12 * time.Hour}))
 	r.GET("/health", app.health)
 	r.GET("/live", app.health)
 	r.GET("/ready", app.ready)
@@ -45,6 +45,8 @@ func main() {
 		log.Fatalf("RunOps requires statgate-lib/auth configuration: %v", authErr)
 	}
 	v.Use(validator.GinMiddleware(), tenant.GinTenantIsolation())
+	// Stage 2: workspace context + Enterprise Core membership enforcement.
+	v.Use(tenant.GinWorkspaceContext(), tenant.GinWorkspaceMembership("", nil))
 	v.GET("/summary", permissions.RequirePermission(permissions.PermRead), app.summary)
 	// P20: CI/CD pipeline orchestration.
 	cicd := v.Group("/cicd", requireClusterAccess(permissions.PermExecute))

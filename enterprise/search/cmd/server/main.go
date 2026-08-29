@@ -15,6 +15,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 // SearchResult represents a unified search result from any application
@@ -56,10 +57,13 @@ func main() {
 			"http://host.docker.internal:3006",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Tenant-ID", "X-Workspace-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * 3600,
 	}))
+
+	// Stage 2: workspace context + Enterprise Core membership enforcement.
+	r.Use(tenant.GinWorkspaceContext(), tenant.GinWorkspaceMembership("", nil))
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {

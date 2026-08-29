@@ -144,6 +144,53 @@ func TestVerifyWorkspaceMembershipTimeout(t *testing.T) {
 	}
 }
 
+// ── net/http middleware tests ──
+
+func httpProbe(t *testing.T, enterpriseURL string, client *http.Client, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	h := WorkspaceContext(WorkspaceMembership(enterpriseURL, client)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"workspace":"` + WorkspaceIDFromRequest(r) + `"}`))
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+func TestHTTPWorkspaceContextAndMembership(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer srv.Close()
+
+	// member: passes, workspace in context
+	w := httpProbe(t, srv.URL, nil, map[string]string{"X-Workspace-ID": "ws1", "Authorization": "Bearer tok"})
+	if w.Code != http.StatusOK || w.Body.String() != `{"workspace":"ws1"}` {
+		t.Fatalf("member: got %d %s", w.Code, w.Body.String())
+	}
+
+	// non-member: 403
+	deny := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
+	defer deny.Close()
+	w = httpProbe(t, deny.URL, nil, map[string]string{"X-Workspace-ID": "ws1", "Authorization": "Bearer tok"})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-member: expected 403, got %d", w.Code)
+	}
+
+	// invalid shape: 400
+	w = httpProbe(t, "", nil, map[string]string{"X-Workspace-ID": "bad/slash"})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid: expected 400, got %d", w.Code)
+	}
+
+	// no workspace: pass-through
+	w = httpProbe(t, srv.URL, nil, nil)
+	if w.Code != http.StatusOK || w.Body.String() != `{"workspace":""}` {
+		t.Fatalf("pass-through: got %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestValidWorkspaceID(t *testing.T) {
 	if !ValidWorkspaceID("tenant-alpha_1") {
 		t.Fatal("expected valid")

@@ -1,8 +1,13 @@
+# Build context = repo root so the local statgate-lib replace resolves.
 FROM golang:1.22-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum* ./
+WORKDIR /app/enterprise/integration
+
+COPY statgate-lib /app/statgate-lib
+
+COPY enterprise/integration/go.mod enterprise/integration/go.sum* ./
 RUN go mod download
-COPY . .
+
+COPY enterprise/integration/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /statgate-integration-hub .
 
 FROM alpine:3.19

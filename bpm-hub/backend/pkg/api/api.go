@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 // RegisterRoutes mounts Business Process Management (App 11) endpoints.
@@ -16,6 +17,10 @@ func RegisterRoutes(r *mux.Router) {
 	api.Use(CORSMiddleware)
 	api.Use(LoggingMiddleware)
 	api.Use(AuthMiddleware)
+
+	// Stage 2: workspace context + Enterprise Core membership enforcement.
+	api.Use(tenant.WorkspaceContext)
+	api.Use(tenant.WorkspaceMembership("", nil))
 
 	// ── BPM: process definitions & workflow engine (P48) ──
 	api.HandleFunc("/processes", ListProcessesHandler).Methods("GET")

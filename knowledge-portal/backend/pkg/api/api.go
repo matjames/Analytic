@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 // RegisterRoutes registers all Knowledge Portal REST endpoints.
@@ -46,6 +47,10 @@ func RegisterRoutes(r *mux.Router) {
 	api.Use(CORSMiddleware)
 	api.Use(LoggingMiddleware)
 	api.Use(AuthMiddleware)
+
+	// Stage 2: workspace context + Enterprise Core membership enforcement.
+	api.Use(tenant.WorkspaceContext)
+	api.Use(tenant.WorkspaceMembership("", nil))
 
 	// Content (publications / articles / news / reports)
 	api.HandleFunc("/content", ListContentHandler).Methods("GET")

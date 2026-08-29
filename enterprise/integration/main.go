@@ -19,6 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	statgatetenant "github.com/matjames/statgate-lib/tenant"
+
 )
 
 type API struct {
@@ -709,7 +711,7 @@ func main() {
 		c.JSON(200, gin.H{"status": "healthy", "service": "statgate-integration-hub", "version": "16.0.0"})
 	})
 	router.GET("/ready", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ready", "database": db != nil}) })
-	control := router.Group("/api/v1", requireControlPlane(), requireStore())
+	control := router.Group("/api/v1", requireControlPlane(), requireStore(), statgatetenant.GinWorkspaceContext(), statgatetenant.GinWorkspaceMembership("", nil))
 	control.GET("/apis", apiList)
 	control.POST("/apis", apiCreate)
 	control.PUT("/apis/:id", apiUpdate)

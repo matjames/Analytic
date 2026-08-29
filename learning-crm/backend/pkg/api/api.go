@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 // RegisterRoutes mounts every Learning, Community & Commercial endpoint.
@@ -17,6 +18,10 @@ func RegisterRoutes(r *mux.Router) {
 	api.Use(CORSMiddleware)
 	api.Use(LoggingMiddleware)
 	api.Use(AuthMiddleware)
+
+	// Stage 2: workspace context + Enterprise Core membership enforcement.
+	api.Use(tenant.WorkspaceContext)
+	api.Use(tenant.WorkspaceMembership("", nil))
 
 	// ── P24: LMS, Courses, Exams, CPD Certificates & Badges ──
 	api.HandleFunc("/courses", ListCoursesHandler).Methods("GET")

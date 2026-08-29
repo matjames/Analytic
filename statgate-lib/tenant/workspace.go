@@ -113,6 +113,72 @@ func GinWorkspaceMembership(enterpriseBaseURL string, client *http.Client) gin.H
 	}
 }
 
+// ── net/http / gorilla-mux middleware variants ─────────────────────────────
+
+type workspaceContextKey string
+
+// ContextWorkspaceIDKey is the request-context key used by the net/http
+// middleware variants below.
+const ContextWorkspaceIDKey workspaceContextKey = "statgate_workspace_id"
+
+func writeInvalidWorkspace(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write([]byte(`{"error":"invalid_workspace_context","message":"X-Workspace-ID header is malformed"}`))
+}
+
+// WorkspaceContext is the net/http (gorilla/mux compatible) equivalent of
+// GinWorkspaceContext: it validates the optional X-Workspace-ID header and
+// stores it in the request context. Abort with 400 on a malformed header.
+func WorkspaceContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wsID := strings.TrimSpace(r.Header.Get(workspaceHeader))
+		if wsID != "" && !ValidWorkspaceID(wsID) {
+			writeInvalidWorkspace(w)
+			return
+		}
+		ctx := context.WithValue(r.Context(), ContextWorkspaceIDKey, wsID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// WorkspaceIDFromRequest returns the workspace selected on the request, or "".
+func WorkspaceIDFromRequest(r *http.Request) string {
+	if v, ok := r.Context().Value(ContextWorkspaceIDKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// WorkspaceMembership is the net/http equivalent of GinWorkspaceMembership.
+// When a workspace is selected AND the request carries an Authorization
+// header, membership is verified against Enterprise Core; otherwise the
+// request passes through untouched.
+func WorkspaceMembership(enterpriseBaseURL string, client *http.Client) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			wsID := WorkspaceIDFromRequest(r)
+			authHeader := r.Header.Get("Authorization")
+			if wsID == "" || authHeader == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if err := verifyWorkspaceMembership(r.Context(), enterpriseBaseURL, client, wsID, authHeader); err != nil {
+				if err == errNotMember {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = w.Write([]byte(`{"error":"workspace_membership_required","message":"authenticated principal is not a member of the selected workspace"}`))
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":"workspace_membership_unavailable","message":"workspace membership could not be verified"}`))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 // VerifyWorkspaceMembership performs the Enterprise Core membership check and
 // is exported for services that need to enforce membership inside handlers
 // (for example on WebSocket upgrades or device pairing flows).

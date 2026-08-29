@@ -1,14 +1,13 @@
+# Build context = repo root so the local statgate-lib replace resolves.
 FROM golang:1.22-alpine AS builder
+WORKDIR /app/enterprise/search
 
-WORKDIR /app
+COPY statgate-lib /app/statgate-lib
 
-# Copy go mod files
-COPY go.mod go.sum ./
-# Copy source
-COPY cmd/ ./cmd/
+COPY enterprise/search/go.mod enterprise/search/go.sum ./
+RUN go mod download
 
-# Download dependencies and build
-RUN go mod download 2>/dev/null || true
+COPY enterprise/search/cmd/ ./cmd/
 RUN CGO_ENABLED=0 GOOS=linux go build -o /enterprise-search ./cmd/server/
 
 FROM alpine:3.19
