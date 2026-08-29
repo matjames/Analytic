@@ -96,6 +96,9 @@ func ensureSchema(ctx context.Context) error {
 			target_type TEXT NOT NULL, target_id TEXT NOT NULL,
 			relationship TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
 		`CREATE INDEX IF NOT EXISTS idx_links_source ON object_links(source_type, source_id)`,
+		// ── Stage 2: workspace scoping ──
+		`ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE process_instances ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {

@@ -20,16 +20,16 @@ func CreateProcessDefinition(ctx context.Context, p *model.ProcessDefinition) er
 		p.Status = "draft"
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO process_definitions (id, tenant_id, name, key, version, description, start_node, nodes, transitions, status, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		p.ID, p.TenantID, p.Name, p.Key, p.Version, p.Description, p.StartNode, jsonB(p.Nodes), jsonB(p.Transitions), p.Status, p.CreatedBy, p.CreatedAt, p.UpdatedAt)
+		INSERT INTO process_definitions (id, tenant_id, workspace_id, name, key, version, description, start_node, nodes, transitions, status, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		p.ID, p.TenantID, p.WorkspaceID, p.Name, p.Key, p.Version, p.Description, p.StartNode, jsonB(p.Nodes), jsonB(p.Transitions), p.Status, p.CreatedBy, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
 func scanProcessDef(row row) (*model.ProcessDefinition, error) {
 	var p model.ProcessDefinition
 	var nodes, trans []byte
-	if err := row.Scan(&p.ID, &p.TenantID, &p.Name, &p.Key, &p.Version, &p.Description, &p.StartNode, &nodes, &trans, &p.Status, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.TenantID, &p.WorkspaceID, &p.Name, &p.Key, &p.Version, &p.Description, &p.StartNode, &nodes, &trans, &p.Status, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, err
 	}
 	jsonUnmarshal(nodes, &p.Nodes)
@@ -37,10 +37,16 @@ func scanProcessDef(row row) (*model.ProcessDefinition, error) {
 	return &p, nil
 }
 
-const pdCols = `id, tenant_id, name, key, version, description, start_node, nodes, transitions, status, created_by, created_at, updated_at`
+const pdCols = `id, tenant_id, name, key, version, description, start_node, nodes, transitions, status, created_by, COALESCE(workspace_id, ''), created_at, updated_at`
 
-func ListProcessDefinitions(ctx context.Context, tenantID string) ([]model.ProcessDefinition, error) {
-	rows, err := db.QueryContext(ctx, `SELECT `+pdCols+` FROM process_definitions WHERE tenant_id=$1 ORDER BY key, version DESC`, tenantID)
+func ListProcessDefinitions(ctx context.Context, tenantID, workspaceID string) ([]model.ProcessDefinition, error) {
+	query := `SELECT ` + pdCols + ` FROM process_definitions WHERE tenant_id=$1`
+	args := []interface{}{tenantID}
+	if workspaceID != "" {
+		query += ` AND (workspace_id=$2 OR workspace_id='')`
+		args = append(args, workspaceID)
+	}
+	rows, err := db.QueryContext(ctx, query+` ORDER BY key, version DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +81,9 @@ func CreateInstance(ctx context.Context, in *model.ProcessInstance) error {
 		in.Status = "created"
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO process_instances (id, tenant_id, definition_id, status, current_node, context, started_at, ended_at, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		in.ID, in.TenantID, in.DefinitionID, in.Status, in.CurrentNode, jsonB(in.Context), in.StartedAt, in.EndedAt, in.CreatedBy, in.CreatedAt, in.UpdatedAt)
+		INSERT INTO process_instances (id, tenant_id, workspace_id, definition_id, status, current_node, context, started_at, ended_at, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		in.ID, in.TenantID, in.WorkspaceID, in.DefinitionID, in.Status, in.CurrentNode, jsonB(in.Context), in.StartedAt, in.EndedAt, in.CreatedBy, in.CreatedAt, in.UpdatedAt)
 	return err
 }
 
@@ -85,7 +91,7 @@ func scanInstance(row row) (*model.ProcessInstance, error) {
 	var in model.ProcessInstance
 	var context []byte
 	var start, end sql.NullTime
-	if err := row.Scan(&in.ID, &in.TenantID, &in.DefinitionID, &in.Status, &in.CurrentNode, &context, &start, &end, &in.CreatedBy, &in.CreatedAt, &in.UpdatedAt); err != nil {
+	if err := row.Scan(&in.ID, &in.TenantID, &in.WorkspaceID, &in.DefinitionID, &in.Status, &in.CurrentNode, &context, &start, &end, &in.CreatedBy, &in.CreatedAt, &in.UpdatedAt); err != nil {
 		return nil, err
 	}
 	jsonUnmarshal(context, &in.Context)
@@ -98,12 +104,17 @@ func scanInstance(row row) (*model.ProcessInstance, error) {
 	return &in, nil
 }
 
-const instCols = `id, tenant_id, definition_id, status, current_node, context, started_at, ended_at, created_by, created_at, updated_at`
+const instCols = `id, tenant_id, definition_id, status, current_node, context, started_at, ended_at, created_by, COALESCE(workspace_id, ''), created_at, updated_at`
 
-func ListInstances(ctx context.Context, tenantID, definitionID, status string) ([]model.ProcessInstance, error) {
+func ListInstances(ctx context.Context, tenantID, definitionID, status, workspaceID string) ([]model.ProcessInstance, error) {
 	query := `SELECT ` + instCols + ` FROM process_instances WHERE tenant_id=$1`
 	args := []interface{}{tenantID}
 	argc := 1
+	if workspaceID != "" {
+		argc++
+		args = append(args, workspaceID)
+		query += ` AND (workspace_id=$` + itoa(argc) + ` OR workspace_id='')`
+	}
 	if definitionID != "" {
 		argc++
 		args = append(args, definitionID)

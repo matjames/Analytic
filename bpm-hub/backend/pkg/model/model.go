@@ -6,6 +6,7 @@ import "time"
 type ProcessDefinition struct {
 	ID          string                 `json:"id"`
 	TenantID    string                 `json:"tenant_id"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
 	Name        string                 `json:"name"`
 	Key         string                 `json:"key"`
 	Version     int                    `json:"version"`
@@ -23,6 +24,7 @@ type ProcessDefinition struct {
 type ProcessInstance struct {
 	ID           string                 `json:"id"`
 	TenantID     string                 `json:"tenant_id"`
+	WorkspaceID  string                 `json:"workspace_id,omitempty"`
 	DefinitionID string                 `json:"definition_id"`
 	Status       string                 `json:"status"` // created|running|completed|errored|cancelled
 	CurrentNode  string                 `json:"current_node"`

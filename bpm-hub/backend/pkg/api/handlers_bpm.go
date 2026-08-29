@@ -12,7 +12,7 @@ import (
 // ─── Process Definitions (P48) ───────────────────────────────────────────────
 
 func ListProcessesHandler(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListProcessDefinitions(r.Context(), actorTenant(r))
+	items, err := store.ListProcessDefinitions(r.Context(), actorTenant(r), actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -31,6 +31,7 @@ func CreateProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.TenantID = actorTenant(r)
+	p.WorkspaceID = actorWorkspace(r)
 	p.CreatedBy = actorID(r)
 	if err := store.CreateProcessDefinition(r.Context(), &p); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -43,6 +44,10 @@ func CreateProcessHandler(w http.ResponseWriter, r *http.Request) {
 func GetProcessHandler(w http.ResponseWriter, r *http.Request) {
 	p, err := store.GetProcessDefinition(r.Context(), varsOf(r)["id"])
 	if err != nil {
+		writeError(w, http.StatusNotFound, "process definition not found")
+		return
+	}
+	if !workspaceAllowsRead(p.WorkspaceID, actorWorkspace(r)) {
 		writeError(w, http.StatusNotFound, "process definition not found")
 		return
 	}
@@ -85,6 +90,7 @@ func StartInstanceHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	inst := model.ProcessInstance{
 		TenantID:     actorTenant(r),
+		WorkspaceID:  def.WorkspaceID,
 		DefinitionID: defID,
 		Status:       "running",
 		CurrentNode:  def.StartNode,
@@ -114,7 +120,7 @@ func StartInstanceHandler(w http.ResponseWriter, r *http.Request) {
 
 func ListInstancesHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	items, err := store.ListInstances(r.Context(), actorTenant(r), q.Get("definition_id"), q.Get("status"))
+	items, err := store.ListInstances(r.Context(), actorTenant(r), q.Get("definition_id"), q.Get("status"), actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

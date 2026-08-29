@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"geointel/pkg/model"
 )
@@ -20,29 +21,33 @@ func CreateLayer(ctx context.Context, l *model.GeoLayer) error {
 		l.GeometryType = "polygon"
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO geo_layers (id, tenant_id, name, kind, geometry_type, source, tile_layer, metadata, status, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		l.ID, l.TenantID, l.Name, l.Kind, l.GeometryType, l.Source, l.TileLayer, jsonB(l.Metadata), l.Status, l.CreatedBy, l.CreatedAt, l.UpdatedAt)
+		INSERT INTO geo_layers (id, tenant_id, workspace_id, name, kind, geometry_type, source, tile_layer, metadata, status, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		l.ID, l.TenantID, l.WorkspaceID, l.Name, l.Kind, l.GeometryType, l.Source, l.TileLayer, jsonB(l.Metadata), l.Status, l.CreatedBy, l.CreatedAt, l.UpdatedAt)
 	return err
 }
 
 func scanLayer(row row) (*model.GeoLayer, error) {
 	var l model.GeoLayer
 	var meta []byte
-	if err := row.Scan(&l.ID, &l.TenantID, &l.Name, &l.Kind, &l.GeometryType, &l.Source, &l.TileLayer, &meta, &l.Status, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt); err != nil {
+	if err := row.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.Name, &l.Kind, &l.GeometryType, &l.Source, &l.TileLayer, &meta, &l.Status, &l.CreatedBy, &l.CreatedAt, &l.UpdatedAt); err != nil {
 		return nil, err
 	}
 	jsonUnmarshal(meta, &l.Metadata)
 	return &l, nil
 }
 
-const layerCols = `id, tenant_id, name, kind, geometry_type, source, tile_layer, metadata, status, created_by, created_at, updated_at`
+const layerCols = `id, tenant_id, name, kind, geometry_type, source, tile_layer, metadata, status, created_by, COALESCE(workspace_id, ''), created_at, updated_at`
 
-func ListLayers(ctx context.Context, tenantID, kind string) ([]model.GeoLayer, error) {
+func ListLayers(ctx context.Context, tenantID, kind, workspaceID string) ([]model.GeoLayer, error) {
 	query := `SELECT ` + layerCols + ` FROM geo_layers WHERE tenant_id=$1`
 	args := []interface{}{tenantID}
+	if workspaceID != "" {
+		query += ` AND (workspace_id=$2 OR workspace_id='')`
+		args = append(args, workspaceID)
+	}
 	if kind != "" {
-		query += ` AND kind=$2`
+		query += fmt.Sprintf(` AND kind=$%d`, len(args)+1)
 		args = append(args, kind)
 	}
 	query += ` ORDER BY created_at DESC`

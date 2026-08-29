@@ -11,7 +11,7 @@ import (
 // ─── Layers (P44 GIS service) ────────────────────────────────────────────────
 
 func ListLayersHandler(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListLayers(r.Context(), actorTenant(r), r.URL.Query().Get("kind"))
+	items, err := store.ListLayers(r.Context(), actorTenant(r), r.URL.Query().Get("kind"), actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -30,6 +30,7 @@ func CreateLayerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l.TenantID = actorTenant(r)
+	l.WorkspaceID = actorWorkspace(r)
 	l.CreatedBy = actorID(r)
 	if err := store.CreateLayer(r.Context(), &l); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -45,11 +46,24 @@ func GetLayerHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "layer not found")
 		return
 	}
+	if !workspaceAllowsRead(l.WorkspaceID, actorWorkspace(r)) {
+		writeError(w, http.StatusNotFound, "layer not found")
+		return
+	}
 	writeJSON(w, http.StatusOK, l)
 }
 
 func DeleteLayerHandler(w http.ResponseWriter, r *http.Request) {
 	id := varsOf(r)["id"]
+	l, err := store.GetLayer(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "layer not found")
+		return
+	}
+	if !workspaceAllowsRead(l.WorkspaceID, actorWorkspace(r)) {
+		writeError(w, http.StatusNotFound, "layer not found")
+		return
+	}
 	if err := store.DeleteLayer(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
