@@ -1,0 +1,299 @@
+---
+# PMS API (Go)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-pms-api
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-pms-api
+  template:
+    metadata:
+      labels:
+        app: statgate-pms-api
+    spec:
+      containers:
+      - name: pms-api
+        image: analytic-statgate-pms-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        - name: PMS_ENV
+          value: "production"
+        - name: BIND_ADDRESS
+          value: "0.0.0.0"
+        - name: PMS_DB_HOST
+          value: "postgres"
+        - name: PMS_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: POSTGRES_PORT
+        - name: PMS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: PMS_DB_NAME
+        - name: PMS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: PMS_DB_USER
+        - name: PMS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: PMS_DB_PASSWORD
+        - name: STATCHAT_API_URL
+          value: "http://statchat-backend:4000"
+        - name: STATGATE_REGISTRY_API_URL
+          value: "http://statgate-registry-api:9090/api"
+        - name: HELPDESK_API_URL
+          value: "http://statgate-helpdesk-api:5000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-pms-api
+  namespace: statgate
+  labels:
+    app: statgate-pms-api
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-pms-api
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+
+---
+# PMS UI (React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-pms-ui
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-pms-ui
+  template:
+    metadata:
+      labels:
+        app: statgate-pms-ui
+    spec:
+      containers:
+      - name: pms-ui
+        image: analytic-statgate-pms-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: VITE_PMS_API_URL
+          value: "http://statgate-pms-api:8080"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-pms-ui
+  namespace: statgate
+  labels:
+    app: statgate-pms-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-pms-ui
+  ports:
+  - port: 3010
+    targetPort: 80
+    protocol: TCP
+    name: http
+
+---
+# RMS API (Go)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-rms-api
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-rms-api
+  template:
+    metadata:
+      labels:
+        app: statgate-rms-api
+    spec:
+      containers:
+      - name: rms-api
+        image: analytic-statgate-rms-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        - name: RMS_ENV
+          value: "production"
+        - name: BIND_ADDRESS
+          value: "0.0.0.0"
+        - name: RMS_DB_HOST
+          value: "postgres"
+        - name: RMS_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: POSTGRES_PORT
+        - name: RMS_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: RMS_DB_NAME
+        - name: RMS_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: RMS_DB_USER
+        - name: RMS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: RMS_DB_PASSWORD
+        - name: STATCHAT_API_URL
+          value: "http://statchat-backend:4000"
+        - name: STATGATE_REGISTRY_API_URL
+          value: "http://statgate-registry-api:9090/api"
+        - name: HELPDESK_API_URL
+          value: "http://statgate-helpdesk-api:5000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-rms-api
+  namespace: statgate
+  labels:
+    app: statgate-rms-api
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-rms-api
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+
+---
+# RMS UI (React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-rms-ui
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-rms-ui
+  template:
+    metadata:
+      labels:
+        app: statgate-rms-ui
+    spec:
+      containers:
+      - name: rms-ui
+        image: analytic-statgate-rms-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: VITE_RMS_API_URL
+          value: "http://statgate-rms-api:8080"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-rms-ui
+  namespace: statgate
+  labels:
+    app: statgate-rms-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-rms-ui
+  ports:
+  - port: 3011
+    targetPort: 80
+    protocol: TCP
+    name: http

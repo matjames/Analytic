@@ -4,3 +4,4 @@ dist
 frontend/dist
 .env
 backend/bin
+/...md

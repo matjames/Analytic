@@ -76,6 +76,18 @@ type PGStore struct {
 	db *sql.DB
 }
 
+func workspaceFromContext(ctx context.Context) string {
+	workspaceID, _ := ctx.Value("workspace_id").(string)
+	return workspaceID
+}
+
+func nullableWorkspace(workspaceID string) interface{} {
+	if workspaceID == "" {
+		return nil
+	}
+	return workspaceID
+}
+
 // MemStore implements an in-memory Store fallback for standalone unit testing
 type MemStore struct {
 	mu          sync.RWMutex
@@ -118,64 +130,64 @@ func (m *MemStore) seedDefaultData() {
 	now := time.Now().UTC()
 	// Seed HQ Node
 	hq := &models.FederatedNode{
-		ID:           "node-nss-001",
-		Name:         "National Statistical Bureau HQ",
-		Code:         "NSS-NSB-HQ",
-		NodeType:     models.NodeTypeNSSAgency,
-		Jurisdiction: "NATIONAL",
-		EndpointURL:  "https://nss.gov.statgate/api/v1",
-		HealthStatus: models.HealthStatusHealthy,
-		TrustLevel:   models.TrustLevelTier1Sovereign,
-		Protocols:    []string{"SDMX-REST", "StatGate-JSON"},
-		Capabilities: []string{"AGGREGATE_QUERY", "MICRODATA_EXCHANGE", "METADATA_HARMONIZATION"},
-		TenantID:     "default",
-		ContactEmail: "director@nss.gov.statgate",
+		ID:            "node-nss-001",
+		Name:          "National Statistical Bureau HQ",
+		Code:          "NSS-NSB-HQ",
+		NodeType:      models.NodeTypeNSSAgency,
+		Jurisdiction:  "NATIONAL",
+		EndpointURL:   "https://nss.gov.statgate/api/v1",
+		HealthStatus:  models.HealthStatusHealthy,
+		TrustLevel:    models.TrustLevelTier1Sovereign,
+		Protocols:     []string{"SDMX-REST", "StatGate-JSON"},
+		Capabilities:  []string{"AGGREGATE_QUERY", "MICRODATA_EXCHANGE", "METADATA_HARMONIZATION"},
+		TenantID:      "default",
+		ContactEmail:  "director@nss.gov.statgate",
 		LastHeartbeat: &now,
-		LatencyMs:    15,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		LatencyMs:     15,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	m.nodes[hq.ID] = hq
 
 	// Seed Ministry of Health Node
 	moh := &models.FederatedNode{
-		ID:           "node-moh-002",
-		Name:         "Ministry of Health - HMIS Data Hub",
-		Code:         "NSS-MOH-HMIS",
-		NodeType:     models.NodeTypeMinistry,
-		Jurisdiction: "NATIONAL",
-		EndpointURL:  "https://hmis.health.gov.statgate/api/federation",
-		HealthStatus: models.HealthStatusHealthy,
-		TrustLevel:   models.TrustLevelTier2DomesticAgency,
-		Protocols:    []string{"StatGate-JSON", "DHIS2-REST"},
-		Capabilities: []string{"AGGREGATE_QUERY", "HEALTH_SURVEILLANCE"},
-		TenantID:     "default",
-		ContactEmail: "informatics@health.gov.statgate",
+		ID:            "node-moh-002",
+		Name:          "Ministry of Health - HMIS Data Hub",
+		Code:          "NSS-MOH-HMIS",
+		NodeType:      models.NodeTypeMinistry,
+		Jurisdiction:  "NATIONAL",
+		EndpointURL:   "https://hmis.health.gov.statgate/api/federation",
+		HealthStatus:  models.HealthStatusHealthy,
+		TrustLevel:    models.TrustLevelTier2DomesticAgency,
+		Protocols:     []string{"StatGate-JSON", "DHIS2-REST"},
+		Capabilities:  []string{"AGGREGATE_QUERY", "HEALTH_SURVEILLANCE"},
+		TenantID:      "default",
+		ContactEmail:  "informatics@health.gov.statgate",
 		LastHeartbeat: &now,
-		LatencyMs:    32,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		LatencyMs:     32,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	m.nodes[moh.ID] = moh
 
 	// Seed AU STATAFRIC Node
 	au := &models.FederatedNode{
-		ID:           "node-au-003",
-		Name:         "African Union Commission - STATAFRIC Gateway",
-		Code:         "INTL-AU-STATAFRIC",
-		NodeType:     models.NodeTypeRegionalBloc,
-		Jurisdiction: "AFRICAN_UNION",
-		EndpointURL:  "https://statafric.au.int/api/v2",
-		HealthStatus: models.HealthStatusHealthy,
-		TrustLevel:   models.TrustLevelTier3RegionalPartner,
-		Protocols:    []string{"SDMX-REST", "StatGate-JSON"},
-		Capabilities: []string{"CONTINENTAL_BENCHMARKING", "AGENDA_2063_EXCHANGE"},
-		TenantID:     "default",
-		ContactEmail: "data-gateway@au.int",
+		ID:            "node-au-003",
+		Name:          "African Union Commission - STATAFRIC Gateway",
+		Code:          "INTL-AU-STATAFRIC",
+		NodeType:      models.NodeTypeRegionalBloc,
+		Jurisdiction:  "AFRICAN_UNION",
+		EndpointURL:   "https://statafric.au.int/api/v2",
+		HealthStatus:  models.HealthStatusHealthy,
+		TrustLevel:    models.TrustLevelTier3RegionalPartner,
+		Protocols:     []string{"SDMX-REST", "StatGate-JSON"},
+		Capabilities:  []string{"CONTINENTAL_BENCHMARKING", "AGENDA_2063_EXCHANGE"},
+		TenantID:      "default",
+		ContactEmail:  "data-gateway@au.int",
 		LastHeartbeat: &now,
-		LatencyMs:    110,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		LatencyMs:     110,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	m.nodes[au.ID] = au
 
@@ -720,8 +732,8 @@ func (p *PGStore) RegisterNode(ctx context.Context, node *models.FederatedNode) 
 		INSERT INTO statfederation.federated_nodes (
 			id, name, code, node_type, jurisdiction, endpoint_url,
 			health_status, trust_level, public_key, protocols,
-			capabilities, tenant_id, contact_email, latency_ms
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			capabilities, tenant_id, workspace_id, contact_email, latency_ms
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			endpoint_url = EXCLUDED.endpoint_url,
@@ -733,7 +745,7 @@ func (p *PGStore) RegisterNode(ctx context.Context, node *models.FederatedNode) 
 	_, err := p.db.ExecContext(ctx, query,
 		node.ID, node.Name, node.Code, string(node.NodeType), node.Jurisdiction, node.EndpointURL,
 		string(node.HealthStatus), string(node.TrustLevel), node.PublicKey, protocolsJSON,
-		capabilitiesJSON, node.TenantID, node.ContactEmail, node.LatencyMs,
+		capabilitiesJSON, node.TenantID, nullableWorkspace(node.WorkspaceID), node.ContactEmail, node.LatencyMs,
 	)
 	return err
 }
@@ -742,11 +754,11 @@ func (p *PGStore) GetNodeByID(ctx context.Context, id string) (*models.Federated
 	query := `
 		SELECT id, name, code, node_type, jurisdiction, endpoint_url,
 		       health_status, trust_level, COALESCE(public_key, ''), protocols,
-		       capabilities, tenant_id, COALESCE(contact_email, ''), last_heartbeat,
+		       capabilities, tenant_id, COALESCE(workspace_id, ''), COALESCE(contact_email, ''), last_heartbeat,
 		       latency_ms, created_at, updated_at
-		FROM statfederation.federated_nodes WHERE id = $1
+		FROM statfederation.federated_nodes WHERE id = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var n models.FederatedNode
 	var protocolsJSON, capabilitiesJSON []byte
 	var nodeTypeStr, healthStr, trustStr string
@@ -754,7 +766,7 @@ func (p *PGStore) GetNodeByID(ctx context.Context, id string) (*models.Federated
 	err := row.Scan(
 		&n.ID, &n.Name, &n.Code, &nodeTypeStr, &n.Jurisdiction, &n.EndpointURL,
 		&healthStr, &trustStr, &n.PublicKey, &protocolsJSON,
-		&capabilitiesJSON, &n.TenantID, &n.ContactEmail, &n.LastHeartbeat,
+		&capabilitiesJSON, &n.TenantID, &n.WorkspaceID, &n.ContactEmail, &n.LastHeartbeat,
 		&n.LatencyMs, &n.CreatedAt, &n.UpdatedAt,
 	)
 	if err != nil {
@@ -772,11 +784,11 @@ func (p *PGStore) GetNodeByCode(ctx context.Context, code string) (*models.Feder
 	query := `
 		SELECT id, name, code, node_type, jurisdiction, endpoint_url,
 		       health_status, trust_level, COALESCE(public_key, ''), protocols,
-		       capabilities, tenant_id, COALESCE(contact_email, ''), last_heartbeat,
+		       capabilities, tenant_id, COALESCE(workspace_id, ''), COALESCE(contact_email, ''), last_heartbeat,
 		       latency_ms, created_at, updated_at
-		FROM statfederation.federated_nodes WHERE code = $1
+		FROM statfederation.federated_nodes WHERE code = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, code)
+	row := p.db.QueryRowContext(ctx, query, code, workspaceFromContext(ctx))
 	var n models.FederatedNode
 	var protocolsJSON, capabilitiesJSON []byte
 	var nodeTypeStr, healthStr, trustStr string
@@ -784,7 +796,7 @@ func (p *PGStore) GetNodeByCode(ctx context.Context, code string) (*models.Feder
 	err := row.Scan(
 		&n.ID, &n.Name, &n.Code, &nodeTypeStr, &n.Jurisdiction, &n.EndpointURL,
 		&healthStr, &trustStr, &n.PublicKey, &protocolsJSON,
-		&capabilitiesJSON, &n.TenantID, &n.ContactEmail, &n.LastHeartbeat,
+		&capabilitiesJSON, &n.TenantID, &n.WorkspaceID, &n.ContactEmail, &n.LastHeartbeat,
 		&n.LatencyMs, &n.CreatedAt, &n.UpdatedAt,
 	)
 	if err != nil {
@@ -802,15 +814,16 @@ func (p *PGStore) ListNodes(ctx context.Context, tenantID, nodeType, jurisdictio
 	query := `
 		SELECT id, name, code, node_type, jurisdiction, endpoint_url,
 		       health_status, trust_level, COALESCE(public_key, ''), protocols,
-		       capabilities, tenant_id, COALESCE(contact_email, ''), last_heartbeat,
+		       capabilities, tenant_id, COALESCE(workspace_id, ''), COALESCE(contact_email, ''), last_heartbeat,
 		       latency_ms, created_at, updated_at
 		FROM statfederation.federated_nodes
 		WHERE ($1 = '' OR tenant_id = $1 OR tenant_id = 'default')
 		  AND ($2 = '' OR node_type = $2)
 		  AND ($3 = '' OR jurisdiction = $3)
+		  AND ($4 = '' OR workspace_id = $4)
 		ORDER BY name ASC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, nodeType, jurisdiction)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, nodeType, jurisdiction, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -824,7 +837,7 @@ func (p *PGStore) ListNodes(ctx context.Context, tenantID, nodeType, jurisdictio
 		if err := rows.Scan(
 			&n.ID, &n.Name, &n.Code, &nodeTypeStr, &n.Jurisdiction, &n.EndpointURL,
 			&healthStr, &trustStr, &n.PublicKey, &protocolsJSON,
-			&capabilitiesJSON, &n.TenantID, &n.ContactEmail, &n.LastHeartbeat,
+			&capabilitiesJSON, &n.TenantID, &n.WorkspaceID, &n.ContactEmail, &n.LastHeartbeat,
 			&n.LatencyMs, &n.CreatedAt, &n.UpdatedAt,
 		); err != nil {
 			log.Printf("[PGStore:ListNodes] scan error: %v", err)
@@ -844,9 +857,9 @@ func (p *PGStore) UpdateNodeStatus(ctx context.Context, id string, status models
 	query := `
 		UPDATE statfederation.federated_nodes
 		SET health_status = $2, latency_ms = $3, last_heartbeat = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND ($4 = '' OR workspace_id = $4)
 	`
-	_, err := p.db.ExecContext(ctx, query, id, string(status), latencyMs)
+	_, err := p.db.ExecContext(ctx, query, id, string(status), latencyMs, workspaceFromContext(ctx))
 	return err
 }
 
@@ -865,14 +878,14 @@ func (p *PGStore) CreateDSA(ctx context.Context, dsa *models.DataSharingAgreemen
 			status, access_tier, permitted_domains, classification_allowed,
 			requires_approval, purpose, valid_from, valid_until,
 			rate_limit_per_min, daily_quota, current_daily_usage,
-			tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		dsa.ID, dsa.DSANumber, dsa.Title, dsa.ProviderNodeID, dsa.ConsumerNodeID,
 		string(dsa.Status), dsa.AccessTier, domainsJSON, dsa.ClassificationAllowed,
 		dsa.RequiresApproval, dsa.Purpose, dsa.ValidFrom, dsa.ValidUntil,
-		dsa.RateLimitPerMin, dsa.DailyQuota, dsa.CurrentDailyUsage, dsa.TenantID,
+		dsa.RateLimitPerMin, dsa.DailyQuota, dsa.CurrentDailyUsage, dsa.TenantID, nullableWorkspace(dsa.WorkspaceID),
 	)
 	return err
 }
@@ -884,10 +897,10 @@ func (p *PGStore) GetDSAByID(ctx context.Context, id string) (*models.DataSharin
 		       requires_approval, purpose, valid_from, valid_until,
 		       rate_limit_per_min, daily_quota, current_daily_usage,
 		       COALESCE(governance_approved_by, ''), governance_approved_at,
-		       tenant_id, created_at, updated_at
-		FROM statfederation.data_sharing_agreements WHERE id = $1
+			tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
+		FROM statfederation.data_sharing_agreements WHERE id = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var d models.DataSharingAgreement
 	var domainsJSON []byte
 	var statusStr string
@@ -898,7 +911,7 @@ func (p *PGStore) GetDSAByID(ctx context.Context, id string) (*models.DataSharin
 		&d.RequiresApproval, &d.Purpose, &d.ValidFrom, &d.ValidUntil,
 		&d.RateLimitPerMin, &d.DailyQuota, &d.CurrentDailyUsage,
 		&d.GovernanceApprovedBy, &d.GovernanceApprovedAt,
-		&d.TenantID, &d.CreatedAt, &d.UpdatedAt,
+		&d.TenantID, &d.WorkspaceID, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -915,13 +928,14 @@ func (p *PGStore) ListDSAs(ctx context.Context, tenantID, status string) ([]*mod
 		       requires_approval, purpose, valid_from, valid_until,
 		       rate_limit_per_min, daily_quota, current_daily_usage,
 		       COALESCE(governance_approved_by, ''), governance_approved_at,
-		       tenant_id, created_at, updated_at
+			tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statfederation.data_sharing_agreements
 		WHERE ($1 = '' OR tenant_id = $1 OR tenant_id = 'default')
 		  AND ($2 = '' OR status = $2)
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, status)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, status, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -938,7 +952,7 @@ func (p *PGStore) ListDSAs(ctx context.Context, tenantID, status string) ([]*mod
 			&d.RequiresApproval, &d.Purpose, &d.ValidFrom, &d.ValidUntil,
 			&d.RateLimitPerMin, &d.DailyQuota, &d.CurrentDailyUsage,
 			&d.GovernanceApprovedBy, &d.GovernanceApprovedAt,
-			&d.TenantID, &d.CreatedAt, &d.UpdatedAt,
+			&d.TenantID, &d.WorkspaceID, &d.CreatedAt, &d.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -953,9 +967,9 @@ func (p *PGStore) UpdateDSAStatus(ctx context.Context, id string, status models.
 	query := `
 		UPDATE statfederation.data_sharing_agreements
 		SET status = $2, governance_approved_by = $3, governance_approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND ($4 = '' OR workspace_id = $4)
 	`
-	_, err := p.db.ExecContext(ctx, query, id, string(status), approvedBy)
+	_, err := p.db.ExecContext(ctx, query, id, string(status), approvedBy, workspaceFromContext(ctx))
 	return err
 }
 
@@ -966,13 +980,14 @@ func (p *PGStore) FindActiveDSA(ctx context.Context, providerID, consumerID, dom
 		       requires_approval, purpose, valid_from, valid_until,
 		       rate_limit_per_min, daily_quota, current_daily_usage,
 		       COALESCE(governance_approved_by, ''), governance_approved_at,
-		       tenant_id, created_at, updated_at
+			tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statfederation.data_sharing_agreements
 		WHERE provider_node_id = $1 AND consumer_node_id = $2
 		  AND status = 'ACTIVE'
 		  AND CURRENT_TIMESTAMP BETWEEN valid_from AND valid_until
+		  AND ($3 = '' OR workspace_id = $3)
 	`
-	rows, err := p.db.QueryContext(ctx, query, providerID, consumerID)
+	rows, err := p.db.QueryContext(ctx, query, providerID, consumerID, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -988,7 +1003,7 @@ func (p *PGStore) FindActiveDSA(ctx context.Context, providerID, consumerID, dom
 			&d.RequiresApproval, &d.Purpose, &d.ValidFrom, &d.ValidUntil,
 			&d.RateLimitPerMin, &d.DailyQuota, &d.CurrentDailyUsage,
 			&d.GovernanceApprovedBy, &d.GovernanceApprovedAt,
-			&d.TenantID, &d.CreatedAt, &d.UpdatedAt,
+			&d.TenantID, &d.WorkspaceID, &d.CreatedAt, &d.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -1019,14 +1034,14 @@ func (p *PGStore) CreateIndicator(ctx context.Context, ind *models.NationalIndic
 			calculation_method, frequency, target_value, current_value,
 			baseline_value, baseline_year, unit_of_measure, tier,
 			disaggregation_dimensions, is_official_statistic,
-			calendar_release_date, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+			calendar_release_date, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		ind.ID, ind.Code, ind.Title, ind.Domain, ind.SDMXDimension, ind.LeadAgencyID,
 		ind.CalculationMethod, ind.Frequency, ind.TargetValue, ind.CurrentValue,
 		ind.BaselineValue, ind.BaselineYear, ind.UnitOfMeasure, ind.Tier,
-		dimsJSON, ind.IsOfficialStatistic, ind.CalendarReleaseDate, ind.TenantID,
+		dimsJSON, ind.IsOfficialStatistic, ind.CalendarReleaseDate, ind.TenantID, nullableWorkspace(ind.WorkspaceID),
 	)
 	return err
 }
@@ -1038,12 +1053,12 @@ func (p *PGStore) GetIndicatorByID(ctx context.Context, id string) (*models.Nati
 		       i.frequency, i.target_value, i.current_value, i.baseline_value,
 		       i.baseline_year, COALESCE(i.unit_of_measure, ''), i.tier,
 		       i.disaggregation_dimensions, i.is_official_statistic,
-		       i.calendar_release_date, i.tenant_id, i.created_at, i.updated_at
+		       i.calendar_release_date, i.tenant_id, COALESCE(i.workspace_id, ''), i.created_at, i.updated_at
 		FROM statfederation.national_indicators i
 		LEFT JOIN statfederation.federated_nodes n ON i.lead_agency_id = n.id
-		WHERE i.id = $1
+		WHERE i.id = $1 AND ($2 = '' OR i.workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var ind models.NationalIndicator
 	var dimsJSON []byte
 
@@ -1053,7 +1068,7 @@ func (p *PGStore) GetIndicatorByID(ctx context.Context, id string) (*models.Nati
 		&ind.Frequency, &ind.TargetValue, &ind.CurrentValue, &ind.BaselineValue,
 		&ind.BaselineYear, &ind.UnitOfMeasure, &ind.Tier,
 		&dimsJSON, &ind.IsOfficialStatistic,
-		&ind.CalendarReleaseDate, &ind.TenantID, &ind.CreatedAt, &ind.UpdatedAt,
+		&ind.CalendarReleaseDate, &ind.TenantID, &ind.WorkspaceID, &ind.CreatedAt, &ind.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1069,12 +1084,12 @@ func (p *PGStore) GetIndicatorByCode(ctx context.Context, code string) (*models.
 		       i.frequency, i.target_value, i.current_value, i.baseline_value,
 		       i.baseline_year, COALESCE(i.unit_of_measure, ''), i.tier,
 		       i.disaggregation_dimensions, i.is_official_statistic,
-		       i.calendar_release_date, i.tenant_id, i.created_at, i.updated_at
+		       i.calendar_release_date, i.tenant_id, COALESCE(i.workspace_id, ''), i.created_at, i.updated_at
 		FROM statfederation.national_indicators i
 		LEFT JOIN statfederation.federated_nodes n ON i.lead_agency_id = n.id
-		WHERE i.code = $1
+		WHERE i.code = $1 AND ($2 = '' OR i.workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, code)
+	row := p.db.QueryRowContext(ctx, query, code, workspaceFromContext(ctx))
 	var ind models.NationalIndicator
 	var dimsJSON []byte
 
@@ -1084,7 +1099,7 @@ func (p *PGStore) GetIndicatorByCode(ctx context.Context, code string) (*models.
 		&ind.Frequency, &ind.TargetValue, &ind.CurrentValue, &ind.BaselineValue,
 		&ind.BaselineYear, &ind.UnitOfMeasure, &ind.Tier,
 		&dimsJSON, &ind.IsOfficialStatistic,
-		&ind.CalendarReleaseDate, &ind.TenantID, &ind.CreatedAt, &ind.UpdatedAt,
+		&ind.CalendarReleaseDate, &ind.TenantID, &ind.WorkspaceID, &ind.CreatedAt, &ind.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1100,14 +1115,15 @@ func (p *PGStore) ListIndicators(ctx context.Context, tenantID, domain string) (
 		       i.frequency, i.target_value, i.current_value, i.baseline_value,
 		       i.baseline_year, COALESCE(i.unit_of_measure, ''), i.tier,
 		       i.disaggregation_dimensions, i.is_official_statistic,
-		       i.calendar_release_date, i.tenant_id, i.created_at, i.updated_at
+		       i.calendar_release_date, i.tenant_id, COALESCE(i.workspace_id, ''), i.created_at, i.updated_at
 		FROM statfederation.national_indicators i
 		LEFT JOIN statfederation.federated_nodes n ON i.lead_agency_id = n.id
 		WHERE ($1 = '' OR i.tenant_id = $1 OR i.tenant_id = 'default')
 		  AND ($2 = '' OR i.domain = $2)
+		  AND ($3 = '' OR i.workspace_id = $3)
 		ORDER BY i.code ASC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, domain)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, domain, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1123,7 +1139,7 @@ func (p *PGStore) ListIndicators(ctx context.Context, tenantID, domain string) (
 			&ind.Frequency, &ind.TargetValue, &ind.CurrentValue, &ind.BaselineValue,
 			&ind.BaselineYear, &ind.UnitOfMeasure, &ind.Tier,
 			&dimsJSON, &ind.IsOfficialStatistic,
-			&ind.CalendarReleaseDate, &ind.TenantID, &ind.CreatedAt, &ind.UpdatedAt,
+			&ind.CalendarReleaseDate, &ind.TenantID, &ind.WorkspaceID, &ind.CreatedAt, &ind.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -1137,9 +1153,9 @@ func (p *PGStore) UpdateIndicatorValues(ctx context.Context, id string, currentV
 	query := `
 		UPDATE statfederation.national_indicators
 		SET current_value = $2, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND ($3 = '' OR workspace_id = $3)
 	`
-	_, err := p.db.ExecContext(ctx, query, id, currentVal)
+	_, err := p.db.ExecContext(ctx, query, id, currentVal, workspaceFromContext(ctx))
 	return err
 }
 
@@ -1156,13 +1172,13 @@ func (p *PGStore) RecordQuery(ctx context.Context, q *models.DistributedQueryRec
 			id, query_name, initiator_user_id, initiator_tenant_id,
 			target_nodes, query_syntax, execution_strategy, status,
 			dispatch_timestamp, total_records_retrieved, execution_time_ms,
-			node_responses, error_summary
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12)
+			node_responses, error_summary, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		q.ID, q.QueryName, q.InitiatorUserID, q.InitiatorTenantID,
 		targetsJSON, syntaxJSON, q.ExecutionStrategy, string(q.Status),
-		q.TotalRecordsRetrieved, q.ExecutionTimeMs, responsesJSON, q.ErrorSummary,
+		q.TotalRecordsRetrieved, q.ExecutionTimeMs, responsesJSON, q.ErrorSummary, nullableWorkspace(q.WorkspaceID),
 	)
 	return err
 }
@@ -1172,10 +1188,10 @@ func (p *PGStore) GetQueryByID(ctx context.Context, id string) (*models.Distribu
 		SELECT id, query_name, initiator_user_id, initiator_tenant_id,
 		       target_nodes, query_syntax, execution_strategy, status,
 		       dispatch_timestamp, completed_timestamp, total_records_retrieved,
-		       execution_time_ms, node_responses, COALESCE(error_summary, ''), created_at
-		FROM statfederation.distributed_queries WHERE id = $1
+		       execution_time_ms, node_responses, COALESCE(error_summary, ''), COALESCE(workspace_id, ''), created_at
+		FROM statfederation.distributed_queries WHERE id = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var q models.DistributedQueryRecord
 	var targetsJSON, syntaxJSON, responsesJSON []byte
 	var statusStr string
@@ -1184,7 +1200,7 @@ func (p *PGStore) GetQueryByID(ctx context.Context, id string) (*models.Distribu
 		&q.ID, &q.QueryName, &q.InitiatorUserID, &q.InitiatorTenantID,
 		&targetsJSON, &syntaxJSON, &q.ExecutionStrategy, &statusStr,
 		&q.DispatchTimestamp, &q.CompletedTimestamp, &q.TotalRecordsRetrieved,
-		&q.ExecutionTimeMs, &responsesJSON, &q.ErrorSummary, &q.CreatedAt,
+		&q.ExecutionTimeMs, &responsesJSON, &q.ErrorSummary, &q.WorkspaceID, &q.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1204,13 +1220,14 @@ func (p *PGStore) ListQueries(ctx context.Context, tenantID string, limit int) (
 		SELECT id, query_name, initiator_user_id, initiator_tenant_id,
 		       target_nodes, query_syntax, execution_strategy, status,
 		       dispatch_timestamp, completed_timestamp, total_records_retrieved,
-		       execution_time_ms, node_responses, COALESCE(error_summary, ''), created_at
+		       execution_time_ms, node_responses, COALESCE(error_summary, ''), COALESCE(workspace_id, ''), created_at
 		FROM statfederation.distributed_queries
 		WHERE ($1 = '' OR initiator_tenant_id = $1 OR initiator_tenant_id = 'default')
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY dispatch_timestamp DESC
 		LIMIT $2
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, limit)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, limit, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1225,7 +1242,7 @@ func (p *PGStore) ListQueries(ctx context.Context, tenantID string, limit int) (
 			&q.ID, &q.QueryName, &q.InitiatorUserID, &q.InitiatorTenantID,
 			&targetsJSON, &syntaxJSON, &q.ExecutionStrategy, &statusStr,
 			&q.DispatchTimestamp, &q.CompletedTimestamp, &q.TotalRecordsRetrieved,
-			&q.ExecutionTimeMs, &responsesJSON, &q.ErrorSummary, &q.CreatedAt,
+			&q.ExecutionTimeMs, &responsesJSON, &q.ErrorSummary, &q.WorkspaceID, &q.CreatedAt,
 		); err != nil {
 			continue
 		}
@@ -1245,9 +1262,9 @@ func (p *PGStore) UpdateQueryExecution(ctx context.Context, id string, status mo
 		SET status = $2, completed_timestamp = CURRENT_TIMESTAMP,
 		    total_records_retrieved = $3, execution_time_ms = $4,
 		    node_responses = $5, error_summary = $6
-		WHERE id = $1
+		WHERE id = $1 AND ($7 = '' OR workspace_id = $7)
 	`
-	_, err := p.db.ExecContext(ctx, query, id, string(status), totalRecords, execTimeMs, responsesJSON, errSummary)
+	_, err := p.db.ExecContext(ctx, query, id, string(status), totalRecords, execTimeMs, responsesJSON, errSummary, workspaceFromContext(ctx))
 	return err
 }
 
@@ -1260,13 +1277,13 @@ func (p *PGStore) CreateVocabulary(ctx context.Context, v *models.MetadataVocabu
 		INSERT INTO statfederation.metadata_vocabularies (
 			id, vocabulary_name, standard_framework, source_agency,
 			target_canonical_concept, source_concept_term, mapping_rules,
-			transformation_expression, status, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			transformation_expression, status, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		v.ID, v.VocabularyName, v.StandardFramework, v.SourceAgency,
 		v.TargetCanonicalConcept, v.SourceConceptTerm, rulesJSON,
-		v.TransformationExpression, v.Status, v.TenantID,
+		v.TransformationExpression, v.Status, v.TenantID, nullableWorkspace(v.WorkspaceID),
 	)
 	return err
 }
@@ -1275,13 +1292,14 @@ func (p *PGStore) ListVocabularies(ctx context.Context, tenantID, agency string)
 	query := `
 		SELECT id, vocabulary_name, standard_framework, source_agency,
 		       target_canonical_concept, source_concept_term, mapping_rules,
-		       COALESCE(transformation_expression, ''), status, tenant_id, created_at, updated_at
+		       COALESCE(transformation_expression, ''), status, tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statfederation.metadata_vocabularies
 		WHERE ($1 = '' OR tenant_id = $1 OR tenant_id = 'default')
 		  AND ($2 = '' OR source_agency = $2)
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY vocabulary_name ASC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, agency)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, agency, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1294,7 +1312,7 @@ func (p *PGStore) ListVocabularies(ctx context.Context, tenantID, agency string)
 		if err := rows.Scan(
 			&v.ID, &v.VocabularyName, &v.StandardFramework, &v.SourceAgency,
 			&v.TargetCanonicalConcept, &v.SourceConceptTerm, &rulesJSON,
-			&v.TransformationExpression, &v.Status, &v.TenantID, &v.CreatedAt, &v.UpdatedAt,
+			&v.TransformationExpression, &v.Status, &v.TenantID, &v.WorkspaceID, &v.CreatedAt, &v.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -1316,14 +1334,14 @@ func (p *PGStore) CreateTreaty(ctx context.Context, t *models.DiplomaticTreaty) 
 			id, treaty_code, title, partner_states, jurisdiction,
 			framework_type, status, ratification_date, expiry_date,
 			governing_body, compliance_rules, data_localization_required,
-			encryption_standard, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			encryption_standard, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		t.ID, t.TreatyCode, t.Title, partnersJSON, t.Jurisdiction,
 		t.FrameworkType, t.Status, t.RatificationDate, t.ExpiryDate,
 		t.GoverningBody, rulesJSON, t.DataLocalizationRequired,
-		t.EncryptionStandard, t.TenantID,
+		t.EncryptionStandard, t.TenantID, nullableWorkspace(t.WorkspaceID),
 	)
 	return err
 }
@@ -1333,10 +1351,10 @@ func (p *PGStore) GetTreatyByID(ctx context.Context, id string) (*models.Diploma
 		SELECT id, treaty_code, title, partner_states, jurisdiction,
 		       framework_type, status, ratification_date, expiry_date,
 		       governing_body, compliance_rules, data_localization_required,
-		       encryption_standard, tenant_id, created_at, updated_at
-		FROM statfederation.diplomatic_treaties WHERE id = $1
+		       encryption_standard, tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
+		FROM statfederation.diplomatic_treaties WHERE id = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var t models.DiplomaticTreaty
 	var partnersJSON, rulesJSON []byte
 
@@ -1344,7 +1362,7 @@ func (p *PGStore) GetTreatyByID(ctx context.Context, id string) (*models.Diploma
 		&t.ID, &t.TreatyCode, &t.Title, &partnersJSON, &t.Jurisdiction,
 		&t.FrameworkType, &t.Status, &t.RatificationDate, &t.ExpiryDate,
 		&t.GoverningBody, &rulesJSON, &t.DataLocalizationRequired,
-		&t.EncryptionStandard, &t.TenantID, &t.CreatedAt, &t.UpdatedAt,
+		&t.EncryptionStandard, &t.TenantID, &t.WorkspaceID, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1359,13 +1377,14 @@ func (p *PGStore) ListTreaties(ctx context.Context, tenantID, jurisdiction strin
 		SELECT id, treaty_code, title, partner_states, jurisdiction,
 		       framework_type, status, ratification_date, expiry_date,
 		       governing_body, compliance_rules, data_localization_required,
-		       encryption_standard, tenant_id, created_at, updated_at
+		       encryption_standard, tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statfederation.diplomatic_treaties
 		WHERE ($1 = '' OR tenant_id = $1 OR tenant_id = 'default')
 		  AND ($2 = '' OR jurisdiction = $2)
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY title ASC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, jurisdiction)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, jurisdiction, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1379,7 +1398,7 @@ func (p *PGStore) ListTreaties(ctx context.Context, tenantID, jurisdiction strin
 			&t.ID, &t.TreatyCode, &t.Title, &partnersJSON, &t.Jurisdiction,
 			&t.FrameworkType, &t.Status, &t.RatificationDate, &t.ExpiryDate,
 			&t.GoverningBody, &rulesJSON, &t.DataLocalizationRequired,
-			&t.EncryptionStandard, &t.TenantID, &t.CreatedAt, &t.UpdatedAt,
+			&t.EncryptionStandard, &t.TenantID, &t.WorkspaceID, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -1402,14 +1421,14 @@ func (p *PGStore) CreateReport(ctx context.Context, r *models.InternationalRepor
 			id, report_title, destination_body, reporting_period,
 			status, submission_hash, transferred_indicators,
 			compliance_passed, compliance_notes, submitted_by,
-			submitted_at, acknowledgement_receipt, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				submitted_at, acknowledgement_receipt, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		r.ID, r.ReportTitle, r.DestinationBody, r.ReportingPeriod,
 		r.Status, r.SubmissionHash, indsJSON,
 		r.CompliancePassed, r.ComplianceNotes, r.SubmittedBy,
-		r.SubmittedAt, receiptJSON, r.TenantID,
+		r.SubmittedAt, receiptJSON, r.TenantID, nullableWorkspace(r.WorkspaceID),
 	)
 	return err
 }
@@ -1419,10 +1438,10 @@ func (p *PGStore) GetReportByID(ctx context.Context, id string) (*models.Interna
 		SELECT id, report_title, destination_body, reporting_period,
 		       status, COALESCE(submission_hash, ''), transferred_indicators,
 		       compliance_passed, COALESCE(compliance_notes, ''), COALESCE(submitted_by, ''),
-		       submitted_at, acknowledgement_receipt, tenant_id, created_at, updated_at
-		FROM statfederation.international_reports WHERE id = $1
+			submitted_at, acknowledgement_receipt, tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
+		FROM statfederation.international_reports WHERE id = $1 AND ($2 = '' OR workspace_id = $2)
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	row := p.db.QueryRowContext(ctx, query, id, workspaceFromContext(ctx))
 	var r models.InternationalReport
 	var indsJSON, receiptJSON []byte
 
@@ -1430,7 +1449,7 @@ func (p *PGStore) GetReportByID(ctx context.Context, id string) (*models.Interna
 		&r.ID, &r.ReportTitle, &r.DestinationBody, &r.ReportingPeriod,
 		&r.Status, &r.SubmissionHash, &indsJSON,
 		&r.CompliancePassed, &r.ComplianceNotes, &r.SubmittedBy,
-		&r.SubmittedAt, &receiptJSON, &r.TenantID, &r.CreatedAt, &r.UpdatedAt,
+		&r.SubmittedAt, &receiptJSON, &r.TenantID, &r.WorkspaceID, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1445,13 +1464,14 @@ func (p *PGStore) ListReports(ctx context.Context, tenantID, destination string)
 		SELECT id, report_title, destination_body, reporting_period,
 		       status, COALESCE(submission_hash, ''), transferred_indicators,
 		       compliance_passed, COALESCE(compliance_notes, ''), COALESCE(submitted_by, ''),
-		       submitted_at, acknowledgement_receipt, tenant_id, created_at, updated_at
+			submitted_at, acknowledgement_receipt, tenant_id, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statfederation.international_reports
 		WHERE ($1 = '' OR tenant_id = $1 OR tenant_id = 'default')
 		  AND ($2 = '' OR destination_body = $2)
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, destination)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, destination, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1465,7 +1485,7 @@ func (p *PGStore) ListReports(ctx context.Context, tenantID, destination string)
 			&r.ID, &r.ReportTitle, &r.DestinationBody, &r.ReportingPeriod,
 			&r.Status, &r.SubmissionHash, &indsJSON,
 			&r.CompliancePassed, &r.ComplianceNotes, &r.SubmittedBy,
-			&r.SubmittedAt, &receiptJSON, &r.TenantID, &r.CreatedAt, &r.UpdatedAt,
+			&r.SubmittedAt, &receiptJSON, &r.TenantID, &r.WorkspaceID, &r.CreatedAt, &r.UpdatedAt,
 		); err != nil {
 			continue
 		}
@@ -1481,9 +1501,9 @@ func (p *PGStore) UpdateReportStatus(ctx context.Context, id string, status stri
 	query := `
 		UPDATE statfederation.international_reports
 		SET status = $2, submitted_at = CURRENT_TIMESTAMP, acknowledgement_receipt = $3, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
+		WHERE id = $1 AND ($4 = '' OR workspace_id = $4)
 	`
-	_, err := p.db.ExecContext(ctx, query, id, status, receiptJSON)
+	_, err := p.db.ExecContext(ctx, query, id, status, receiptJSON, workspaceFromContext(ctx))
 	return err
 }
 
@@ -1498,8 +1518,8 @@ func (p *PGStore) IndexRemoteResource(ctx context.Context, res *models.Federated
 		INSERT INTO statfederation.federated_search_indices (
 			id, node_id, resource_type, remote_resource_id, title,
 			abstract, keywords, classification, temporal_coverage,
-			spatial_coverage, direct_access_url, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			spatial_coverage, direct_access_url, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO UPDATE SET
 			title = EXCLUDED.title,
 			abstract = EXCLUDED.abstract,
@@ -1509,7 +1529,7 @@ func (p *PGStore) IndexRemoteResource(ctx context.Context, res *models.Federated
 	_, err := p.db.ExecContext(ctx, query,
 		id, res.NodeID, res.ResourceType, res.RemoteResourceID, res.Title,
 		res.Abstract, kwJSON, res.Classification, res.TemporalCoverage,
-		res.SpatialCoverage, res.DirectAccessURL, tenantID,
+		res.SpatialCoverage, res.DirectAccessURL, tenantID, nullableWorkspace(workspaceFromContext(ctx)),
 	)
 	return err
 }
@@ -1523,11 +1543,12 @@ func (p *PGStore) SearchFederatedResources(ctx context.Context, tenantID, queryS
 		FROM statfederation.federated_search_indices s
 		LEFT JOIN statfederation.federated_nodes n ON s.node_id = n.id
 		WHERE ($1 = '' OR s.tenant_id = $1 OR s.tenant_id = 'default')
+		  AND ($4 = '' OR s.workspace_id = $4)
 		  AND ($2 = '' OR s.resource_type = $2)
 		  AND ($3 = '' OR s.title ILIKE '%' || $3 || '%' OR s.abstract ILIKE '%' || $3 || '%')
 		LIMIT 50
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, resourceType, queryStr)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, resourceType, queryStr, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1564,14 +1585,14 @@ func (p *PGStore) LogComplianceEvent(ctx context.Context, logEntry *models.Compl
 			id, actor_user_id, actor_tenant_id, action,
 			source_jurisdiction, target_jurisdiction, resource_type,
 			resource_id, decision, applied_rules, redacted_fields,
-			policy_hash, reason
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			policy_hash, reason, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		logEntry.ID, logEntry.ActorUserID, logEntry.ActorTenantID, logEntry.Action,
 		logEntry.SourceJurisdiction, logEntry.TargetJurisdiction, logEntry.ResourceType,
 		logEntry.ResourceID, logEntry.Decision, rulesJSON, redactedJSON,
-		logEntry.PolicyHash, logEntry.Reason,
+		logEntry.PolicyHash, logEntry.Reason, nullableWorkspace(logEntry.WorkspaceID),
 	)
 	return err
 }
@@ -1584,13 +1605,14 @@ func (p *PGStore) ListComplianceLogs(ctx context.Context, tenantID string, limit
 		SELECT id, event_timestamp, actor_user_id, actor_tenant_id, action,
 		       source_jurisdiction, target_jurisdiction, resource_type,
 		       resource_id, decision, applied_rules, redacted_fields,
-		       policy_hash, COALESCE(reason, '')
+		       policy_hash, COALESCE(reason, ''), COALESCE(workspace_id, '')
 		FROM statfederation.compliance_audit_logs
 		WHERE ($1 = '' OR actor_tenant_id = $1 OR actor_tenant_id = 'default')
+		  AND ($3 = '' OR workspace_id = $3)
 		ORDER BY event_timestamp DESC
 		LIMIT $2
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, limit)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, limit, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1604,7 +1626,7 @@ func (p *PGStore) ListComplianceLogs(ctx context.Context, tenantID string, limit
 			&l.ID, &l.EventTimestamp, &l.ActorUserID, &l.ActorTenantID, &l.Action,
 			&l.SourceJurisdiction, &l.TargetJurisdiction, &l.ResourceType,
 			&l.ResourceID, &l.Decision, &rulesJSON, &redactedJSON,
-			&l.PolicyHash, &l.Reason,
+			&l.PolicyHash, &l.Reason, &l.WorkspaceID,
 		); err != nil {
 			continue
 		}
@@ -1617,15 +1639,15 @@ func (p *PGStore) ListComplianceLogs(ctx context.Context, tenantID string, limit
 
 func (p *PGStore) CreateObjectLink(ctx context.Context, link *models.ObjectLink) error {
 	query := `
-		INSERT INTO object_links (
+		INSERT INTO statfederation.object_links (
 			source_type, source_id, target_type, target_id,
-			relationship, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (source_type, source_id, target_type, target_id, relationship) DO NOTHING
+			relationship, tenant_id, workspace_id, created_by
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT DO NOTHING
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		link.SourceType, link.SourceID, link.TargetType, link.TargetID,
-		link.Relationship, link.TenantID, link.CreatedBy,
+		link.Relationship, link.TenantID, nullableWorkspace(link.WorkspaceID), link.CreatedBy,
 	)
 	return err
 }
@@ -1633,14 +1655,15 @@ func (p *PGStore) CreateObjectLink(ctx context.Context, link *models.ObjectLink)
 func (p *PGStore) GetObjectLinks(ctx context.Context, sourceType, sourceID, tenantID string) ([]*models.ObjectLink, error) {
 	query := `
 		SELECT id, source_type, source_id, target_type, target_id,
-		       relationship, tenant_id, COALESCE(created_by, ''), created_at
-		FROM object_links
-		WHERE (source_type = $1 AND source_id = $2)
-		   OR (target_type = $1 AND target_id = $2)
+		       relationship, tenant_id, COALESCE(workspace_id, ''), COALESCE(created_by, ''), created_at
+		FROM statfederation.object_links
+		WHERE ((source_type = $1 AND source_id = $2)
+		   OR (target_type = $1 AND target_id = $2))
 		  AND ($3 = '' OR tenant_id = $3 OR tenant_id = 'tenant-alpha')
+		  AND ($4 = '' OR workspace_id = $4)
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, sourceType, sourceID, tenantID)
+	rows, err := p.db.QueryContext(ctx, query, sourceType, sourceID, tenantID, workspaceFromContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1651,7 +1674,7 @@ func (p *PGStore) GetObjectLinks(ctx context.Context, sourceType, sourceID, tena
 		var l models.ObjectLink
 		if err := rows.Scan(
 			&l.ID, &l.SourceType, &l.SourceID, &l.TargetType, &l.TargetID,
-			&l.Relationship, &l.TenantID, &l.CreatedBy, &l.CreatedAt,
+			&l.Relationship, &l.TenantID, &l.WorkspaceID, &l.CreatedBy, &l.CreatedAt,
 		); err != nil {
 			continue
 		}

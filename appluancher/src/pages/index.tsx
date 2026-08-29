@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Application } from '@typings/index';
 import { Header } from '@components/Header';
 import { AppLauncher } from '@components/AppLauncher';
@@ -15,6 +15,20 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [branding, setBranding] = useState<{ display_name?: string; logo_url?: string; primary_color?: string; secondary_color?: string } | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setBranding(null);
+      return;
+    }
+    const token = localStorage.getItem('registry_jwt');
+    const registryAPI = process.env.NEXT_PUBLIC_REGISTRY_API_URL || 'http://localhost:9090/api';
+    fetch(`${registryAPI}/organisation/branding`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (data) setBranding(data); })
+      .catch(() => setBranding(null));
+  }, [user]);
 
   const handleAppLaunch = async (app: Application) => {
     try {
@@ -34,6 +48,7 @@ export default function Home() {
     }
 
     const token = localStorage.getItem('registry_jwt');
+    const workspaceID = localStorage.getItem('workspace_id');
     let target = app.url;
     if (token && app.id !== 'app-analytics') {
       const separator = target.includes('?') ? '&' : '?';
@@ -41,6 +56,10 @@ export default function Home() {
       // legacy registry_token name when visited directly, but duplicating a JWT
       // in the URL increases its exposure to browser history and access logs.
       target = `${target}${separator}statgate_token=${encodeURIComponent(token)}`;
+    }
+    if (workspaceID && !target.includes('workspace_id=')) {
+      const separator = target.includes('?') ? '&' : '?';
+      target = `${target}${separator}workspace_id=${encodeURIComponent(workspaceID)}`;
     }
     window.location.href = target;
   };
@@ -62,7 +81,7 @@ export default function Home() {
     if (!isAuthenticated || !user) {
       return (
         <div className="min-h-screen bg-white">
-          <Header onAppLauncherClick={() => setLauncherOpen(true)} user={null} />
+          <Header onAppLauncherClick={() => setLauncherOpen(true)} user={null} branding={branding} />
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
             <div className="text-center">
               <h2 className="text-3xl font-bold text-gray-900">Welcome to StatGate</h2>
@@ -166,7 +185,7 @@ export default function Home() {
 
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Header onAppLauncherClick={() => setLauncherOpen(true)} user={user} />
+        <Header onAppLauncherClick={() => setLauncherOpen(true)} user={user} branding={branding} />
         <AppLauncher
           apps={applications}
           isOpen={launcherOpen}

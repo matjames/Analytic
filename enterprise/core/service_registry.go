@@ -56,6 +56,7 @@ func bootstrapServiceRegistry() {
 		{ID: "statcollect", Name: "statcollect", DisplayName: "StatCollect", Description: "Field data collection and survey engine", APIURL: getEnv("STATCOLLECT_API_URL", "http://localhost:5050"), HealthURL: getEnv("STATCOLLECT_API_URL", "http://localhost:5050") + "/health", Status: "active"},
 		{ID: "helpdesk", Name: "helpdesk", DisplayName: "HelpDesk", Description: "Institutional support ticketing", APIURL: getEnv("HELPDESK_API_URL", "http://localhost:8003"), HealthURL: getEnv("HELPDESK_API_URL", "http://localhost:8003") + "/health", UIURL: getEnv("HELPDESK_UI_URL", "http://localhost:3005"), Status: "active"},
 		{ID: "statgovernance", Name: "statgovernance", DisplayName: "StatGovernance", Description: "Risk, compliance, audit and governance", APIURL: getEnv("STATGOVERNANCE_API_URL", "http://localhost:8097"), HealthURL: getEnv("STATGOVERNANCE_API_URL", "http://localhost:8097") + "/health", Status: "active"},
+		{ID: "statgate-report-builder", Name: "statgate-report-builder", DisplayName: "StatGate Report Builder", Description: "Visual YAML report builder & explorer — schema introspection, KPIs, charts, maps and tables over the StatGate analytics data warehouse", APIURL: getEnv("REPORT_BUILDER_API_URL", "http://localhost:8110"), HealthURL: getEnv("REPORT_BUILDER_API_URL", "http://localhost:8110") + "/health", UIURL: getEnv("REPORT_BUILDER_UI_URL", "http://localhost:8110/builder.html"), Status: "active"},
 	}
 
 	for _, svc := range services {

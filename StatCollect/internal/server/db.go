@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,16 +19,36 @@ func InitDB(dsn string) error {
 	if dsn == "" {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		return err
+	// Retry up to 5 times with exponential back-off — the DB container
+	// may not be ready immediately when StatCollect starts.
+	var pool *pgxpool.Pool
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var err error
+		pool, err = pgxpool.New(ctx, dsn)
+		cancel()
+		if err != nil {
+			lastErr = err
+			log.Printf("DB connect attempt %d/5 failed: %v — retrying in %ds", attempt, err, attempt*2)
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+			continue
+		}
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingErr := pool.Ping(pingCtx)
+		pingCancel()
+		if pingErr != nil {
+			pool.Close()
+			lastErr = pingErr
+			log.Printf("DB ping attempt %d/5 failed: %v — retrying in %ds", attempt, pingErr, attempt*2)
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+			continue
+		}
+		lastErr = nil
+		break
 	}
-	// simple ping
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return err
+	if lastErr != nil {
+		return fmt.Errorf("database unavailable after 5 attempts: %w", lastErr)
 	}
 	dbPool = pool
 	// run migrations if present
@@ -43,7 +65,23 @@ func CloseDB() {
 }
 
 // SaveSubmissionToDB persists a submission with tenant and status metadata.
+// Kept for backward compatibility with callers that don't have GPS/QA data.
 func SaveSubmissionToDB(instanceID, formID string, meta map[string]interface{}, xml string) error {
+	return SaveSubmissionFullToDB(instanceID, formID, meta, xml, "", 0, 0, "", nil)
+}
+
+// SaveSubmissionFullToDB is the canonical save function. It persists GPS
+// coordinates, the submitting user identity, and any QA flags in a single
+// INSERT so the data is always consistent.
+func SaveSubmissionFullToDB(
+	instanceID, formID string,
+	meta map[string]interface{},
+	xmlDoc string,
+	submittedBy string,
+	gpsLat, gpsLng float64,
+	gpsRaw string,
+	qaFlags []map[string]string,
+) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
@@ -53,40 +91,70 @@ func SaveSubmissionToDB(instanceID, formID string, meta map[string]interface{}, 
 	if cfg != nil && cfg.TenantID != "" {
 		tenantID = cfg.TenantID
 	}
-	// insert submission; instance_id should be unique to support idempotency
-	_, err := dbPool.Exec(ctx, `INSERT INTO submissions (instance_id, form_id, received_at, meta, xml, tenant_id, status)
-		VALUES ($1,$2,$3,$4,$5,$6,'received')
+	// Marshal QA flags to JSON
+	qaJSON, _ := json.Marshal(qaFlags)
+	if qaJSON == nil {
+		qaJSON = []byte("[]")
+	}
+	// GPS null handling: store NULL when coordinates are zero (not captured)
+	var latPtr, lngPtr *float64
+	if gpsLat != 0 || gpsLng != 0 {
+		latPtr = &gpsLat
+		lngPtr = &gpsLng
+	}
+	_, err := dbPool.Exec(ctx, `
+		INSERT INTO submissions
+		  (instance_id, form_id, received_at, meta, xml, tenant_id, status,
+		   submitted_by, gps_lat, gps_lng, gps_raw, qa_flags)
+		VALUES ($1,$2,$3,$4,$5,$6,'received',$7,$8,$9,$10,$11)
 		ON CONFLICT (instance_id) DO UPDATE SET
-			received_at=EXCLUDED.received_at,
-			meta=EXCLUDED.meta,
-			updated_at=now()`,
-		instanceID, formID, time.Now(), meta, xml, tenantID)
+		  form_id        = EXCLUDED.form_id,
+		  received_at    = EXCLUDED.received_at,
+		  meta           = EXCLUDED.meta,
+		  submitted_by   = COALESCE(EXCLUDED.submitted_by, submissions.submitted_by),
+		  gps_lat        = COALESCE(EXCLUDED.gps_lat, submissions.gps_lat),
+		  gps_lng        = COALESCE(EXCLUDED.gps_lng, submissions.gps_lng),
+		  gps_raw        = COALESCE(EXCLUDED.gps_raw, submissions.gps_raw),
+		  qa_flags       = EXCLUDED.qa_flags,
+		  updated_at     = now()`,
+		instanceID, formID, time.Now(), meta, xmlDoc, tenantID,
+		submittedBy, latPtr, lngPtr, gpsRaw, qaJSON)
 	if err != nil {
 		return fmt.Errorf("insert submission: %w", err)
 	}
 	return nil
 }
 
-// SaveAttachmentToDB persists an attachment with content type.
+// SaveAttachmentToDB persists an attachment record with inferred content type.
 func SaveAttachmentToDB(instanceID, filename, path string, size int64) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// Use filepath.Ext for safe extension extraction
 	contentType := ""
-	// infer content type from extension
-	switch {
-	case len(filename) > 4 && filename[len(filename)-4:] == ".jpg":
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".jpg", ".jpeg":
 		contentType = "image/jpeg"
-	case len(filename) > 4 && filename[len(filename)-4:] == ".png":
+	case ".png":
 		contentType = "image/png"
-	case len(filename) > 4 && filename[len(filename)-4:] == ".pdf":
+	case ".gif":
+		contentType = "image/gif"
+	case ".pdf":
 		contentType = "application/pdf"
-	case len(filename) > 4 && filename[len(filename)-4:] == ".xml":
+	case ".xml":
 		contentType = "application/xml"
-	case len(filename) > 5 && filename[len(filename)-5:] == ".jpeg":
-		contentType = "image/jpeg"
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".mov":
+		contentType = "video/quicktime"
+	case ".avi":
+		contentType = "video/avi"
+	case ".json":
+		contentType = "application/json"
+	case ".csv":
+		contentType = "text/csv"
 	}
 	_, err := dbPool.Exec(ctx, `INSERT INTO attachments (submission_instance_id, filename, path, size, content_type, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -95,6 +163,52 @@ func SaveAttachmentToDB(instanceID, filename, path string, size int64) error {
 		return fmt.Errorf("insert attachment: %w", err)
 	}
 	return nil
+}
+
+// ListAttachments returns all attachment metadata records for a submission.
+func ListAttachments(instanceID string) ([]map[string]interface{}, error) {
+	if dbPool == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := dbPool.Query(ctx, `
+		SELECT id, filename, path, size, COALESCE(content_type, ''), created_at
+		FROM attachments WHERE submission_instance_id=$1
+		ORDER BY created_at ASC`, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]interface{}
+	for rows.Next() {
+		var id, size int64
+		var fn, path, ct string
+		var cat time.Time
+		if err := rows.Scan(&id, &fn, &path, &size, &ct, &cat); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]interface{}{
+			"id":           id,
+			"filename":     fn,
+			"path":         path,
+			"size":         size,
+			"content_type": ct,
+			"created_at":   cat,
+		})
+	}
+	return out, nil
+}
+
+// DeleteSubmission deletes a submission and its associated cascade records.
+func DeleteSubmission(instanceID string) error {
+	if dbPool == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := dbPool.Exec(ctx, `DELETE FROM submissions WHERE instance_id=$1`, instanceID)
+	return err
 }
 
 func SubmissionExists(instanceID string) (bool, error) {
@@ -119,6 +233,10 @@ type SubmissionSummary struct {
 	TenantID    string                 `json:"tenant_id"`
 	Status      string                 `json:"status"`
 	SubmittedBy string                 `json:"submitted_by,omitempty"`
+	GPSLat      *float64               `json:"gps_lat,omitempty"`
+	GPSLng      *float64               `json:"gps_lng,omitempty"`
+	GPSRaw      string                 `json:"gps_raw,omitempty"`
+	QAFlags     []map[string]string    `json:"qa_flags,omitempty"`
 }
 
 func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
@@ -127,8 +245,13 @@ func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rows, err := dbPool.Query(ctx, `SELECT instance_id, form_id, received_at, meta, tenant_id, status, COALESCE(submitted_by,'')
-		FROM submissions ORDER BY received_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	rows, err := dbPool.Query(ctx, `
+		SELECT instance_id, form_id, received_at, meta, tenant_id, status,
+		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
+		       COALESCE(qa_flags::text, '[]')
+		FROM submissions
+		ORDER BY received_at DESC
+		LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -137,10 +260,15 @@ func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
 	for rows.Next() {
 		var s SubmissionSummary
 		var metaData map[string]interface{}
-		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData, &s.TenantID, &s.Status, &s.SubmittedBy); err != nil {
+		var qaFlagsJSON string
+		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData,
+			&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
 			return nil, err
 		}
 		s.Meta = metaData
+		if qaFlagsJSON != "" && qaFlagsJSON != "null" {
+			_ = json.Unmarshal([]byte(qaFlagsJSON), &s.QAFlags)
+		}
 		out = append(out, s)
 	}
 	return out, nil
@@ -153,16 +281,24 @@ func GetSubmission(instanceID string) (*SubmissionSummary, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var s SubmissionSummary
-	var xml string
+	var xmlDoc string
 	var metaData map[string]interface{}
-	err := dbPool.QueryRow(ctx, `SELECT instance_id, form_id, received_at, meta, xml, tenant_id, status, COALESCE(submitted_by,'')
+	var qaFlagsJSON string
+	err := dbPool.QueryRow(ctx, `
+		SELECT instance_id, form_id, received_at, meta, xml, tenant_id, status,
+		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
+		       COALESCE(qa_flags::text, '[]')
 		FROM submissions WHERE instance_id=$1`, instanceID).Scan(
-		&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData, &xml, &s.TenantID, &s.Status, &s.SubmittedBy)
+		&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData, &xmlDoc,
+		&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON)
 	if err != nil {
 		return nil, "", err
 	}
 	s.Meta = metaData
-	return &s, xml, nil
+	if qaFlagsJSON != "" && qaFlagsJSON != "null" {
+		_ = json.Unmarshal([]byte(qaFlagsJSON), &s.QAFlags)
+	}
+	return &s, xmlDoc, nil
 }
 
 // ── Object Linkage (StatGate Object Connectivity) ──
@@ -397,7 +533,9 @@ func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, erro
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	query := `SELECT instance_id, form_id, received_at, meta, tenant_id, status, COALESCE(submitted_by,'')
+	query := `SELECT instance_id, form_id, received_at, meta, tenant_id, status,
+		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
+		       COALESCE(qa_flags::text, '[]')
 		FROM submissions`
 	var args []interface{}
 	if formID != "" {
@@ -416,17 +554,22 @@ func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, erro
 	for rows.Next() {
 		var s SubmissionSummary
 		var metaData map[string]interface{}
-		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData, &s.TenantID, &s.Status, &s.SubmittedBy); err != nil {
+		var qaFlagsJSON string
+		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData,
+			&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
 			return nil, err
 		}
 		s.Meta = metaData
+		if qaFlagsJSON != "" && qaFlagsJSON != "null" {
+			_ = json.Unmarshal([]byte(qaFlagsJSON), &s.QAFlags)
+		}
 		out = append(out, s)
 	}
 	return out, nil
 }
 
 // ScanSubmissionsQA analyzes submissions for quality flags:
-// - MISSING_GPS: submission has no gps_coordinates tag in its file list meta
+// - MISSING_GPS: submission has no GPS coordinates recorded
 // - MISSING_FIELD_VIDEO: no video attachment was uploaded
 // - POSSIBLE_DUPLICATE: identical payload signature to another submission
 func ScanSubmissionsQA(formID string) ([]map[string]interface{}, error) {
@@ -446,9 +589,9 @@ func ScanSubmissionsQA(formID string) ([]map[string]interface{}, error) {
 		metaStr := string(metaJSON)
 
 		// ── GPS CHECK ──
-		// The mandatory GPS block writes gps_coordinates into the XML.
-		// In the meta we check whether any file or field references GPS.
-		hasGPS := strings.Contains(metaStr, "gps") ||
+		hasGPS := (s.GPSLat != nil && s.GPSLng != nil) ||
+			s.GPSRaw != "" ||
+			strings.Contains(metaStr, "gps") ||
 			strings.Contains(metaStr, "latitude") ||
 			strings.Contains(metaStr, "location")
 		if !hasGPS {
@@ -456,10 +599,16 @@ func ScanSubmissionsQA(formID string) ([]map[string]interface{}, error) {
 		}
 
 		// ── VIDEO EVIDENCE CHECK ──
-		// field_video attachment must be present in the saved files list.
 		hasVideo := strings.Contains(metaStr, "field_video")
 		if !hasVideo {
 			qaFlags = append(qaFlags, "MISSING_FIELD_VIDEO_EVIDENCE")
+		}
+
+		// Also incorporate pre-computed QA flags
+		for _, qf := range s.QAFlags {
+			if fName, ok := qf["flag"]; ok && fName != "" {
+				qaFlags = append(qaFlags, fName)
+			}
 		}
 
 		// ── DUPLICATE DETECTION ──
@@ -485,16 +634,31 @@ func ScanSubmissionsQA(formID string) ([]map[string]interface{}, error) {
 }
 
 func runMigrations(pool *pgxpool.Pool) error {
-	// look for migrations/001_init.sql
-	b, err := os.ReadFile("migrations/001_init.sql")
+	// Look for all .sql files in migrations/ in sorted order
+	files, err := os.ReadDir("migrations")
 	if err != nil {
-		// no migrations file is okay
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_, err = pool.Exec(ctx, string(b))
-	return err
+	for _, fi := range files {
+		if fi.IsDir() || !strings.HasSuffix(fi.Name(), ".sql") {
+			continue
+		}
+		path := filepath.Join("migrations", fi.Name())
+		b, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("warning: could not read migration %s: %v", path, err)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		_, err = pool.Exec(ctx, string(b))
+		cancel()
+		if err != nil {
+			log.Printf("migration %s execution warning: %v", fi.Name(), err)
+		} else {
+			log.Printf("applied migration: %s", fi.Name())
+		}
+	}
+	return nil
 }
 
 // ── Phase Y Enterprise Structs & DB Helpers ──

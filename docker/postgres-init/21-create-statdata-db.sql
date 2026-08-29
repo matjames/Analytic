@@ -1,7 +1,7 @@
 -- StatData (App 12 — P37 Data Engineering, P38 Scientific Computing,
 -- P47 Enterprise Search) database and role.
 -- Password injected from environment (STATDATA_DB_PASSWORD), never hardcoded.
-CREATE DATABASE statdata;
+SELECT 'CREATE DATABASE statdata' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statdata') \gexec
 
 \getenv statdata_pw STATDATA_DB_PASSWORD
 SELECT format('CREATE ROLE "StatDataEngine" WITH LOGIN PASSWORD %L', :'statdata_pw')

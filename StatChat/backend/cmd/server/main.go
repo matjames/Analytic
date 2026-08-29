@@ -56,6 +56,10 @@ func main() {
 	if err := store.Init(dsn); err != nil {
 		log.Fatalf("failed to initialize store: %v", err)
 	}
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	store.StartScheduledMessageWorker(workerCtx)
+	store.StartRetentionWorker(workerCtx)
 
 	router := mux.NewRouter()
 	api.RegisterRoutes(router)
@@ -83,6 +87,7 @@ func main() {
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
 	<-shutdownSignal
+	stopWorkers()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {

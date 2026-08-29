@@ -6,6 +6,8 @@ export default function StatChatPanel({ chats, onSendMessage, projectId }) {
   const chatBottomRef = useRef(null);
 
   const channels = ['general', 'announcements', 'meetings'];
+  const statChatURL = import.meta.env.VITE_STATCHAT_UI_URL || 'http://localhost:3009';
+  const discussionURL = `${statChatURL}/?objectRef=${encodeURIComponent(`obj:pms:project:${projectId}`)}`;
 
   const filteredChats = chats ? chats.filter(c => c.channel === activeChannel) : [];
 
@@ -39,7 +41,7 @@ export default function StatChatPanel({ chats, onSendMessage, projectId }) {
             Project communication is connected to the enterprise StatChat platform for real-time collaboration.
           </p>
         </div>
-        <a href="http://localhost:3009" target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ fontSize: '12px', padding: '8px 16px' }}>
+        <a href={discussionURL} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ fontSize: '12px', padding: '8px 16px' }}>
           Open Full StatChat ↗
         </a>
       </div>

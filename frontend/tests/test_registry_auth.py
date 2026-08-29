@@ -11,7 +11,8 @@ import app as analytics_app
 
 
 def _make_token(claims):
-    return jwt.encode({**claims, 'exp': int(time.time()) + 3600}, 'test-secret', algorithm='HS256')
+    secret = os.environ['STATGATE_REGISTRY_JWT_SECRET']
+    return jwt.encode({**claims, 'exp': int(time.time()) + 3600}, secret, algorithm='HS256')
 
 
 def test_validate_registry_token_builds_identity():

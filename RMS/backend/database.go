@@ -67,6 +67,14 @@ func migrateDB() error {
 	if err != nil {
 		return fmt.Errorf("create research_projects: %w", err)
 	}
+	for _, statement := range []string{
+		`ALTER TABLE rms.research_projects ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`CREATE INDEX IF NOT EXISTS idx_rms_research_projects_workspace ON rms.research_projects(workspace_id)`,
+	} {
+		if _, err := DB.Exec(statement); err != nil {
+			return fmt.Errorf("apply RMS workspace migration: %w", err)
+		}
+	}
 
 	// ─── Research Members ──────────────────────────────────────
 	_, err = DB.Exec(`
@@ -405,11 +413,17 @@ func migrateDB() error {
 	}
 
 	// ─── Additive column migrations (idempotent) ───────────────
-	DB.Exec(`ALTER TABLE rms.research_projects ADD COLUMN IF NOT EXISTS pms_project_id VARCHAR(36)`)
-	DB.Exec(`ALTER TABLE rms.research_projects ADD COLUMN IF NOT EXISTS statchat_room_id VARCHAR(255)`)
-	DB.Exec(`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS background TEXT`)
-	DB.Exec(`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS objectives TEXT`)
-	DB.Exec(`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS methodology TEXT`)
+	for _, statement := range []string{
+		`ALTER TABLE rms.research_projects ADD COLUMN IF NOT EXISTS pms_project_id VARCHAR(36)`,
+		`ALTER TABLE rms.research_projects ADD COLUMN IF NOT EXISTS statchat_room_id VARCHAR(255)`,
+		`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS background TEXT`,
+		`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS objectives TEXT`,
+		`ALTER TABLE rms.proposals ADD COLUMN IF NOT EXISTS methodology TEXT`,
+	} {
+		if _, err := DB.Exec(statement); err != nil {
+			return fmt.Errorf("apply additive RMS migration: %w", err)
+		}
+	}
 
 	// ─── Phase 5 Extensions: Ethics Committees, DOIs, Open Access Repository ───
 	_, _ = DB.Exec(`
@@ -458,4 +472,3 @@ func migrateDB() error {
 	log.Println("RMS database migration completed successfully")
 	return nil
 }
-

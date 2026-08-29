@@ -6,8 +6,12 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/statchat-backend ./cmd/server
 
 FROM alpine:3.20
-RUN apk add --no-cache wget ca-certificates && adduser -D -u 10001 appuser
+RUN apk add --no-cache wget ca-certificates \
+    && adduser -D -u 10001 appuser \
+    && mkdir -p /app/uploads \
+    && chown -R appuser:appuser /app
 COPY --from=build /out/statchat-backend /statchat-backend
+WORKDIR /app
 USER appuser
 EXPOSE 4000
 ENTRYPOINT ["/statchat-backend"]

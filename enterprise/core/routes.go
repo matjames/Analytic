@@ -13,7 +13,7 @@ import (
 func registerRoutes(r *gin.Engine) {
 	// Phase X: Apply JWT validation and tenant isolation to all /api routes.
 	// Probe endpoints (/health, /ready, /live, /metrics) are excluded by the middleware itself.
-	apiAuth := r.Group("/api", jwtAuthMiddleware(), tenantIsolationMiddleware())
+	apiAuth := r.Group("/api", jwtAuthMiddleware(), tenantIsolationMiddleware(), workspaceContextMiddleware())
 	api := apiAuth
 	{
 		// Event Bus
@@ -197,17 +197,11 @@ func registerRoutes(r *gin.Engine) {
 		api.GET("/records/dispositions", handleListDispositions)
 		api.POST("/records/dispositions", handleCreateDisposition)
 
-		// Knowledge Articles
-		api.GET("/knowledge/articles", handleListEDMSKnowledgeArticles)
-		api.GET("/knowledge/articles/:id", handleGetEDMSKnowledgeArticle)
-		api.POST("/knowledge/articles", handleCreateEDMSKnowledgeArticle)
-
 		// Wiki
 		api.GET("/knowledge/wiki", handleListWikiPages)
 		api.GET("/knowledge/wiki/:slug", handleGetWikiPage)
 
 		// API Governance
-
 
 		api.GET("/apis", handleListAPIs)
 		api.GET("/apis/health", handleAPIHealth)
@@ -220,6 +214,12 @@ func registerRoutes(r *gin.Engine) {
 		api.GET("/monitoring/health", handleMonitoringHealth)
 
 		// Enterprise Workspace (Phase III)
+		api.GET("/workspaces", handleListWorkspaces)
+		api.POST("/workspaces", handleCreateWorkspace)
+		api.GET("/workspaces/:id", handleGetWorkspace)
+		api.GET("/workspaces/:id/members", handleListWorkspaceMembers)
+		api.POST("/workspaces/:id/members", handleAddWorkspaceMember)
+		api.DELETE("/workspaces/:id/members/:user", handleRemoveWorkspaceMember)
 		api.GET("/workspace", handleWorkspace)
 		api.GET("/workspace/notifications", handleListNotifications)
 		api.GET("/workspace/timeline", handleTimeline)

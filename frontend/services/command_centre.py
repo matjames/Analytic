@@ -51,6 +51,7 @@ def _ensure_tables(conn):
                 id VARCHAR(128) PRIMARY KEY, title TEXT NOT NULL, description TEXT,
                 status VARCHAR(32) NOT NULL DEFAULT 'planning', owner_id VARCHAR(128),
                 tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id VARCHAR(128),
                 collaborators JSONB NOT NULL DEFAULT '[]', tags JSONB NOT NULL DEFAULT '[]',
                 start_date DATE, end_date DATE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -62,6 +63,7 @@ def _ensure_tables(conn):
                 id VARCHAR(128) PRIMARY KEY, title TEXT NOT NULL, content TEXT, summary TEXT,
                 status VARCHAR(32) NOT NULL DEFAULT 'draft', author_id VARCHAR(128),
                 reviewer_id VARCHAR(128), tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id VARCHAR(128),
                 project_id VARCHAR(128), version_tag VARCHAR(32) NOT NULL DEFAULT '1.0.0',
                 tags JSONB NOT NULL DEFAULT '[]', approved_at TIMESTAMPTZ, published_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -74,6 +76,7 @@ def _ensure_tables(conn):
                 status VARCHAR(32) NOT NULL DEFAULT 'proposed',
                 principal_investigator VARCHAR(128),
                 tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id VARCHAR(128),
                 project_id VARCHAR(128), ethics_status VARCHAR(32) NOT NULL DEFAULT 'pending',
                 data_collection_status VARCHAR(32) NOT NULL DEFAULT 'not_started',
                 collaborators JSONB NOT NULL DEFAULT '[]', tags JSONB NOT NULL DEFAULT '[]',
@@ -88,6 +91,7 @@ def _ensure_tables(conn):
                 object_type VARCHAR(64) NOT NULL, object_id VARCHAR(255) NOT NULL,
                 current_stage VARCHAR(64) NOT NULL,
                 tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id VARCHAR(128),
                 initiated_by VARCHAR(128), completed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -106,10 +110,15 @@ def _ensure_tables(conn):
             """,
         ]:
             cur.execute(ddl)
+        cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("ALTER TABLE research_studies ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("ALTER TABLE dataset_metadata ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
     conn.commit()
 
 
-def get_command_centre(tenant_id='tenant-alpha'):
+def get_command_centre(tenant_id='tenant-alpha', workspace_id=None):
     """
     Build the full command centre payload answering the four questions:
       1. What is happening?      — live status of datasets, projects, reports, research
@@ -119,51 +128,55 @@ def get_command_centre(tenant_id='tenant-alpha'):
     """
     conn = _get_conn()
     if conn is None:
-        return _empty_command_centre(tenant_id)
+        return _empty_command_centre(tenant_id, workspace_id)
 
     try:
         _ensure_tables(conn)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # ── 1. What is happening? ──────────────────────────
-            cur.execute("SELECT COUNT(*) AS c FROM projects WHERE tenant_id = %s", (tenant_id,))
+            cur.execute("SELECT COUNT(*) AS c FROM projects WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)", (tenant_id, workspace_id, workspace_id))
             project_count = cur.fetchone()['c']
-            cur.execute("SELECT COUNT(*) AS c FROM reports WHERE tenant_id = %s", (tenant_id,))
+            cur.execute("SELECT COUNT(*) AS c FROM reports WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)", (tenant_id, workspace_id, workspace_id))
             report_count = cur.fetchone()['c']
-            cur.execute("SELECT COUNT(*) AS c FROM research_studies WHERE tenant_id = %s", (tenant_id,))
+            cur.execute("SELECT COUNT(*) AS c FROM research_studies WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)", (tenant_id, workspace_id, workspace_id))
             research_count = cur.fetchone()['c']
-            cur.execute("SELECT COUNT(*) AS c FROM dataset_metadata")
+            cur.execute("SELECT COUNT(*) AS c FROM dataset_metadata WHERE (%s IS NULL OR workspace_id = %s)", (workspace_id, workspace_id))
             dataset_count = cur.fetchone()['c']
 
             # ── 2. What requires my attention? ─────────────────
             # Pending approvals: reports in 'submitted' status
             cur.execute("""
                 SELECT id, title, status, updated_at FROM reports
-                WHERE tenant_id = %s AND status = 'submitted' ORDER BY updated_at DESC
-            """, (tenant_id,))
+                WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)
+                  AND status = 'submitted' ORDER BY updated_at DESC
+            """, (tenant_id, workspace_id, workspace_id))
             pending_approvals = [dict(r) for r in cur.fetchall()]
 
             # Active workflows: instances not in terminal stages
             cur.execute("""
                 SELECT object_type, object_id, current_stage, updated_at
                 FROM workflow_instances
-                WHERE tenant_id = %s AND current_stage NOT IN ('archived', 'completed', 'published')
+                WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)
+                  AND current_stage NOT IN ('archived', 'completed', 'published')
                 ORDER BY updated_at DESC
-            """, (tenant_id,))
+            """, (tenant_id, workspace_id, workspace_id))
             active_workflows = [dict(r) for r in cur.fetchall()]
 
             # Research awaiting ethics review
             cur.execute("""
                 SELECT id, title, ethics_status, status FROM research_studies
-                WHERE tenant_id = %s AND ethics_status = 'pending' ORDER BY updated_at DESC
-            """, (tenant_id,))
+                WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)
+                  AND ethics_status = 'pending' ORDER BY updated_at DESC
+            """, (tenant_id, workspace_id, workspace_id))
             ethics_reviews = [dict(r) for r in cur.fetchall()]
 
             # ── 3. What decisions should I make? ───────────────
             # Projects in review stage
             cur.execute("""
                 SELECT id, title, status FROM projects
-                WHERE tenant_id = %s AND status = 'review' ORDER BY updated_at DESC
-            """, (tenant_id,))
+                WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)
+                  AND status = 'review' ORDER BY updated_at DESC
+            """, (tenant_id, workspace_id, workspace_id))
             review_projects = [dict(r) for r in cur.fetchall()]
 
             # ── 4. What should I do next? ──────────────────────
@@ -193,6 +206,7 @@ def get_command_centre(tenant_id='tenant-alpha'):
 
         return {
             'tenant_id': tenant_id,
+            'workspace_id': workspace_id or '',
             'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             # 1. What is happening?
             'what_is_happening': {
@@ -219,14 +233,15 @@ def get_command_centre(tenant_id='tenant-alpha'):
         }
     except Exception as exc:
         logger.warning('[CommandCentre] Build failed: %s', exc)
-        return _empty_command_centre(tenant_id)
+        return _empty_command_centre(tenant_id, workspace_id)
     finally:
         conn.close()
 
 
-def _empty_command_centre(tenant_id):
+def _empty_command_centre(tenant_id, workspace_id=None):
     return {
         'tenant_id': tenant_id,
+        'workspace_id': workspace_id or '',
         'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'what_is_happening': {'datasets': 0, 'projects': 0, 'reports': 0, 'research_studies': 0},
         'requires_attention': {'pending_approvals': [], 'active_workflows': [], 'ethics_reviews': [], 'attention_count': 0},

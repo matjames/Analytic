@@ -19,6 +19,11 @@ export default function InitiatorLayout() {
       label: "Facilities",
       iconClass: "bi bi-hospital",
     },
+    {
+      to: "/initiator/settings",
+      label: "Security",
+      iconClass: "bi bi-shield-lock",
+    },
   ];
 
   return (

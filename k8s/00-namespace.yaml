@@ -1,0 +1,76 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: statgate
+  labels:
+    app: statgate-platform
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: statgate-env
+  namespace: statgate
+data:
+  STATGATE_ENV: "production"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  KAGGLE_DB_NAME: "statgate_ml_staging"
+  KAGGLE_DB_USER: "Kaggle"
+  HELPDESK_DB_NAME: "statgate"
+  HELPDESK_DB_USER: "statgate"
+  REGISTRY_DB_NAME: "kaggle"
+  REGISTRY_DB_USER: "Kaggle"
+  STATCHAT_DB_NAME: "statchat"
+  STATCHAT_DB_USER: "Statchat"
+  PMS_DB_NAME: "pms"
+  PMS_DB_USER: "PMS"
+  RMS_DB_NAME: "rms"
+  RMS_DB_USER: "RMS"
+  GOVERNANCE_DB_NAME: "statgovernance"
+  GOVERNANCE_DB_USER: "StatGovernance"
+  STATGATE_DB_NAME: "statgate_enterprise"
+  STATGATE_DB_USER: "statgate"
+  PORT: "8080"
+  FLASK_PORT: "5000"
+  BACKEND_PORT: "4000"
+  ENTERPRISE_CORE_PORT: "8096"
+  STATGATE_REGISTRY_API_URL: "http://statgate-registry-api:9090/api"
+  STATCHAT_API_URL: "http://statchat-backend:4000"
+  HELPDESK_API_URL: "http://statgate-helpdesk-api:5000"
+  PMS_API_URL: "http://statgate-pms-api:8080"
+  RMS_API_URL: "http://statgate-rms-api:8080"
+  GOVERNANCE_API_URL: "http://statgate-governance-api:8080"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: statgate-secrets
+  namespace: statgate
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "statgate_k8s_password_prod"
+  REDIS_PASSWORD: ""
+  KAGGLE_DB_PASSWORD: "statgate_k8s_password_prod"
+  HELPDESK_DB_PASSWORD: "statgate_k8s_password_prod"
+  REGISTRY_DB_PASSWORD: "statgate_k8s_password_prod"
+  STATCHAT_DB_PASSWORD: "statgate_k8s_password_prod"
+  PMS_DB_PASSWORD: "statgate_k8s_password_prod"
+  RMS_DB_PASSWORD: "statgate_k8s_password_prod"
+  GOVERNANCE_DB_PASSWORD: "statgate_k8s_password_prod"
+  STATGATE_DB_PASSWORD: "statgate_k8s_password_prod"
+  STATGATE_INTERNAL_API_KEY: "statgate-internal-key-k8s-prod-secure-12345"
+  FLASK_SECRET_KEY: "flask-secret-key-k8s-prod-secure-12345"
+  STATGATE_REGISTRY_JWT_SECRET: "registry-jwt-secret-k8s-prod-secure-12345"
+  HELPDESK_JWT_SECRET: "helpdesk-jwt-secret-k8s-prod-secure-12345"
+  BASIC_AUTH_USERNAME: "admin"
+  BASIC_AUTH_PASSWORD: "admin_k8s_password_prod"
+  MINIO_ROOT_USER: "minioadmin"
+  MINIO_ROOT_PASSWORD: "minioadmin_k8s_password_prod"
+  GRAFANA_ADMIN_PASSWORD: "grafana_k8s_password_prod"
+  AIRFLOW_PASSWORD: "airflow_k8s_password_prod"
+  SUPERSET_ADMIN_PASSWORD: "superset_k8s_password_prod"

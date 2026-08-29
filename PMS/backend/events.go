@@ -20,6 +20,15 @@ func initRedis() error {
 	return nil
 }
 
+func redisAvailable() bool {
+	if eventBus == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return eventBus.RedisAvailable(ctx)
+}
+
 func publishEvent(eventType, objectType, objectID string, payload map[string]interface{}) {
 	if eventBus == nil {
 		return

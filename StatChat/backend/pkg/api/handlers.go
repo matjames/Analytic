@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var upgrader = websocket.Upgrader{
@@ -30,6 +33,19 @@ var upgrader = websocket.Upgrader{
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		return origin == "" || allowedOrigin(origin, r)
 	},
+}
+
+// clientSubprotocols returns the Sec-WebSocket-Protocol values a client offered
+// so the server can echo one back. Browsers drop a WebSocket whose request
+// included a subprotocol unless the server negotiates (echoes) it.
+func clientSubprotocols(r *http.Request) []string {
+	var out []string
+	for _, p := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // authRequired is permanently true. StatChat operates in AUTHENTICATION
@@ -59,13 +75,15 @@ func requestCurrentUser(r *http.Request) (model.User, error) {
 }
 
 type sendMessageRequest struct {
-	TenantID        string `json:"tenantId,omitempty"`
-	ConversationID  string `json:"conversationId"`
-	ChannelID       string `json:"channelId,omitempty"`
-	ParentMessageID string `json:"parentMessageId,omitempty"`
-	ThreadRootID    string `json:"threadRootId,omitempty"`
-	Sender          string `json:"sender"`
-	Text            string `json:"text"`
+	TenantID        string   `json:"tenantId,omitempty"`
+	ConversationID  string   `json:"conversationId"`
+	ChannelID       string   `json:"channelId,omitempty"`
+	ParentMessageID string   `json:"parentMessageId,omitempty"`
+	ThreadRootID    string   `json:"threadRootId,omitempty"`
+	Sender          string   `json:"sender"`
+	Text            string   `json:"text"`
+	MentionUserIDs  []string `json:"mentionUserIds,omitempty"`
+	MentionAll      bool     `json:"mentionAll,omitempty"`
 }
 
 type editMessageRequest struct {
@@ -82,6 +100,7 @@ type contextKey string
 
 const requestUserIDKey contextKey = "requestUserID"
 const requestIdentityKey contextKey = "requestIdentity"
+const requestWorkspaceIDKey contextKey = "requestWorkspaceID"
 
 func sharedJWTSecret() string {
 	if secret := strings.TrimSpace(os.Getenv("STATGATE_REGISTRY_JWT_SECRET")); secret != "" {
@@ -137,12 +156,61 @@ func requestUserName(r *http.Request) string {
 	return "StatChat User"
 }
 
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func requestTenantID(r *http.Request) string {
+	if identity, ok := r.Context().Value(requestIdentityKey).(model.User); ok {
+		return resolveTenantID(identity.OrganizationID)
+	}
+	return "default"
+}
+
+func requestWorkspaceID(r *http.Request) string {
+	if workspaceID, ok := r.Context().Value(requestWorkspaceIDKey).(string); ok {
+		return strings.TrimSpace(workspaceID)
+	}
+	return ""
+}
+
+func requireConversationAccess(w http.ResponseWriter, r *http.Request, conversationID string) bool {
+	allowed, err := store.CanAccessConversation(conversationID, requestUserID(r), requestTenantID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify conversation access")
+		return false
+	}
+	if !allowed {
+		writeError(w, http.StatusForbidden, "you do not have access to this conversation")
+		return false
+	}
+	return true
+}
+
+func requireMessageAccess(w http.ResponseWriter, r *http.Request, messageID string) (model.Message, bool) {
+	message, err := store.GetMessageByID(messageID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "message not found")
+		return model.Message{}, false
+	}
+	if !requireConversationAccess(w, r, message.ConversationID) {
+		return model.Message{}, false
+	}
+	return message, true
+}
+
 func RegisterRoutes(router *mux.Router) {
 	router.Use(corsMiddleware)
 	router.Use(authMiddleware)
 	router.Use(rateLimitMiddleware)
 	router.HandleFunc("/health", healthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/readyz", readinessHandler).Methods(http.MethodGet)
+	router.Handle("/metrics", promhttp.Handler()).Methods(http.MethodGet)
 	router.HandleFunc("/users", allUsersHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users/me", currentUserHandler).Methods(http.MethodGet)
 	router.HandleFunc("/users/me/profile", updateProfileHandler).Methods(http.MethodPut)
@@ -162,6 +230,16 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/collaboration/connections", removeConnectionHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/collaboration/opportunities", opportunitiesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/jobs", jobsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/communities", communitiesHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{id}/join", joinCommunityHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{id}/leave", leaveCommunityHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{id}/members", communityMembersHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{id}/members/{userId}", removeCommunityMemberHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/communities/{id}/owner", transferCommunityOwnerHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{id}/topics", communityTopicsHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{communityId}/topics/{topicId}", deleteCommunityTopicHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/communities/{communityId}/topics/{topicId}/replies", communityRepliesHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/communities/{communityId}/topics/{topicId}/replies/{replyId}", deleteCommunityReplyHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/meetings", meetingsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/meetings", createMeetingHandler).Methods(http.MethodPost)
 	router.HandleFunc("/meetings/rooms", meetingRoomsHandler).Methods(http.MethodGet)
@@ -176,14 +254,40 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/knowledge/ideas/{id}/upvote", upvoteKnowledgeIdeaHandler).Methods(http.MethodPost)
 	router.HandleFunc("/knowledge/experts/{id}/follow", followKnowledgeExpertHandler).Methods(http.MethodPost)
 	router.HandleFunc("/channels", channelsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/channels", channelsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/channels", createChannelHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/channels/{id}", channelDetailHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/channels/{id}/join", joinChannelHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/channels/{id}/leave", leaveChannelHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/channels/{id}/archive", archiveChannelHandler).Methods(http.MethodPost)
 	router.HandleFunc("/conversations", conversationsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/messages", messagesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/chat/conversations", conversationsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/object", objectConversationHandler).Methods(http.MethodGet, http.MethodPost)
 	router.HandleFunc("/v1/chat/messages", createMessageHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/chat/attachments", uploadAttachmentHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/chat/conversations/{id}/messages", conversationMessagesHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/export", exportConversationHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/conversations/{id}/members", conversationMembersHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/conversations/{id}/members/{userId}", removeConversationMemberHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/v1/chat/messages/{id}", editMessageHandler).Methods(http.MethodPut)
 	router.HandleFunc("/v1/chat/messages/{id}", deleteMessageHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/messages/{id}/forward", forwardMessageHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/messages/{id}/saved", saveMessageHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/messages/{id}/saved", unsaveMessageHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/saved", savedMessagesHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/scheduled", scheduledMessagesHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/scheduled/{id}", cancelScheduledMessageHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/compliance/retention", retentionPolicyHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/compliance/retention", updateRetentionPolicyHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/compliance/retention/enforce", enforceRetentionHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/compliance/legal-holds", legalHoldsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/compliance/legal-holds", createLegalHoldHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/compliance/legal-holds/{id}/release", releaseLegalHoldHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/compliance/audit", complianceAuditHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/media", mediaCatalogHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/media/send", sendCatalogMediaHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/location", sendLocationHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/chat/messages/{id}/reactions", addReactionHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/chat/messages/{id}/reactions", removeReactionHandler).Methods(http.MethodDelete)
 	router.HandleFunc("/v1/chat/messages/{id}/read", markMessageReadHandler).Methods(http.MethodPost)
@@ -193,6 +297,17 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/v1/tasks", tasksHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/tasks", createTaskHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/tasks/{id}/status", updateTaskStatusHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/tasks/{id}", updateTaskHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/tasks/{id}", deleteTaskHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/tasks", tasksHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/chat/tasks", createTaskHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/tasks/{id}", updateTaskHandler).Methods(http.MethodPut)
+	router.HandleFunc("/v1/chat/tasks/{id}", deleteTaskHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/v1/chat/calendar", calendarEventsHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/calendar/{id}", calendarEventHandler).Methods(http.MethodGet, http.MethodPut, http.MethodDelete)
+	router.HandleFunc("/v1/chat/polls", pollsHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/v1/chat/polls/{id}/vote", votePollHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/chat/assistant", assistantHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/notifications", notificationsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/notifications/{id}/read", markNotificationReadHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/notifications/read-all", markAllNotificationsReadHandler).Methods(http.MethodPost)
@@ -214,6 +329,10 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/v1/calls/{id}/leave", leaveCallSessionHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/calls/{id}/end", endCallSessionHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/calls/{id}/participants", getCallParticipantsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/v1/calls/{id}/participants/{userId}/remove", removeCallParticipantHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/participants/{userId}/role", updateCallParticipantRoleHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/quality", createCallQualitySampleHandler).Methods(http.MethodPost)
+	router.HandleFunc("/v1/calls/{id}/quality", callQualitySamplesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/calls/{id}/recordings", uploadCallRecordingHandler).Methods(http.MethodPost)
 	router.HandleFunc("/v1/calls/{id}/recordings", listCallRecordingsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/meetings/{id}/session", getMeetingSessionHandler).Methods(http.MethodGet)
@@ -315,6 +434,7 @@ func updateUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.UserID = requestUserID(r)
 	if err := store.UpsertUserSettings(s); err != nil {
+		log.Printf("failed to save settings for %s: %v", s.UserID, err)
 		writeError(w, http.StatusInternalServerError, "failed to save settings")
 		return
 	}
@@ -322,12 +442,12 @@ func updateUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func allUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")))
+	users, err := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")), requestTenantID(r))
 	if err != nil {
 		// A short Registry outage must not make active conversations unusable.
 		// Return the collaboration cache while recording the degraded directory.
 		log.Printf("registry directory unavailable: %v", err)
-		users, err = store.GetAllUsers()
+		users, err = store.GetUsersByOrganization(requestTenantID(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load users")
 			return
@@ -360,7 +480,11 @@ func createGroupHandler(w http.ResponseWriter, r *http.Request) {
 	if len(req.MemberIDs) == 0 {
 		req.MemberIDs = []string{requestUserID(r)}
 	}
-	conv, err := store.CreateGroupConversation(req.GroupID, req.Name, req.MemberIDs)
+	requesterID := requestUserID(r)
+	if !containsString(req.MemberIDs, requesterID) {
+		req.MemberIDs = append(req.MemberIDs, requesterID)
+	}
+	conv, err := store.CreateGroupConversation(requestTenantID(r), req.GroupID, req.Name, req.MemberIDs, requesterID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create group")
 		return
@@ -382,7 +506,7 @@ func createDMHandler(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = req.TargetUserID
 	}
-	conv, err := store.CreateDirectConversation(requestUserID(r), req.TargetUserID, name)
+	conv, err := store.CreateDirectConversation(requestTenantID(r), requestUserID(r), req.TargetUserID, name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create conversation")
 		return
@@ -395,7 +519,7 @@ func groupTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func postsHandler(w http.ResponseWriter, r *http.Request) {
-	posts, err := store.GetPosts(requestUserID(r))
+	posts, err := store.GetPosts(requestUserID(r), requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load posts")
 		return
@@ -409,10 +533,23 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.Author == "" || req.Text == "" {
-		writeError(w, http.StatusBadRequest, "author and text are required")
+	if strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
+	currentUser, err := requestCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authenticated user is required")
+		return
+	}
+	req.TenantID = requestTenantID(r)
+	req.AuthorID = currentUser.ID
+	req.Author = currentUser.Name
+	req.Org = currentUser.OrganizationID
+	if len(currentUser.Roles) > 0 {
+		req.Role = currentUser.Roles[0]
+	}
+	req.Likes, req.Comments, req.Shares = 0, 0, 0
 	post, err := store.CreatePost(req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create post")
@@ -422,7 +559,7 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func connectionsHandler(w http.ResponseWriter, r *http.Request) {
-	connections, err := store.GetConnections(requestUserID(r))
+	connections, err := store.GetConnections(requestUserID(r), requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load connections")
 		return
@@ -442,8 +579,16 @@ func createConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "targetUserId is required")
 		return
 	}
-	conn, err := store.CreateConnection(requestUserID(r), req.TargetUserID)
+	if req.TargetUserID == requestUserID(r) {
+		writeError(w, http.StatusBadRequest, "cannot connect to yourself")
+		return
+	}
+	conn, err := store.CreateConnection(requestUserID(r), req.TargetUserID, requestTenantID(r))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "target user not found in this tenant")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create connection")
 		return
 	}
@@ -458,7 +603,7 @@ func removeConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if err := store.RemoveConnection(requestUserID(r), req.TargetUserID); err != nil {
+	if err := store.RemoveConnection(requestUserID(r), req.TargetUserID, requestTenantID(r)); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to remove connection")
 		return
 	}
@@ -574,7 +719,7 @@ func createWellnessPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func knowledgeExpertsHandler(w http.ResponseWriter, r *http.Request) {
-	experts, err := store.GetKnowledgeExperts()
+	experts, err := store.GetKnowledgeExperts(requestTenantID(r), requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load knowledge experts")
 		return
@@ -583,7 +728,7 @@ func knowledgeExpertsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func knowledgeArticlesHandler(w http.ResponseWriter, r *http.Request) {
-	articles, err := store.GetKnowledgeArticles()
+	articles, err := store.GetKnowledgeArticles(requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load knowledge articles")
 		return
@@ -592,7 +737,7 @@ func knowledgeArticlesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func knowledgeIdeasHandler(w http.ResponseWriter, r *http.Request) {
-	ideas, err := store.GetKnowledgeIdeas()
+	ideas, err := store.GetKnowledgeIdeas(requestTenantID(r), requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load knowledge ideas")
 		return
@@ -601,7 +746,7 @@ func knowledgeIdeasHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func knowledgePostsHandler(w http.ResponseWriter, r *http.Request) {
-	posts, err := store.GetKnowledgePosts()
+	posts, err := store.GetKnowledgePosts(requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load knowledge posts")
 		return
@@ -610,25 +755,55 @@ func knowledgePostsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func createKnowledgePostHandler(w http.ResponseWriter, r *http.Request) {
-	var req model.KnowledgePost
+	var req struct {
+		Title    string `json:"title"`
+		Category string `json:"category"`
+		Content  string `json:"content"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
+	req.Title = strings.TrimSpace(req.Title)
+	req.Category = strings.TrimSpace(req.Category)
+	req.Content = strings.TrimSpace(req.Content)
 	if req.Title == "" || req.Content == "" {
 		writeError(w, http.StatusBadRequest, "title and content are required")
 		return
 	}
-	post, err := store.CreateKnowledgePost(req)
+	if req.Category == "" {
+		req.Category = "General"
+	}
+	currentUser, err := requestCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authenticated user is required")
+		return
+	}
+	role := ""
+	if len(currentUser.Roles) > 0 {
+		role = currentUser.Roles[0]
+	}
+	post, err := store.CreateKnowledgePost(model.KnowledgePost{
+		TenantID:  requestTenantID(r),
+		Title:     req.Title,
+		Author:    currentUser.Name,
+		AuthorID:  currentUser.ID,
+		Role:      role,
+		Org:       currentUser.OrganizationID,
+		Category:  req.Category,
+		Content:   req.Content,
+		CreatedBy: currentUser.ID,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create knowledge post")
 		return
 	}
+	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, post)
 }
 
 func channelsHandler(w http.ResponseWriter, r *http.Request) {
-	channels, err := store.GetChannels()
+	channels, err := store.GetChannelsForUser(requestTenantID(r), requestUserID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load channels")
 		return
@@ -637,7 +812,7 @@ func channelsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func conversationsHandler(w http.ResponseWriter, r *http.Request) {
-	conversations, err := store.GetConversations(requestUserID(r))
+	conversations, err := store.GetConversations(requestUserID(r), requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load conversations")
 		return
@@ -646,8 +821,15 @@ func conversationsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func messagesHandler(w http.ResponseWriter, r *http.Request) {
-	conversationID := r.URL.Query().Get("conversationId")
-	messages, err := store.GetMessages(conversationID)
+	conversationID := strings.TrimSpace(r.URL.Query().Get("conversationId"))
+	if conversationID == "" {
+		writeError(w, http.StatusBadRequest, "conversationId is required")
+		return
+	}
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
+	messages, err := store.GetMessagesForTenant(conversationID, requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load messages")
 		return
@@ -691,6 +873,9 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 	if conversationID == "" {
 		conversationID = "general"
 	}
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
 	text := strings.TrimSpace(r.FormValue("text"))
 	if text == "" {
 		switch {
@@ -705,7 +890,7 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sender := requestUserName(r)
-	tenantID := resolveTenantID(r.FormValue("tenantId"))
+	tenantID := requestTenantID(r)
 
 	dir := ensureUploadDir()
 	extension := strings.ToLower(filepath.Ext(header.Filename))
@@ -754,6 +939,7 @@ func uploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store.BroadcastMessage(message)
+	_ = store.NotifyConversationMembers(message.ConversationID, requestUserID(r), sender, message.Text, fmt.Sprintf("/chat/%s", message.ConversationID), nil)
 	writeJSON(w, message)
 }
 
@@ -803,10 +989,23 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 	if req.ConversationID == "" {
 		req.ConversationID = "general"
 	}
+	if !requireConversationAccess(w, r, req.ConversationID) {
+		return
+	}
+	identity, err := requestCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "missing user identity")
+		return
+	}
+	mentionUserIDs, err := resolveMessageMentions(req.ConversationID, requestUserID(r), requestTenantID(r), req.MentionUserIDs, req.MentionAll, identity)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	sender := requestUserName(r)
 	message := model.Message{
 		ID:              uuid.NewString(),
-		TenantID:        resolveTenantID(req.TenantID),
+		TenantID:        requestTenantID(r),
 		ConversationID:  req.ConversationID,
 		ChannelID:       req.ChannelID,
 		ParentMessageID: req.ParentMessageID,
@@ -817,26 +1016,61 @@ func createMessageHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:       time.Now().UTC(),
 		Status:          "active",
 		DeliveryStatus:  "sent",
+		MentionUserIDs:  mentionUserIDs,
+		MentionAll:      req.MentionAll,
 	}
-	if err := store.StoreMessage(message); err != nil {
+	if err := store.StoreMessageWithMentions(message); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save message")
 		return
 	}
 	store.BroadcastMessage(message)
-	store.NotifyConversationMembers(message.ConversationID, requestUserID(r), message.Text, fmt.Sprintf("/chat/%s", message.ConversationID))
+	store.NotifyConversationMembers(message.ConversationID, requestUserID(r), sender, message.Text, fmt.Sprintf("/chat/%s", message.ConversationID), message.MentionUserIDs)
 	writeJSON(w, message)
 }
 
 func conversationMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conversationID := vars["id"]
-	tenantID := strings.TrimSpace(r.URL.Query().Get("tenantId"))
-	messages, err := store.GetMessagesForTenant(conversationID, tenantID)
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
+	messages, err := store.GetMessagesForTenant(conversationID, requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load conversation messages")
 		return
 	}
 	writeJSON(w, messages)
+}
+
+func forwardMessageHandler(w http.ResponseWriter, r *http.Request) {
+	source, ok := requireMessageAccess(w, r, mux.Vars(r)["id"])
+	if !ok {
+		return
+	}
+	if source.Status == "deleted" {
+		writeError(w, http.StatusConflict, "deleted messages cannot be forwarded")
+		return
+	}
+	var req struct {
+		TargetConversationID string `json:"targetConversationId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.TargetConversationID) == "" {
+		writeError(w, http.StatusBadRequest, "targetConversationId is required")
+		return
+	}
+	req.TargetConversationID = strings.TrimSpace(req.TargetConversationID)
+	if !requireConversationAccess(w, r, req.TargetConversationID) {
+		return
+	}
+	message, err := store.ForwardMessage(source, req.TargetConversationID, requestUserID(r), requestUserName(r), requestTenantID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to forward message")
+		return
+	}
+	store.BroadcastMessage(message)
+	store.NotifyConversationMembers(message.ConversationID, requestUserID(r), requestUserName(r), message.Text, fmt.Sprintf("/chat/%s", message.ConversationID), nil)
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, message)
 }
 
 func editMessageHandler(w http.ResponseWriter, r *http.Request) {
@@ -851,9 +1085,8 @@ func editMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
-	message, err := store.GetMessageByID(messageID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "message not found")
+	message, accessible := requireMessageAccess(w, r, messageID)
+	if !accessible {
 		return
 	}
 	allowed, err := store.CanModifyMessage(requestUserID(r), message)
@@ -879,9 +1112,8 @@ func editMessageHandler(w http.ResponseWriter, r *http.Request) {
 func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	messageID := vars["id"]
-	message, err := store.GetMessageByID(messageID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "message not found")
+	message, accessible := requireMessageAccess(w, r, messageID)
+	if !accessible {
 		return
 	}
 	allowed, err := store.CanModifyMessage(requestUserID(r), message)
@@ -913,13 +1145,21 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// The frontend carries the JWT as "Bearer.<token>" in Sec-WebSocket-Protocol
+	// (browsers cannot set WS headers). Browsers require the server to echo a
+	// chosen subprotocol; if the response omits the header the connection is
+	// rejected and the UI shows a reconnect loop. Negotiate by echoing any
+	// subprotocol the client offered. Do this on a per-request copy so the
+	// package-level upgrader stays shared.
+	u := upgrader
+	u.Subprotocols = clientSubprotocols(r)
+	conn, err := u.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("websocket upgrade failed: %v", err)
 		return
 	}
 
-	client := store.NewClient(conn, "general")
+	client := store.NewClient(conn, "general", currentUser.ID)
 	store.RegisterClient(client)
 	defer func() {
 		store.UnregisterClient(client)
@@ -934,32 +1174,43 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		action, _ := payload["action"].(string)
+		trustedTenantID := resolveTenantID(currentUser.OrganizationID)
 		switch action {
 		case "join-conversation":
 			conversationID, _ := payload["conversationId"].(string)
-			tenantID, _ := payload["tenantId"].(string)
 			if conversationID == "" {
 				conversationID = "general"
 			}
-			client.SetConversation(routeConversationKey(tenantID, conversationID))
+			allowed, accessErr := store.CanAccessConversation(conversationID, currentUser.ID, trustedTenantID)
+			if accessErr != nil || !allowed {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "conversation access denied"})
+				continue
+			}
+			client.SetConversation(routeConversationKey(trustedTenantID, conversationID))
 		case "typing":
 			conversationID, _ := payload["conversationId"].(string)
-			tenantID, _ := payload["tenantId"].(string)
 			if conversationID == "" {
 				continue
 			}
-			store.BroadcastEnvelope(tenantID, conversationID, "typing", map[string]interface{}{
+			allowed, accessErr := store.CanAccessConversation(conversationID, currentUser.ID, trustedTenantID)
+			if accessErr != nil || !allowed {
+				continue
+			}
+			store.BroadcastEnvelope(trustedTenantID, conversationID, "typing", map[string]interface{}{
 				"conversationId": conversationID,
 				"userId":         currentUser.ID,
 				"userName":       currentUser.Name,
 			})
 		case "stop-typing":
 			conversationID, _ := payload["conversationId"].(string)
-			tenantID, _ := payload["tenantId"].(string)
 			if conversationID == "" {
 				continue
 			}
-			store.BroadcastEnvelope(tenantID, conversationID, "stop-typing", map[string]interface{}{
+			allowed, accessErr := store.CanAccessConversation(conversationID, currentUser.ID, trustedTenantID)
+			if accessErr != nil || !allowed {
+				continue
+			}
+			store.BroadcastEnvelope(trustedTenantID, conversationID, "stop-typing", map[string]interface{}{
 				"conversationId": conversationID,
 				"userId":         currentUser.ID,
 				"userName":       currentUser.Name,
@@ -989,26 +1240,52 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("invalid websocket chat payload: %v", err)
 				continue
 			}
-			if err := store.StoreMessage(message); err != nil {
+			allowed, accessErr := store.CanAccessConversation(message.ConversationID, currentUser.ID, trustedTenantID)
+			if accessErr != nil || !allowed {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "conversation access denied"})
+				continue
+			}
+			message.TenantID = trustedTenantID
+			mentionUserIDs, mentionErr := resolveMessageMentions(message.ConversationID, currentUser.ID, trustedTenantID, message.MentionUserIDs, message.MentionAll, currentUser)
+			if mentionErr != nil {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": mentionErr.Error()})
+				continue
+			}
+			message.MentionUserIDs = mentionUserIDs
+			if err := store.StoreMessageWithMentions(message); err != nil {
 				log.Printf("failed to store websocket message: %v", err)
 				continue
 			}
 			store.BroadcastMessage(message)
+			_ = store.NotifyConversationMembers(message.ConversationID, currentUser.ID, currentUser.Name, message.Text, fmt.Sprintf("/chat/%s", message.ConversationID), message.MentionUserIDs)
 		case "join-call":
 			sessionID, _ := payload["sessionId"].(string)
 			if sessionID == "" {
 				continue
 			}
+			session, sessionErr := store.GetCallSession(sessionID)
+			allowed, accessErr := canAccessCallSession(session, currentUser.ID, trustedTenantID)
+			if sessionErr != nil || accessErr != nil || !allowed || session.Status != model.CallStatusLive {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "call access denied"})
+				continue
+			}
 			store.SetConnCallIdentity(conn, sessionID, currentUser.ID)
-			store.JoinCallSession(sessionID, currentUser.ID, currentUser.Name)
+			if _, err := store.JoinCallSession(sessionID, currentUser.ID, currentUser.Name); err != nil {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "failed to join call"})
+				continue
+			}
 			store.BroadcastCallState(sessionID, "call-participant-joined", map[string]string{
 				"userId": currentUser.ID, "userName": currentUser.Name,
 			})
 		case "leave-call":
 			sessionID, _ := payload["sessionId"].(string)
 			if sessionID != "" {
-				store.LeaveCallSession(sessionID, currentUser.ID)
-				store.BroadcastCallState(sessionID, "call-participant-left", map[string]string{"userId": currentUser.ID})
+				session, sessionErr := store.GetCallSession(sessionID)
+				allowed, accessErr := canAccessCallSession(session, currentUser.ID, trustedTenantID)
+				if sessionErr == nil && accessErr == nil && allowed {
+					store.LeaveCallSession(sessionID, currentUser.ID)
+					store.BroadcastCallState(sessionID, "call-participant-left", map[string]string{"userId": currentUser.ID})
+				}
 			}
 			store.ClearConnCallIdentity(conn)
 		case "signal":
@@ -1016,8 +1293,34 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			signalType, _ := payload["type"].(string)
 			toUser, _ := payload["to"].(string)
 			signalPayload, _ := payload["payload"].(string)
-			if sessionID == "" {
+			if sessionID == "" || !isAllowedCallSignalType(signalType) {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "invalid call signal"})
 				continue
+			}
+			session, sessionErr := store.GetCallSession(sessionID)
+			allowed, accessErr := canAccessCallSession(session, currentUser.ID, trustedTenantID)
+			active, activeErr := store.IsActiveCallParticipant(sessionID, currentUser.ID)
+			if sessionErr != nil || accessErr != nil || activeErr != nil || !allowed || !active || session.Status != model.CallStatusLive {
+				_ = conn.WriteJSON(map[string]string{"event": "error", "error": "call signaling access denied"})
+				continue
+			}
+			if toUser != "" {
+				targetActive, targetErr := store.IsActiveCallParticipant(sessionID, toUser)
+				if targetErr != nil || !targetActive {
+					_ = conn.WriteJSON(map[string]string{"event": "error", "error": "call signal target is not active"})
+					continue
+				}
+			}
+			if signalType == "mute-requested" {
+				role, roleErr := store.GetActiveCallParticipantRole(sessionID, currentUser.ID)
+				if roleErr != nil || (role != "host" && role != "moderator") {
+					_ = conn.WriteJSON(map[string]string{"event": "error", "error": "only hosts and moderators can request mute"})
+					continue
+				}
+				if toUser == "" {
+					_ = conn.WriteJSON(map[string]string{"event": "error", "error": "mute request requires a target"})
+					continue
+				}
 			}
 			store.SignalRelay(model.CallSignal{
 				Type:      signalType,
@@ -1046,6 +1349,8 @@ func buildMessageFromPayload(payload map[string]interface{}, currentUser model.U
 	var topLevelTenant string
 	var parentMessageID string
 	var threadRootID string
+	var mentionUserIDs []string
+	var mentionAll bool
 
 	if topTenant, ok := payload["tenantId"].(string); ok {
 		topLevelTenant = topTenant
@@ -1065,6 +1370,14 @@ func buildMessageFromPayload(payload map[string]interface{}, currentUser model.U
 	channelID, _ = payload["channelId"].(string)
 	parentMessageID, _ = payload["parentMessageId"].(string)
 	threadRootID, _ = payload["threadRootId"].(string)
+	mentionAll, _ = payload["mentionAll"].(bool)
+	if rawMentions, ok := payload["mentionUserIds"].([]interface{}); ok {
+		for _, rawMention := range rawMentions {
+			if userID, ok := rawMention.(string); ok {
+				mentionUserIDs = append(mentionUserIDs, userID)
+			}
+		}
+	}
 	if tenantID == "" {
 		tenantID, _ = payload["tenantId"].(string)
 	}
@@ -1088,6 +1401,8 @@ func buildMessageFromPayload(payload map[string]interface{}, currentUser model.U
 		CreatedAt:       time.Now().UTC(),
 		Status:          "active",
 		DeliveryStatus:  "sent",
+		MentionUserIDs:  mentionUserIDs,
+		MentionAll:      mentionAll,
 	}, nil
 }
 
@@ -1109,13 +1424,20 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if r.URL.Path == "/health" || r.URL.Path == "/readyz" {
+		if r.URL.Path == "/health" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		if strings.HasPrefix(r.URL.Path, "/uploads") {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if identity, workspaceID, ok := internalObjectConversationIdentity(r); ok {
+			ctx := context.WithValue(r.Context(), requestUserIDKey, identity.ID)
+			ctx = context.WithValue(ctx, requestIdentityKey, identity)
+			ctx = context.WithValue(ctx, requestWorkspaceIDKey, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -1191,11 +1513,70 @@ func authMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "missing user identity in token")
 			return
 		}
+		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+		if len(workspaceID) > 128 || strings.ContainsAny(workspaceID, " /\\\t\r\n") {
+			writeError(w, http.StatusBadRequest, "invalid workspace context")
+			return
+		}
+		membershipAuth := authHeader
+		if membershipAuth == "" {
+			membershipAuth = "Bearer " + tokenString
+		}
+		if workspaceID != "" && !workspaceMember(r, workspaceID, membershipAuth) {
+			return
+		}
 
+		identity := sharedIdentityFromClaims(claims, userID)
+		if store.IsReady() {
+			if err := store.UpsertTrustedUser(identity); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to synchronize authenticated user")
+				return
+			}
+		}
 		ctx := context.WithValue(r.Context(), requestUserIDKey, userID)
-		ctx = context.WithValue(ctx, requestIdentityKey, sharedIdentityFromClaims(claims, userID))
+		ctx = context.WithValue(ctx, requestIdentityKey, identity)
+		ctx = context.WithValue(ctx, requestWorkspaceIDKey, workspaceID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func internalObjectConversationIdentity(r *http.Request) (model.User, string, bool) {
+	if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/conversations/object" {
+		return model.User{}, "", false
+	}
+	expected := strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY"))
+	supplied := strings.TrimSpace(r.Header.Get("X-Internal-API-Key"))
+	userID := strings.TrimSpace(r.Header.Get("X-StatGate-User-ID"))
+	tenantID := strings.TrimSpace(r.Header.Get("X-Tenant-ID"))
+	workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+	if expected == "" || supplied == "" || !hmac.Equal([]byte(expected), []byte(supplied)) || userID == "" || tenantID == "" {
+		return model.User{}, "", false
+	}
+	if len(workspaceID) > 128 || strings.ContainsAny(workspaceID, " /\\\t\r\n") {
+		return model.User{}, "", false
+	}
+	return model.User{ID: userID, Name: userID, OrganizationID: tenantID, Presence: "online"}, workspaceID, true
+}
+
+func workspaceMember(r *http.Request, workspaceID, authHeader string) bool {
+	base := strings.TrimRight(os.Getenv("STATGATE_ENTERPRISE_API_URL"), "/")
+	if base == "" {
+		base = "http://localhost:8096/api"
+	}
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, base+"/workspaces/"+url.PathEscape(workspaceID), nil)
+	if err != nil {
+		return false
+	}
+	request.Header.Set("Authorization", authHeader)
+	response, err := (&http.Client{Timeout: 2 * time.Second}).Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden {
+		return false
+	}
+	return response.StatusCode >= 200 && response.StatusCode < 300
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -1331,7 +1712,7 @@ var rateLimitStore = struct {
 
 func rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" || r.URL.Path == "/readyz" {
+		if r.URL.Path == "/health" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -4,7 +4,7 @@
 -- ═══════════════════════════════════════════════════════════
 
 -- Create StatGovernance database
-CREATE DATABASE statgovernance;
+SELECT 'CREATE DATABASE statgovernance' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statgovernance') \gexec
 
 -- Password injected from environment (GOVERNANCE_DB_PASSWORD), never hardcoded.
 \getenv GOVERNANCE_PW GOVERNANCE_DB_PASSWORD

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { Search, Bell, LogOut, Shield, ChevronDown, Sparkles } from 'lucide-react';
 import { EnterpriseSearch } from './EnterpriseSearch';
 import { AICopilotModal } from './AICopilotModal';
@@ -9,11 +8,17 @@ import { useAuth } from '@context/AuthContext';
 interface HeaderProps {
   onAppLauncherClick?: () => void;
   user?: User | null;
+  branding?: {
+    display_name?: string;
+    logo_url?: string;
+    primary_color?: string;
+    secondary_color?: string;
+  } | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_ENTERPRISE_CORE_URL || 'http://localhost:8096';
 
-export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
+export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user, branding }) => {
   const { logout } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -61,24 +66,24 @@ export const Header: React.FC<HeaderProps> = ({ onAppLauncherClick, user }) => {
       <header
         className="sticky top-0 z-40 border-b-0 shadow-md"
         style={{
-          background: 'linear-gradient(135deg, #165c92 0%, #1a7ab5 100%)',
-          boxShadow: '0 2px 8px rgba(22, 92, 146, 0.15)',
+          background: `linear-gradient(135deg, ${branding?.primary_color || '#0f766e'} 0%, ${branding?.secondary_color || '#0f3d3e'} 100%)`,
+          boxShadow: '0 2px 8px rgba(15, 61, 62, 0.2)',
         }}
       >
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo & Brand */}
             <div className="flex items-center space-x-3">
-              <Image
-                src="/icons/logo.png"
-                alt="StatGate"
+              <img
+                src={branding?.logo_url || '/icons/logo.png'}
+                alt={branding?.display_name || 'StatGate'}
                 width={32}
                 height={32}
-                className="w-8 h-8 rounded-lg"
+                className="w-8 h-8 rounded-lg object-cover"
                 style={{ boxShadow: '0 0 0 2px rgba(255,255,255,0.2)' }}
               />
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-white tracking-wide">StatGate</h1>
+                <h1 className="text-lg font-bold text-white tracking-wide">{branding?.display_name || 'StatGate'}</h1>
                 <p className="text-xs text-white/80">Enterprise Evidence Intelligence</p>
               </div>
             </div>

@@ -1,7 +1,7 @@
 -- AI & Autonomy (App 5 — P22 Digital Twins, P31 Multi-Agent Systems,
 -- P39 Knowledge Graph) database and role.
 -- Password injected from environment (AIENG_DB_PASSWORD), never hardcoded.
-CREATE DATABASE ai_intelligence;
+SELECT 'CREATE DATABASE ai_intelligence' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ai_intelligence') \gexec
 
 \getenv aieng_pw AIENG_DB_PASSWORD
 SELECT format('CREATE ROLE "AIEngine" WITH LOGIN PASSWORD %L', :'aieng_pw')

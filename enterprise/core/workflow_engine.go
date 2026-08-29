@@ -735,19 +735,41 @@ func openStatChatForWorkflow(inst WorkflowInstance, def WorkflowDefinition, step
 	}
 
 	payload := map[string]interface{}{
-		"title":        title,
+		"objectRef":    "obj:enterprise:workflow:" + inst.ID,
+		"name":         title,
 		"participants": participants,
-		"source":       "enterprise-workflow",
 		"metadata": map[string]interface{}{
-			"workflow_id": def.ID, "instance_id": inst.ID, "correlation_id": inst.CorrelationID,
+			"module": "enterprise", "entity": "workflow", "workflow_id": def.ID, "instance_id": inst.ID, "correlation_id": inst.CorrelationID,
 		},
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = postJSON(getEnv("STATCHAT_API_URL", "http://localhost:4000")+"/v1/chats", data)
-	return err
+	tenantID := strings.TrimSpace(inst.OrgID)
+	if tenantID == "" && inst.Context != nil {
+		tenantID = strings.TrimSpace(fmt.Sprint(inst.Context["tenant_id"]))
+	}
+	if tenantID == "" || tenantID == "<nil>" {
+		return fmt.Errorf("workflow tenant context is required for StatChat")
+	}
+	request, err := http.NewRequest(http.MethodPost, getEnv("STATCHAT_API_URL", "http://localhost:4000")+"/v1/chat/conversations/object", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Internal-API-Key", getEnv("STATGATE_INTERNAL_API_KEY", ""))
+	request.Header.Set("X-StatGate-User-ID", "enterprise-workflow")
+	request.Header.Set("X-Tenant-ID", tenantID)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("StatChat returned HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
 // createCalendarForWorkflow creates a calendar event.

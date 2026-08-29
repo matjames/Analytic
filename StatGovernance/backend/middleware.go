@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -126,6 +127,16 @@ func registryAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		c.Set("tenant_id", tenant)
+		if workspaceID := strings.TrimSpace(c.GetHeader("X-Workspace-ID")); workspaceID != "" {
+			if len(workspaceID) > 128 || strings.ContainsAny(workspaceID, " /\\\t\r\n") {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid_workspace_context"})
+				return
+			}
+			if !governanceWorkspaceMember(c, workspaceID, auth) {
+				return
+			}
+			c.Set("workspace_id", workspaceID)
+		}
 
 		if org, ok := claims["org_id"].(string); ok {
 			c.Set("org_id", org)
@@ -133,6 +144,34 @@ func registryAuthMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func governanceWorkspaceMember(c *gin.Context, workspaceID, authHeader string) bool {
+	base := strings.TrimRight(os.Getenv("STATGATE_ENTERPRISE_API_URL"), "/")
+	if base == "" {
+		base = "http://localhost:8096/api"
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, fmt.Sprintf("%s/workspaces/%s", base, workspaceID), nil)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace membership unavailable"})
+		return false
+	}
+	req.Header.Set("Authorization", authHeader)
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace membership unavailable"})
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "workspace membership required"})
+		return false
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace membership unavailable"})
+		return false
+	}
+	return true
 }
 
 // claimString safely reads a string claim under any of the given names.

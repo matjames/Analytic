@@ -43,7 +43,9 @@ def _ensure_table(conn):
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS dataset_metadata (
-                table_name      VARCHAR(128) PRIMARY KEY,
+                table_name      VARCHAR(128) NOT NULL,
+                tenant_id       VARCHAR(128) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id    VARCHAR(128),
                 owner_id        VARCHAR(128),
                 steward_id      VARCHAR(128),
                 description     TEXT,
@@ -59,12 +61,42 @@ def _ensure_table(conn):
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_dataset_metadata_class ON dataset_metadata(classification)
         """)
+        cur.execute("ALTER TABLE dataset_metadata ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("ALTER TABLE dataset_metadata ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(128) NOT NULL DEFAULT 'tenant-alpha'")
+        cur.execute("""
+            DO $$
+            DECLARE
+                legacy_constraint_name TEXT;
+            BEGIN
+                SELECT c.conname
+                INTO legacy_constraint_name
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                WHERE t.relname = 'dataset_metadata'
+                  AND c.contype IN ('p', 'u')
+                  AND (
+                      SELECT ARRAY_AGG(a.attname ORDER BY keys.ordinality)
+                      FROM UNNEST(c.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+                      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = keys.attnum
+                  ) = ARRAY['table_name'];
+
+                IF legacy_constraint_name IS NOT NULL THEN
+                    EXECUTE FORMAT('ALTER TABLE dataset_metadata DROP CONSTRAINT %I', legacy_constraint_name);
+                END IF;
+            END $$;
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_dataset_metadata_tenant_workspace ON dataset_metadata(tenant_id, workspace_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_dataset_metadata_workspace ON dataset_metadata(workspace_id)")
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_metadata_scope_unique
+            ON dataset_metadata (tenant_id, COALESCE(workspace_id, ''), table_name)
+        """)
     conn.commit()
 
 
 def upsert_dataset_metadata(table_name, owner_id=None, steward_id=None,
                             description='', classification='public',
-                            tags=None, row_count=0, col_count=0):
+                            tags=None, row_count=0, col_count=0, workspace_id=None, tenant_id='tenant-alpha'):
     """Create or update metadata for a dataset."""
     conn = _get_conn()
     if conn is None:
@@ -73,21 +105,31 @@ def upsert_dataset_metadata(table_name, owner_id=None, steward_id=None,
         _ensure_table(conn)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                INSERT INTO dataset_metadata (table_name, owner_id, steward_id, description, classification, tags, row_count, col_count, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (table_name) DO UPDATE SET
-                    owner_id = EXCLUDED.owner_id,
-                    steward_id = EXCLUDED.steward_id,
-                    description = EXCLUDED.description,
-                    classification = EXCLUDED.classification,
-                    tags = EXCLUDED.tags,
-                    row_count = EXCLUDED.row_count,
-                    col_count = EXCLUDED.col_count,
-                    updated_at = CURRENT_TIMESTAMP
+                INSERT INTO dataset_metadata (table_name, tenant_id, workspace_id, owner_id, steward_id, description, classification, tags, row_count, col_count, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT DO NOTHING
                 RETURNING *
-            """, (table_name, owner_id, steward_id, description, classification,
+            """, (table_name, tenant_id, workspace_id, owner_id, steward_id, description, classification,
                   json.dumps(tags or []), row_count, col_count))
             row = cur.fetchone()
+            if row is None:
+                cur.execute("""
+                    UPDATE dataset_metadata SET
+                    owner_id = %s,
+                    steward_id = %s,
+                    description = %s,
+                    classification = %s,
+                    tags = %s,
+                    row_count = %s,
+                    col_count = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE table_name = %s
+                  AND tenant_id = %s
+                  AND workspace_id IS NOT DISTINCT FROM %s
+                RETURNING *
+                """, (owner_id, steward_id, description, classification, json.dumps(tags or []),
+                      row_count, col_count, table_name, tenant_id, workspace_id))
+                row = cur.fetchone()
         conn.commit()
         return dict(row) if row else None
     except Exception as exc:
@@ -97,7 +139,7 @@ def upsert_dataset_metadata(table_name, owner_id=None, steward_id=None,
         conn.close()
 
 
-def get_dataset_metadata(table_name):
+def get_dataset_metadata(table_name, workspace_id=None, tenant_id='tenant-alpha'):
     """Get metadata for a single dataset."""
     conn = _get_conn()
     if conn is None:
@@ -105,7 +147,8 @@ def get_dataset_metadata(table_name):
     try:
         _ensure_table(conn)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM dataset_metadata WHERE table_name = %s", (table_name,))
+            cur.execute("SELECT * FROM dataset_metadata WHERE table_name = %s AND tenant_id = %s AND (%s IS NULL OR workspace_id = %s)",
+                        (table_name, tenant_id, workspace_id, workspace_id))
             row = cur.fetchone()
         return dict(row) if row else None
     except Exception as exc:
@@ -115,7 +158,7 @@ def get_dataset_metadata(table_name):
         conn.close()
 
 
-def list_dataset_metadata(classification=None):
+def list_dataset_metadata(classification=None, workspace_id=None, tenant_id='tenant-alpha'):
     """List all dataset metadata records, optionally filtered by classification."""
     conn = _get_conn()
     if conn is None:
@@ -123,11 +166,13 @@ def list_dataset_metadata(classification=None):
     try:
         _ensure_table(conn)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            query = "SELECT * FROM dataset_metadata WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)"
+            args = [tenant_id, workspace_id, workspace_id]
             if classification:
-                cur.execute("SELECT * FROM dataset_metadata WHERE classification = %s ORDER BY table_name",
-                            (classification,))
-            else:
-                cur.execute("SELECT * FROM dataset_metadata ORDER BY table_name")
+                query += " AND classification = %s"
+                args.append(classification)
+            query += " ORDER BY table_name"
+            cur.execute(query, args)
             rows = cur.fetchall()
         return [dict(r) for r in rows]
     except Exception as exc:
@@ -137,7 +182,7 @@ def list_dataset_metadata(classification=None):
         conn.close()
 
 
-def search_datasets(query, limit=20):
+def search_datasets(query, limit=20, workspace_id=None, tenant_id='tenant-alpha'):
     """
     Full-text search across dataset table names, descriptions, tags,
     owners, and stewards.  Implements the directive's requirement that
@@ -152,15 +197,16 @@ def search_datasets(query, limit=20):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT * FROM dataset_metadata
-                WHERE table_name ILIKE %s
+                WHERE tenant_id = %s AND (%s IS NULL OR workspace_id = %s)
+                  AND (table_name ILIKE %s
                    OR description ILIKE %s
                    OR owner_id ILIKE %s
                    OR steward_id ILIKE %s
                    OR classification ILIKE %s
-                   OR tags::text ILIKE %s
+                   OR tags::text ILIKE %s)
                 ORDER BY table_name
                 LIMIT %s
-            """, (like, like, like, like, like, like, limit))
+            """, (tenant_id, workspace_id, workspace_id, like, like, like, like, like, like, limit))
             rows = cur.fetchall()
         return [dict(r) for r in rows]
     except Exception as exc:
@@ -170,7 +216,7 @@ def search_datasets(query, limit=20):
         conn.close()
 
 
-def remove_dataset_metadata(table_name):
+def remove_dataset_metadata(table_name, workspace_id=None, tenant_id='tenant-alpha'):
     """Remove metadata for a dataset."""
     conn = _get_conn()
     if conn is None:
@@ -178,7 +224,8 @@ def remove_dataset_metadata(table_name):
     try:
         _ensure_table(conn)
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM dataset_metadata WHERE table_name = %s", (table_name,))
+            cur.execute("DELETE FROM dataset_metadata WHERE table_name = %s AND tenant_id = %s AND (%s IS NULL OR workspace_id = %s)",
+                        (table_name, tenant_id, workspace_id, workspace_id))
         conn.commit()
         return True
     except Exception as exc:

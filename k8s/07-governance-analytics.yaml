@@ -1,0 +1,243 @@
+---
+# Governance API (Go)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-governance-api
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-governance-api
+  template:
+    metadata:
+      labels:
+        app: statgate-governance-api
+    spec:
+      containers:
+      - name: governance-api
+        image: analytic-statgate-governance-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        - name: STATGOVERNANCE_ENV
+          value: "production"
+        - name: BIND_ADDRESS
+          value: "0.0.0.0"
+        - name: GOVERNANCE_DB_HOST
+          value: "postgres"
+        - name: GOVERNANCE_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: POSTGRES_PORT
+        - name: GOVERNANCE_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: GOVERNANCE_DB_NAME
+        - name: GOVERNANCE_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: GOVERNANCE_DB_USER
+        - name: GOVERNANCE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: GOVERNANCE_DB_PASSWORD
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: REDIS_PORT
+        - name: STATCHAT_API_URL
+          value: "http://statchat-backend:4000"
+        - name: STATGATE_REGISTRY_API_URL
+          value: "http://statgate-registry-api:9090/api"
+        - name: STATGATE_REGISTRY_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_REGISTRY_JWT_SECRET
+        - name: STATGATE_INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_INTERNAL_API_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-governance-api
+  namespace: statgate
+  labels:
+    app: statgate-governance-api
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-governance-api
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+
+---
+# Governance UI (React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-governance-ui
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-governance-ui
+  template:
+    metadata:
+      labels:
+        app: statgate-governance-ui
+    spec:
+      containers:
+      - name: governance-ui
+        image: analytic-statgate-governance-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: VITE_GOVERNANCE_API_URL
+          value: "http://statgate-governance-api:8080"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-governance-ui
+  namespace: statgate
+  labels:
+    app: statgate-governance-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-governance-ui
+  ports:
+  - port: 3012
+    targetPort: 80
+    protocol: TCP
+    name: http
+
+---
+# Analytics API (Python Flask)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-analytics
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-analytics
+  template:
+    metadata:
+      labels:
+        app: statgate-analytics
+    spec:
+      containers:
+      - name: analytics
+        image: analytic-statgate-analytics:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: FLASK_PORT
+          value: "5000"
+        - name: ANALYTICS_REQUIRE_AUTH
+          value: "true"
+        - name: STATGATE_REGISTRY_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_REGISTRY_JWT_SECRET
+        - name: STATGATE_INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_INTERNAL_API_KEY
+        - name: FLASK_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: FLASK_SECRET_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-analytics
+  namespace: statgate
+  labels:
+    app: statgate-analytics
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-analytics
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: http

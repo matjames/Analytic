@@ -192,6 +192,31 @@ func ensurePlatformSchema(db *sql.DB) error {
 			registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			last_heartbeat TIMESTAMPTZ
 		)`,
+
+		// Tenant-scoped workspaces are the shared container for all module
+		// objects. Membership is the authorization boundary used by modules.
+		`CREATE TABLE IF NOT EXISTS platform_workspaces (
+			id            TEXT PRIMARY KEY,
+			tenant_id     TEXT NOT NULL,
+			name          TEXT NOT NULL,
+			slug          TEXT NOT NULL,
+			description   TEXT NOT NULL DEFAULT '',
+			status        TEXT NOT NULL DEFAULT 'active',
+			created_by    TEXT NOT NULL,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (tenant_id, slug)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_platform_workspaces_tenant ON platform_workspaces(tenant_id, status)`,
+		`CREATE TABLE IF NOT EXISTS platform_workspace_members (
+			workspace_id  TEXT NOT NULL REFERENCES platform_workspaces(id) ON DELETE CASCADE,
+			user_id       TEXT NOT NULL,
+			role          TEXT NOT NULL DEFAULT 'member',
+			status        TEXT NOT NULL DEFAULT 'active',
+			joined_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (workspace_id, user_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_platform_workspace_members_user ON platform_workspace_members(user_id, status)`,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

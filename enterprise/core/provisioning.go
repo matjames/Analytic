@@ -74,6 +74,7 @@ func createProjectFileStorage(projectID string, ev DomainEvent) {
 
 	rootRecord := FileRecord{
 		ID:           fmt.Sprintf("file_root_%s", projectID),
+		TenantID:     resolveEventTenantID(ev),
 		Name:         projectName,
 		OriginalName: projectName,
 		Path:         filepath.Join(getUploadDir(), "projects", projectID),
@@ -142,10 +143,12 @@ func handleProjectFiles(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "project_id required"})
 		return
 	}
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	files := fetchFileRecords(500)
 	projectFiles := make([]FileRecord, 0)
 	for _, f := range files {
-		if f.ProjectID == projectID {
+		if f.ProjectID == projectID && canAccessFileRecord(f, tenantID, platformRole) {
 			projectFiles = append(projectFiles, f)
 		}
 	}
@@ -232,4 +235,16 @@ func handleProjectProvisioningStatus(c *gin.Context) {
 	}
 
 	c.JSON(200, status)
+}
+
+func resolveEventTenantID(ev DomainEvent) string {
+	if ev.TenantID != "" {
+		return ev.TenantID
+	}
+	if ev.Payload != nil {
+		if tenantID, ok := ev.Payload["tenant_id"].(string); ok {
+			return tenantID
+		}
+	}
+	return ""
 }

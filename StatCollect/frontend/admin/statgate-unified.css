@@ -1,0 +1,352 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATGATE UNIFIED ENTERPRISE DESIGN SYSTEM
+   Standardized brand theme aligned with Stage Register & Design Directives
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Brand Primary Palette (Stage Register standard) */
+  --statgate-primary: #165c92;
+  --statgate-primary-light: #1a7ab5;
+  --statgate-primary-dark: #0f3f5f;
+  --statgate-accent: #0284c7;
+  --statgate-cyan: #06b6d4;
+  --statgate-indigo: #4f46e5;
+  
+  /* Neutral Palette */
+  --statgate-bg: #f8fafc;
+  --statgate-bg-card: #ffffff;
+  --statgate-bg-hover: #f1f5f9;
+  --statgate-border: #e2e8f0;
+  --statgate-border-focus: #165c92;
+  
+  /* Typography Colors */
+  --statgate-text: #0f172a;
+  --statgate-text-muted: #64748b;
+  --statgate-text-light: #94a3b8;
+  
+  /* Feedback Colors */
+  --statgate-success: #059669;
+  --statgate-success-bg: rgba(5, 150, 105, 0.1);
+  --statgate-warning: #d97706;
+  --statgate-warning-bg: rgba(217, 119, 6, 0.1);
+  --statgate-danger: #dc2626;
+  --statgate-danger-bg: rgba(220, 38, 38, 0.1);
+  --statgate-info: #0284c7;
+  --statgate-info-bg: rgba(2, 132, 199, 0.1);
+  
+  /* Typography */
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Outfit', 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Elevation & Shape */
+  --statgate-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --statgate-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --statgate-shadow-md: 0 4px 6px -1px rgba(22, 92, 146, 0.08), 0 2px 4px -2px rgba(22, 92, 146, 0.04);
+  --statgate-shadow-lg: 0 10px 15px -3px rgba(22, 92, 146, 0.1), 0 4px 6px -4px rgba(22, 92, 146, 0.05);
+  --statgate-radius-sm: 6px;
+  --statgate-radius: 10px;
+  --statgate-radius-lg: 14px;
+}
+
+/* Base resets */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--statgate-bg);
+  color: var(--statgate-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UNIFIED HEADER COMPONENT (STAGE REGISTER THEME)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.statgate-header, .public-header, .header {
+  background: linear-gradient(135deg, var(--statgate-primary-dark) 0%, var(--statgate-primary) 50%, var(--statgate-primary-light) 100%) !important;
+  color: #ffffff !important;
+  padding: 0.35rem 1.5rem !important;
+  height: 60px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  box-shadow: 0 2px 10px rgba(15, 63, 95, 0.22) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.brand-section, .header-brand, .brand-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+  text-decoration: none !important;
+  color: #ffffff !important;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.brand-text h1, .brand-title, .header-brand h1 {
+  font-family: var(--font-heading);
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-badge {
+  font-family: var(--font-body);
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  padding: 2px 8px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+.nav-menu, .header-nav, .nav-links {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  list-style: none !important;
+  margin: 0 !important;
+}
+
+.nav-menu a, .header-nav a, .nav-links a {
+  color: rgba(255, 255, 255, 0.9) !important;
+  text-decoration: none !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  padding: 0.4rem 0.75rem !important;
+  border-radius: var(--statgate-radius-sm) !important;
+  transition: all 0.2s ease !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.nav-menu a:hover, .header-nav a:hover, .nav-links a:hover,
+.nav-menu a.active, .header-nav a.active, .nav-links a.active {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UNIVERSAL APP LAUNCHER (9-DOT GRID)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.app-launcher-wrapper, .launcher-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.launcher-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+  font-size: 1.1rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.launcher-toggle:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+  transform: scale(1.04);
+}
+
+.app-launcher-menu, .launcher-menu {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  right: 0 !important;
+  width: 360px !important;
+  background: #ffffff !important;
+  border-radius: var(--statgate-radius-lg) !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid var(--statgate-border) !important;
+  padding: 14px !important;
+  z-index: 2000 !important;
+  animation: statgateMenuSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes statgateMenuSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.launcher-title {
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--statgate-text-muted);
+  padding: 0 4px 10px 4px;
+  border-bottom: 1px solid var(--statgate-border);
+  margin-bottom: 10px;
+}
+
+.launcher-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px !important;
+}
+
+.launcher-card, .launcher-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 10px 6px !important;
+  background: var(--statgate-bg) !important;
+  border: 1px solid var(--statgate-border) !important;
+  border-radius: var(--statgate-radius) !important;
+  text-decoration: none !important;
+  color: var(--statgate-text) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+
+.launcher-card:hover, .launcher-item:hover {
+  background: #ffffff !important;
+  border-color: var(--statgate-primary-light) !important;
+  box-shadow: 0 4px 12px rgba(22, 92, 146, 0.12) !important;
+  transform: translateY(-2px);
+  color: var(--statgate-primary) !important;
+}
+
+.launcher-icon {
+  font-size: 1.35rem;
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARDS, TABLES, BUTTONS, BADGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.statgate-card, .card {
+  background: var(--statgate-bg-card);
+  border: 1px solid var(--statgate-border);
+  border-radius: var(--statgate-radius);
+  box-shadow: var(--statgate-shadow);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.statgate-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--statgate-shadow-md);
+}
+
+.statgate-card-header, .card-header {
+  padding: 12px 18px;
+  background: #fafcff;
+  border-bottom: 1px solid var(--statgate-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.statgate-card-title, .card-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--statgate-primary-dark);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--statgate-primary) 0%, var(--statgate-primary-light) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 0.45rem 1rem !important;
+  border-radius: var(--statgate-radius-sm) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 6px rgba(22, 92, 146, 0.25) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 12px rgba(22, 92, 146, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+.btn-secondary, .btn-outline {
+  background: #ffffff !important;
+  color: var(--statgate-text) !important;
+  border: 1px solid var(--statgate-border) !important;
+  padding: 0.45rem 0.9rem !important;
+  border-radius: var(--statgate-radius-sm) !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.btn-secondary:hover, .btn-outline:hover {
+  background: var(--statgate-bg-hover) !important;
+  border-color: #cbd5e1 !important;
+  color: var(--statgate-primary) !important;
+}
+
+.badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #059669;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: statgatePulse 1.5s infinite;
+}
+
+@keyframes statgatePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}

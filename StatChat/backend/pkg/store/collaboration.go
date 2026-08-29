@@ -15,6 +15,8 @@ func ensureCollaborationSchema(ctx context.Context) error {
 	_, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS posts (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'default',
+  author_id TEXT NOT NULL DEFAULT '',
   author TEXT NOT NULL,
   role TEXT NOT NULL,
   org TEXT NOT NULL,
@@ -28,6 +30,7 @@ CREATE TABLE IF NOT EXISTS posts (
 
 CREATE TABLE IF NOT EXISTS connections (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'default',
   user_id TEXT NOT NULL REFERENCES users(id),
   connected_to_id TEXT NOT NULL REFERENCES users(id),
   connected_at TIMESTAMPTZ NOT NULL,
@@ -36,6 +39,8 @@ CREATE TABLE IF NOT EXISTS connections (
 
 CREATE TABLE IF NOT EXISTS post_comments (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'default',
+  author_id TEXT NOT NULL DEFAULT '',
   post_id TEXT NOT NULL REFERENCES posts(id),
   author TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT '',
@@ -51,6 +56,14 @@ CREATE TABLE IF NOT EXISTS post_likes (
   created_at TIMESTAMPTZ NOT NULL,
   UNIQUE (post_id, user_id)
 );
+
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS author_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE connections ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+CREATE INDEX IF NOT EXISTS idx_posts_tenant_created ON posts (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_post_comments_tenant_post ON post_comments (tenant_id, post_id, created_at);
 
 CREATE TABLE IF NOT EXISTS opportunities (
   id TEXT PRIMARY KEY,
@@ -277,8 +290,8 @@ func seedCollaborationDefaults(ctx context.Context) error {
 	return nil
 }
 
-func GetPosts(userID string) ([]model.Post, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, author, role, org, time_label, text, likes, comments, shares, created_at FROM posts ORDER BY created_at DESC`)
+func GetPosts(userID, tenantID string) ([]model.Post, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, author_id, author, role, org, time_label, text, likes, comments, shares, created_at FROM posts WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +300,7 @@ func GetPosts(userID string) ([]model.Post, error) {
 	posts := []model.Post{}
 	for rows.Next() {
 		var p model.Post
-		if err := rows.Scan(&p.ID, &p.Author, &p.Role, &p.Org, &p.Time, &p.Text, &p.Likes, &p.Comments, &p.Shares, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.AuthorID, &p.Author, &p.Role, &p.Org, &p.Time, &p.Text, &p.Likes, &p.Comments, &p.Shares, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, p)
@@ -298,7 +311,7 @@ func GetPosts(userID string) ([]model.Post, error) {
 
 	// Attach comments and likedByMe for each post
 	for i := range posts {
-		comments, err := GetPostComments(posts[i].ID)
+		comments, err := GetPostComments(posts[i].ID, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -315,8 +328,8 @@ func GetPosts(userID string) ([]model.Post, error) {
 
 // ── Post Comments ──
 
-func GetPostComments(postID string) ([]model.PostComment, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, post_id, author, role, org, text, created_at FROM post_comments WHERE post_id = $1 ORDER BY created_at ASC`, postID)
+func GetPostComments(postID, tenantID string) ([]model.PostComment, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, author_id, post_id, author, role, org, text, created_at FROM post_comments WHERE post_id = $1 AND tenant_id = $2 ORDER BY created_at ASC`, postID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +338,7 @@ func GetPostComments(postID string) ([]model.PostComment, error) {
 	comments := []model.PostComment{}
 	for rows.Next() {
 		var c model.PostComment
-		if err := rows.Scan(&c.ID, &c.PostID, &c.Author, &c.Role, &c.Org, &c.Text, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.AuthorID, &c.PostID, &c.Author, &c.Role, &c.Org, &c.Text, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)
@@ -340,13 +353,20 @@ func AddPostComment(req model.PostComment) (model.PostComment, error) {
 	if req.CreatedAt.IsZero() {
 		req.CreatedAt = time.Now().UTC()
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO post_comments (id, post_id, author, role, org, text, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		req.ID, req.PostID, req.Author, req.Role, req.Org, req.Text, req.CreatedAt)
+	var postExists bool
+	if err := db.QueryRowContext(context.Background(), `SELECT EXISTS (SELECT 1 FROM posts WHERE id = $1 AND tenant_id = $2)`, req.PostID, req.TenantID).Scan(&postExists); err != nil || !postExists {
+		if err != nil {
+			return model.PostComment{}, err
+		}
+		return model.PostComment{}, sql.ErrNoRows
+	}
+	_, err := db.ExecContext(context.Background(), `INSERT INTO post_comments (id, tenant_id, author_id, post_id, author, role, org, text, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		req.ID, req.TenantID, req.AuthorID, req.PostID, req.Author, req.Role, req.Org, req.Text, req.CreatedAt)
 	if err != nil {
 		return model.PostComment{}, err
 	}
 	// Update the count on the post
-	_, err = db.ExecContext(context.Background(), `UPDATE posts SET comments = (SELECT COUNT(1) FROM post_comments WHERE post_id = $1) WHERE id = $1`, req.PostID)
+	_, err = db.ExecContext(context.Background(), `UPDATE posts SET comments = (SELECT COUNT(1) FROM post_comments WHERE post_id = $1 AND tenant_id = $2) WHERE id = $1 AND tenant_id = $2`, req.PostID, req.TenantID)
 	return req, err
 }
 
@@ -361,7 +381,14 @@ func IsPostLikedByUser(postID, userID string) (bool, error) {
 	return count > 0, nil
 }
 
-func TogglePostLike(postID, userID string) (bool, error) {
+func TogglePostLike(postID, userID, tenantID string) (bool, error) {
+	var exists bool
+	if err := db.QueryRowContext(context.Background(), `SELECT EXISTS (SELECT 1 FROM posts WHERE id = $1 AND tenant_id = $2)`, postID, tenantID).Scan(&exists); err != nil || !exists {
+		if err != nil {
+			return false, err
+		}
+		return false, sql.ErrNoRows
+	}
 	liked, err := IsPostLikedByUser(postID, userID)
 	if err != nil {
 		return false, err
@@ -383,13 +410,16 @@ func TogglePostLike(postID, userID string) (bool, error) {
 	return !liked, err
 }
 
-func SharePost(postID string) (int, error) {
-	_, err := db.ExecContext(context.Background(), `UPDATE posts SET shares = shares + 1 WHERE id = $1`, postID)
+func SharePost(postID, tenantID string) (int, error) {
+	result, err := db.ExecContext(context.Background(), `UPDATE posts SET shares = shares + 1 WHERE id = $1 AND tenant_id = $2`, postID, tenantID)
 	if err != nil {
 		return 0, err
 	}
+	if count, _ := result.RowsAffected(); count != 1 {
+		return 0, sql.ErrNoRows
+	}
 	var shares int
-	err = db.QueryRowContext(context.Background(), `SELECT shares FROM posts WHERE id = $1`, postID).Scan(&shares)
+	err = db.QueryRowContext(context.Background(), `SELECT shares FROM posts WHERE id = $1 AND tenant_id = $2`, postID, tenantID).Scan(&shares)
 	return shares, err
 }
 
@@ -403,18 +433,18 @@ func CreatePost(req model.Post) (model.Post, error) {
 	if req.Time == "" {
 		req.Time = "now"
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO posts (id, author, role, org, time_label, text, likes, comments, shares, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		req.ID, req.Author, req.Role, req.Org, req.Time, req.Text, req.Likes, req.Comments, req.Shares, req.CreatedAt)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO posts (id, tenant_id, author_id, author, role, org, time_label, text, likes, comments, shares, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		req.ID, req.TenantID, req.AuthorID, req.Author, req.Role, req.Org, req.Time, req.Text, req.Likes, req.Comments, req.Shares, req.CreatedAt)
 	return req, err
 }
 
-func GetConnections(userID string) ([]model.Connection, error) {
+func GetConnections(userID, tenantID string) ([]model.Connection, error) {
 	rows, err := db.QueryContext(context.Background(), `
 SELECT c.id, c.user_id, c.connected_to_id, u.name, u.roles, u.organization_id, c.connected_at
 FROM connections c
 JOIN users u ON u.id = c.connected_to_id
-WHERE c.user_id = $1
-ORDER BY c.connected_at DESC`, userID)
+WHERE c.user_id = $1 AND c.tenant_id = $2 AND u.organization_id = $2
+ORDER BY c.connected_at DESC`, userID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -437,10 +467,10 @@ ORDER BY c.connected_at DESC`, userID)
 	return conns, rows.Err()
 }
 
-func CreateConnection(userID string, connectedToID string) (model.Connection, error) {
+func CreateConnection(userID, connectedToID, tenantID string) (model.Connection, error) {
 	var target model.User
 	var rolesJSON []byte
-	err := db.QueryRowContext(context.Background(), `SELECT id, name, roles, organization_id FROM users WHERE id = $1`, connectedToID).Scan(&target.ID, &target.Name, &rolesJSON, &target.OrganizationID)
+	err := db.QueryRowContext(context.Background(), `SELECT id, name, roles, organization_id FROM users WHERE id = $1 AND organization_id = $2`, connectedToID, tenantID).Scan(&target.ID, &target.Name, &rolesJSON, &target.OrganizationID)
 	if err != nil {
 		return model.Connection{}, err
 	}
@@ -458,13 +488,13 @@ func CreateConnection(userID string, connectedToID string) (model.Connection, er
 	if len(roles) > 0 {
 		conn.ConnectedRole = roles[0]
 	}
-	_, err = db.ExecContext(context.Background(), `INSERT INTO connections (id, user_id, connected_to_id, connected_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
-		conn.ID, userID, connectedToID, conn.ConnectedAt)
+	_, err = db.ExecContext(context.Background(), `INSERT INTO connections (id, tenant_id, user_id, connected_to_id, connected_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+		conn.ID, tenantID, userID, connectedToID, conn.ConnectedAt)
 	return conn, err
 }
 
-func RemoveConnection(userID string, connectedToID string) error {
-	_, err := db.ExecContext(context.Background(), `DELETE FROM connections WHERE user_id = $1 AND connected_to_id = $2`, userID, connectedToID)
+func RemoveConnection(userID, connectedToID, tenantID string) error {
+	_, err := db.ExecContext(context.Background(), `DELETE FROM connections WHERE user_id = $1 AND connected_to_id = $2 AND tenant_id = $3`, userID, connectedToID, tenantID)
 	return err
 }
 
@@ -627,7 +657,7 @@ func seedKnowledgeDefaults(ctx context.Context) error {
 	}
 	for _, e := range experts {
 		specJSON, _ := json.Marshal(e.Specialties)
-		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_experts (id, name, role, org, specialties, followers, articles, rating, avatar) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
+		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_experts (id, tenant_id, name, role, org, specialties, followers, articles, rating, avatar) VALUES ($1,'default',$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
 			e.ID, e.Name, e.Role, e.Org, specJSON, e.Followers, e.Articles, e.Rating, e.Avatar)
 		if err != nil {
 			return err
@@ -644,8 +674,9 @@ func seedKnowledgeDefaults(ctx context.Context) error {
 		{ID: "a6", Title: "Teaching Statistics to Non-Statisticians", Author: "Prof. James Okello", Category: "Education", ReadTime: "8 min", Excerpt: "Practical techniques for making complex statistical concepts accessible to public health professionals.", Likes: 445, Views: 19800, Published: "6d ago"},
 	}
 	for _, a := range articles {
-		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_articles (id, title, author, category, read_time, excerpt, likes, views, published) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
-			a.ID, a.Title, a.Author, a.Category, a.ReadTime, a.Excerpt, a.Likes, a.Views, a.Published)
+		a.Content = a.Excerpt + "\n\nThis guide explains the core concepts, implementation steps, review checks, and operational risks teams should evaluate before applying the practice in production."
+		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_articles (id, tenant_id, title, author, category, read_time, excerpt, content, likes, views, published) VALUES ($1,'default',$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
+			a.ID, a.Title, a.Author, a.Category, a.ReadTime, a.Excerpt, a.Content, a.Likes, a.Views, a.Published)
 		if err != nil {
 			return err
 		}
@@ -659,7 +690,7 @@ func seedKnowledgeDefaults(ctx context.Context) error {
 		{ID: "i4", Title: "AI-Assisted Data Cleaning Toolkit", Author: "Kevin Mwangi", Category: "Development", Description: "An open-source toolkit that uses machine learning to automatically detect and fix data quality issues.", Votes: 167, Status: "discussing"},
 	}
 	for _, i := range ideas {
-		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_ideas (id, title, author, category, description, votes, status) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+		_, err := db.ExecContext(ctx, `INSERT INTO knowledge_ideas (id, tenant_id, title, author, author_id, category, description, votes, status) VALUES ($1,'default',$2,$3,'seed',$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
 			i.ID, i.Title, i.Author, i.Category, i.Description, i.Votes, i.Status)
 		if err != nil {
 			return err
@@ -669,8 +700,8 @@ func seedKnowledgeDefaults(ctx context.Context) error {
 	return nil
 }
 
-func GetKnowledgeExperts() ([]model.KnowledgeExpert, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, name, role, org, specialties, followers, articles, rating, avatar FROM knowledge_experts ORDER BY followers DESC`)
+func GetKnowledgeExperts(tenantID, userID string) ([]model.KnowledgeExpert, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, name, role, org, specialties, followers, articles, rating, avatar, EXISTS(SELECT 1 FROM knowledge_expert_follows f WHERE f.expert_id=knowledge_experts.id AND f.user_id=$2) FROM knowledge_experts WHERE tenant_id IN ('default',$1) ORDER BY followers DESC`, normalizedTenantID(tenantID), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -679,7 +710,7 @@ func GetKnowledgeExperts() ([]model.KnowledgeExpert, error) {
 	for rows.Next() {
 		var e model.KnowledgeExpert
 		var specJSON []byte
-		if err := rows.Scan(&e.ID, &e.Name, &e.Role, &e.Org, &specJSON, &e.Followers, &e.Articles, &e.Rating, &e.Avatar); err != nil {
+		if err := rows.Scan(&e.ID, &e.TenantID, &e.Name, &e.Role, &e.Org, &specJSON, &e.Followers, &e.Articles, &e.Rating, &e.Avatar, &e.Following); err != nil {
 			return nil, err
 		}
 		json.Unmarshal(specJSON, &e.Specialties)
@@ -688,8 +719,8 @@ func GetKnowledgeExperts() ([]model.KnowledgeExpert, error) {
 	return experts, rows.Err()
 }
 
-func GetKnowledgeArticles() ([]model.KnowledgeArticle, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, title, author, category, read_time, excerpt, likes, views, published FROM knowledge_articles ORDER BY likes DESC`)
+func GetKnowledgeArticles(tenantID string) ([]model.KnowledgeArticle, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, title, author, category, read_time, excerpt, content, likes, views, published FROM knowledge_articles WHERE tenant_id IN ('default',$1) ORDER BY likes DESC`, normalizedTenantID(tenantID))
 	if err != nil {
 		return nil, err
 	}
@@ -697,7 +728,7 @@ func GetKnowledgeArticles() ([]model.KnowledgeArticle, error) {
 	articles := []model.KnowledgeArticle{}
 	for rows.Next() {
 		var a model.KnowledgeArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Author, &a.Category, &a.ReadTime, &a.Excerpt, &a.Likes, &a.Views, &a.Published); err != nil {
+		if err := rows.Scan(&a.ID, &a.TenantID, &a.Title, &a.Author, &a.Category, &a.ReadTime, &a.Excerpt, &a.Content, &a.Likes, &a.Views, &a.Published); err != nil {
 			return nil, err
 		}
 		articles = append(articles, a)
@@ -705,8 +736,8 @@ func GetKnowledgeArticles() ([]model.KnowledgeArticle, error) {
 	return articles, rows.Err()
 }
 
-func GetKnowledgeIdeas() ([]model.KnowledgeIdea, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, title, author, category, description, votes, status FROM knowledge_ideas ORDER BY votes DESC`)
+func GetKnowledgeIdeas(tenantID, userID string) ([]model.KnowledgeIdea, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, title, author, author_id, category, description, votes, status, EXISTS(SELECT 1 FROM knowledge_idea_votes v WHERE v.idea_id=knowledge_ideas.id AND v.user_id=$2) FROM knowledge_ideas WHERE tenant_id IN ('default',$1) ORDER BY votes DESC`, normalizedTenantID(tenantID), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +745,7 @@ func GetKnowledgeIdeas() ([]model.KnowledgeIdea, error) {
 	ideas := []model.KnowledgeIdea{}
 	for rows.Next() {
 		var i model.KnowledgeIdea
-		if err := rows.Scan(&i.ID, &i.Title, &i.Author, &i.Category, &i.Description, &i.Votes, &i.Status); err != nil {
+		if err := rows.Scan(&i.ID, &i.TenantID, &i.Title, &i.Author, &i.AuthorID, &i.Category, &i.Description, &i.Votes, &i.Status, &i.Upvoted); err != nil {
 			return nil, err
 		}
 		ideas = append(ideas, i)
@@ -729,33 +760,48 @@ func CreateKnowledgePost(req model.KnowledgePost) (model.KnowledgePost, error) {
 	if req.CreatedAt.IsZero() {
 		req.CreatedAt = time.Now().UTC()
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_posts (id, title, author, category, content, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		req.ID, req.Title, req.Author, req.Category, req.Content, req.CreatedBy, req.CreatedAt)
+	req.TenantID = normalizedTenantID(req.TenantID)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_posts (id, tenant_id, title, author, author_id, role, org, category, content, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		req.ID, req.TenantID, req.Title, req.Author, req.AuthorID, req.Role, req.Org, req.Category, req.Content, req.CreatedBy, req.CreatedAt)
 	return req, err
 }
 
-func UpvoteKnowledgeIdea(ideaID string) (int, error) {
-	_, err := db.ExecContext(context.Background(), `UPDATE knowledge_ideas SET votes = votes + 1 WHERE id = $1`, ideaID)
+func UpvoteKnowledgeIdea(ideaID, tenantID, userID string) (int, error) {
+	tenantID = normalizedTenantID(tenantID)
+	result, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_idea_votes (idea_id,tenant_id,user_id,created_at) SELECT id,tenant_id,$3,$4 FROM knowledge_ideas WHERE id=$1 AND tenant_id IN ('default',$2) ON CONFLICT DO NOTHING`, ideaID, tenantID, userID, time.Now().UTC())
 	if err != nil {
 		return 0, err
 	}
+	if count, _ := result.RowsAffected(); count == 1 {
+		_, err = db.ExecContext(context.Background(), `UPDATE knowledge_ideas SET votes = votes + 1 WHERE id = $1 AND tenant_id IN ('default',$2)`, ideaID, tenantID)
+		if err != nil {
+			return 0, err
+		}
+	}
 	var votes int
-	err = db.QueryRowContext(context.Background(), `SELECT votes FROM knowledge_ideas WHERE id = $1`, ideaID).Scan(&votes)
+	err = db.QueryRowContext(context.Background(), `SELECT votes FROM knowledge_ideas WHERE id = $1 AND tenant_id IN ('default',$2)`, ideaID, tenantID).Scan(&votes)
 	return votes, err
 }
 
-func FollowKnowledgeExpert(expertID string) (int, error) {
-	_, err := db.ExecContext(context.Background(), `UPDATE knowledge_experts SET followers = followers + 1 WHERE id = $1`, expertID)
+func FollowKnowledgeExpert(expertID, tenantID, userID string) (int, error) {
+	tenantID = normalizedTenantID(tenantID)
+	result, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_expert_follows (expert_id,tenant_id,user_id,created_at) SELECT id,tenant_id,$3,$4 FROM knowledge_experts WHERE id=$1 AND tenant_id IN ('default',$2) ON CONFLICT DO NOTHING`, expertID, tenantID, userID, time.Now().UTC())
 	if err != nil {
 		return 0, err
 	}
+	if count, _ := result.RowsAffected(); count == 1 {
+		_, err = db.ExecContext(context.Background(), `UPDATE knowledge_experts SET followers = followers + 1 WHERE id = $1 AND tenant_id IN ('default',$2)`, expertID, tenantID)
+		if err != nil {
+			return 0, err
+		}
+	}
 	var followers int
-	err = db.QueryRowContext(context.Background(), `SELECT followers FROM knowledge_experts WHERE id = $1`, expertID).Scan(&followers)
+	err = db.QueryRowContext(context.Background(), `SELECT followers FROM knowledge_experts WHERE id = $1 AND tenant_id IN ('default',$2)`, expertID, tenantID).Scan(&followers)
 	return followers, err
 }
 
-func GetKnowledgePosts() ([]model.KnowledgePost, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, title, author, category, content, created_by, created_at FROM knowledge_posts ORDER BY created_at DESC`)
+func GetKnowledgePosts(tenantID string) ([]model.KnowledgePost, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, title, author, author_id, role, org, category, content, created_by, created_at FROM knowledge_posts WHERE tenant_id=$1 ORDER BY created_at DESC`, normalizedTenantID(tenantID))
 	if err != nil {
 		return nil, err
 	}
@@ -763,7 +809,7 @@ func GetKnowledgePosts() ([]model.KnowledgePost, error) {
 	posts := []model.KnowledgePost{}
 	for rows.Next() {
 		var p model.KnowledgePost
-		if err := rows.Scan(&p.ID, &p.Title, &p.Author, &p.Category, &p.Content, &p.CreatedBy, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Title, &p.Author, &p.AuthorID, &p.Role, &p.Org, &p.Category, &p.Content, &p.CreatedBy, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, p)

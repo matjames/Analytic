@@ -10,16 +10,38 @@ import {
   removeConnection,
   fetchOpportunities,
   fetchJobs,
+  fetchCommunities,
+  createCommunity,
+  joinCommunity,
+  leaveCommunity,
+  fetchCommunityMembers,
+  addCommunityMember,
+  removeCommunityMember,
+  transferCommunityOwner,
+  fetchCommunityTopics,
+  createCommunityTopic,
+  deleteCommunityTopic,
+  fetchCommunityReplies,
+  createCommunityReply,
+  deleteCommunityReply,
   togglePostLike,
   sharePost,
   addPostComment,
   fetchPostComments,
+  fetchPolls,
+  createPoll,
+  votePoll,
   type Post,
   type Connection,
   type Opportunity,
   type Job,
   type PostComment,
+  type Community,
+  type CommunityMember,
+  type CommunityTopic,
+  type CommunityReply,
 } from '../api/client';
+import type { Poll } from '../types';
 import styles from './CollaborationPanel.module.css';
 
 interface Props {
@@ -52,6 +74,20 @@ const [postDraft, setPostDraft] = useState('');
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [postComments, setPostComments] = useState<Record<string, PostComment[]>>({});
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [showPollForm, setShowPollForm] = useState(false);
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [selectedCommunityId, setSelectedCommunityId] = useState('');
+  const [communityMembers, setCommunityMembers] = useState<Record<string, CommunityMember[]>>({});
+  const [communityTopics, setCommunityTopics] = useState<Record<string, CommunityTopic[]>>({});
+  const [communityReplies, setCommunityReplies] = useState<Record<string, CommunityReply[]>>({});
+  const [expandedTopicId, setExpandedTopicId] = useState('');
+  const [communityDraft, setCommunityDraft] = useState({ name: '', description: '', visibility: 'public' as 'public' | 'private' });
+  const [topicDraft, setTopicDraft] = useState({ title: '', body: '' });
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [inviteTargetId, setInviteTargetId] = useState('');
 
   const connectedIds = new Set(connections.map((c) => c.connectedToId));
 
@@ -65,10 +101,15 @@ const [postDraft, setPostDraft] = useState('');
     fetchConnections().then(setConnections).catch(() => {});
     fetchOpportunities().then(setOpportunities).catch(() => {});
     fetchJobs().then(setJobs).catch(() => {});
+    fetchPolls().then(setPolls).catch(() => {});
+    fetchCommunities().then((items) => {
+      setCommunities(items);
+      setSelectedCommunityId((current) => current || items[0]?.id || '');
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if ((activeSubView === 'connect' || activeSubView === 'network') && allUsers.length === 0) {
+    if ((activeSubView === 'connect' || activeSubView === 'network' || activeSubView === 'communities') && allUsers.length === 0) {
       fetchAllUsers()
         .then((users) => setAllUsers(users.filter((u) => u.id !== user?.id).slice(0, 24)))
         .catch(() => {});
@@ -96,7 +137,173 @@ const [postDraft, setPostDraft] = useState('');
     }
   };
 
-const toggleConnect = async (userId: string) => {
+  const handleCreatePoll = async () => {
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (!pollQuestion.trim() || options.length < 2) return;
+    try {
+      const poll = await createPoll(pollQuestion.trim(), options);
+      setPolls((previous) => [poll, ...previous]);
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setShowPollForm(false);
+    } catch { /* Keep the collaboration feed usable. */ }
+  };
+
+  const selectedCommunity = communities.find((community) => community.id === selectedCommunityId);
+
+  const refreshCommunityTopics = async (communityId: string) => {
+    const topics = await fetchCommunityTopics(communityId);
+    setCommunityTopics((previous) => ({ ...previous, [communityId]: topics }));
+  };
+
+  const refreshCommunityMembers = async (communityId: string) => {
+    const members = await fetchCommunityMembers(communityId);
+    setCommunityMembers((previous) => ({ ...previous, [communityId]: members }));
+  };
+
+  const handleCreateCommunity = async () => {
+    if (!communityDraft.name.trim()) return;
+    try {
+      const created = await createCommunity({
+        name: communityDraft.name.trim(),
+        description: communityDraft.description.trim(),
+        visibility: communityDraft.visibility,
+      });
+      setCommunities((previous) => [created, ...previous]);
+      setSelectedCommunityId(created.id);
+      setCommunityMembers((previous) => ({
+        ...previous,
+        [created.id]: [{
+          communityId: created.id,
+          userId: user?.id || created.createdBy,
+          name: user?.name || 'Community Owner',
+          role: 'owner',
+          userRole: user?.roles?.[0],
+          org: user?.organizationId,
+          joinedAt: created.createdAt,
+        }],
+      }));
+      setCommunityDraft({ name: '', description: '', visibility: 'public' });
+    } catch { /* Keep the community workspace usable. */ }
+  };
+
+  const handleCommunityMembership = async (community: Community) => {
+    try {
+      if (community.joined && community.role !== 'owner') {
+        await leaveCommunity(community.id);
+        setCommunities((previous) => previous.map((item) => item.id === community.id ? { ...item, joined: false, canPost: false, role: '', memberCount: Math.max(0, item.memberCount - 1) } : item));
+        return;
+      }
+      if (!community.joined) {
+        const joined = await joinCommunity(community.id);
+        setCommunities((previous) => previous.map((item) => item.id === community.id ? joined : item));
+        setSelectedCommunityId(joined.id);
+        refreshCommunityMembers(joined.id).catch(() => {});
+      }
+    } catch { /* Private communities stay invite-only through owner-managed membership. */ }
+  };
+
+  const handleInviteMember = async () => {
+    if (!selectedCommunity || !inviteTargetId) return;
+    try {
+      const member = await addCommunityMember(selectedCommunity.id, inviteTargetId);
+      setCommunityMembers((previous) => ({ ...previous, [selectedCommunity.id]: [member, ...(previous[selectedCommunity.id] || []).filter((item) => item.userId !== member.userId)] }));
+      setCommunities((previous) => previous.map((item) => item.id === selectedCommunity.id ? { ...item, memberCount: item.memberCount + 1 } : item));
+      setInviteTargetId('');
+    } catch { /* ignore */ }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!selectedCommunity) return;
+    try {
+      await removeCommunityMember(selectedCommunity.id, memberId);
+      setCommunityMembers((previous) => ({ ...previous, [selectedCommunity.id]: (previous[selectedCommunity.id] || []).filter((member) => member.userId !== memberId) }));
+      setCommunities((previous) => previous.map((item) => item.id === selectedCommunity.id ? { ...item, memberCount: Math.max(1, item.memberCount - 1) } : item));
+    } catch { /* ignore */ }
+  };
+
+  const handleTransferOwner = async (memberId: string) => {
+    if (!selectedCommunity) return;
+    try {
+      await transferCommunityOwner(selectedCommunity.id, memberId);
+      setCommunityMembers((previous) => ({
+        ...previous,
+        [selectedCommunity.id]: (previous[selectedCommunity.id] || []).map((member) => ({
+          ...member,
+          role: member.userId === memberId ? 'owner' : member.userId === user?.id ? 'member' : member.role,
+        })),
+      }));
+      setCommunities((previous) => previous.map((item) => item.id === selectedCommunity.id ? { ...item, role: 'member', createdBy: memberId } : item));
+    } catch { /* ignore */ }
+  };
+
+  const handleCreateTopic = async () => {
+    if (!selectedCommunity || !topicDraft.title.trim() || !topicDraft.body.trim()) return;
+    try {
+      const topic = await createCommunityTopic(selectedCommunity.id, { title: topicDraft.title.trim(), body: topicDraft.body.trim() });
+      setCommunityTopics((previous) => ({ ...previous, [selectedCommunity.id]: [topic, ...(previous[selectedCommunity.id] || [])] }));
+      setCommunities((previous) => previous.map((item) => item.id === selectedCommunity.id ? { ...item, topicCount: item.topicCount + 1 } : item));
+      setTopicDraft({ title: '', body: '' });
+    } catch { /* ignore */ }
+  };
+
+  const toggleTopicReplies = async (communityId: string, topicId: string) => {
+    const nextTopicId = expandedTopicId === topicId ? '' : topicId;
+    setExpandedTopicId(nextTopicId);
+    if (nextTopicId && !communityReplies[topicId]) {
+      try {
+        const replies = await fetchCommunityReplies(communityId, topicId);
+        setCommunityReplies((previous) => ({ ...previous, [topicId]: replies }));
+      } catch { /* ignore */ }
+    }
+  };
+
+  const handleCreateReply = async (communityId: string, topicId: string) => {
+    const body = replyDrafts[topicId]?.trim();
+    if (!body) return;
+    try {
+      const reply = await createCommunityReply(communityId, topicId, body);
+      setCommunityReplies((previous) => ({ ...previous, [topicId]: [...(previous[topicId] || []), reply] }));
+      setCommunityTopics((previous) => ({
+        ...previous,
+        [communityId]: (previous[communityId] || []).map((topic) => topic.id === topicId ? { ...topic, replyCount: topic.replyCount + 1 } : topic),
+      }));
+      setReplyDrafts((previous) => ({ ...previous, [topicId]: '' }));
+    } catch { /* ignore */ }
+  };
+
+  const handleDeleteTopic = async (communityId: string, topicId: string) => {
+    try {
+      await deleteCommunityTopic(communityId, topicId);
+      setCommunityTopics((previous) => ({ ...previous, [communityId]: (previous[communityId] || []).filter((topic) => topic.id !== topicId) }));
+      setCommunities((previous) => previous.map((item) => item.id === communityId ? { ...item, topicCount: Math.max(0, item.topicCount - 1) } : item));
+    } catch { /* ignore */ }
+  };
+
+  const handleDeleteReply = async (communityId: string, topicId: string, replyId: string) => {
+    try {
+      await deleteCommunityReply(communityId, topicId, replyId);
+      setCommunityReplies((previous) => ({ ...previous, [topicId]: (previous[topicId] || []).filter((reply) => reply.id !== replyId) }));
+      setCommunityTopics((previous) => ({
+        ...previous,
+        [communityId]: (previous[communityId] || []).map((topic) => topic.id === topicId ? { ...topic, replyCount: Math.max(0, topic.replyCount - 1) } : topic),
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const handleVote = async (poll: Poll, optionId: string) => {
+    if (poll.voted) return;
+    try {
+      await votePoll(poll.id, optionId);
+      setPolls((previous) => previous.map((item) => item.id === poll.id ? {
+        ...item,
+        voted: true,
+        options: item.options.map((option) => option.id === optionId ? { ...option, votes: option.votes + 1 } : option),
+      } : item));
+    } catch { /* Keep the feed usable if a vote is rejected. */ }
+  };
+
+  const toggleConnect = async (userId: string) => {
     try {
       if (connectedIds.has(userId)) {
         await removeConnection(userId);
@@ -230,10 +437,25 @@ const toggleConnect = async (userId: string) => {
             <button type="button" className={styles.createPostAction}>📷 Photo</button>
             <button type="button" className={styles.createPostAction}>🎥 Video</button>
             <button type="button" className={styles.createPostAction}>📄 Article</button>
-            <button type="button" className={styles.createPostAction}>📊 Poll</button>
+            <button type="button" className={styles.createPostAction} onClick={() => setShowPollForm((value) => !value)}>📊 Poll</button>
           </div>
         )}
       </div>
+
+      {showPollForm && (
+        <div className={styles.postCard} style={{ background: bg, borderColor }}>
+          <strong>Create a poll</strong>
+          <input value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} placeholder="Ask a question" style={{ width: '100%', boxSizing: 'border-box', marginTop: 10, padding: 10, borderRadius: 8, border: `1px solid ${borderColor}` }} />
+          {pollOptions.map((option, index) => <input key={index} value={option} onChange={(event) => setPollOptions((previous) => previous.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`Option ${index + 1}`} style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: 10, borderRadius: 8, border: `1px solid ${borderColor}` }} />)}
+          <button type="button" onClick={() => setPollOptions((previous) => previous.length < 10 ? [...previous, ''] : previous)} style={{ marginTop: 8 }}>Add option</button>
+          <button type="button" onClick={handleCreatePoll} style={{ marginTop: 10, marginLeft: 8, padding: '8px 14px', border: 0, borderRadius: 8, background: '#165c92', color: '#fff' }}>Publish poll</button>
+        </div>
+      )}
+
+      {polls.map((poll) => {
+        const totalVotes = poll.options.reduce((sum, option) => sum + option.votes, 0);
+        return <div key={poll.id} className={styles.postCard} style={{ background: bg, borderColor }}><strong>{poll.question}</strong>{poll.options.map((option) => <button key={option.id} type="button" disabled={poll.voted} onClick={() => handleVote(poll, option.id)} style={{ display: 'block', width: '100%', marginTop: 8, padding: 10, textAlign: 'left', border: `1px solid ${borderColor}`, borderRadius: 8, background: 'transparent', color: textColor }}>{option.label} <span style={{ float: 'right', opacity: .7 }}>{option.votes}{totalVotes ? ` (${Math.round(option.votes / totalVotes * 100)}%)` : ''}</span></button>)}</div>;
+      })}
 
       {/* Feed */}
       {posts.map((post) => (
@@ -402,6 +624,138 @@ const toggleConnect = async (userId: string) => {
     </div>
   );
 
+  const renderCommunities = () => {
+    const topics = selectedCommunity ? communityTopics[selectedCommunity.id] || [] : [];
+    const members = selectedCommunity ? communityMembers[selectedCommunity.id] || [] : [];
+    const isCommunityOwner = selectedCommunity?.role === 'owner';
+    const memberIds = new Set(members.map((member) => member.userId));
+    const inviteCandidates = allUsers.filter((candidate) => !memberIds.has(candidate.id));
+    return (
+      <div>
+        <h2 className={styles.sectionHeader}>Communities</h2>
+        <p className={styles.sectionSubheader}>Tenant communities for practice groups, forums, and long-running discussion threads</p>
+        <div className={styles.communityLayout}>
+          <div className={styles.communityList}>
+            <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+              <strong>Create community</strong>
+              <input value={communityDraft.name} onChange={(event) => setCommunityDraft((previous) => ({ ...previous, name: event.target.value }))} placeholder="Community name" className={styles.communityInput} style={{ borderColor }} />
+              <textarea value={communityDraft.description} onChange={(event) => setCommunityDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="Purpose or scope" className={styles.communityTextArea} style={{ borderColor }} />
+              <select value={communityDraft.visibility} onChange={(event) => setCommunityDraft((previous) => ({ ...previous, visibility: event.target.value as 'public' | 'private' }))} className={styles.communityInput} style={{ borderColor }}>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+              <button type="button" className={styles.connectButton} onClick={handleCreateCommunity}>Create</button>
+            </div>
+            {communities.map((community) => (
+              <button key={community.id} type="button" className={`${styles.communityItem} ${selectedCommunityId === community.id ? styles.communityItemActive : ''}`} onClick={() => { setSelectedCommunityId(community.id); if (community.joined && !communityTopics[community.id]) refreshCommunityTopics(community.id).catch(() => {}); if (community.joined && !communityMembers[community.id]) refreshCommunityMembers(community.id).catch(() => {}); }} style={{ borderColor }}>
+                <span className={styles.communityName}>{community.name}</span>
+                <span className={styles.communityMeta}>{community.visibility} · {community.memberCount} members · {community.topicCount} topics</span>
+              </button>
+            ))}
+          </div>
+          <div className={styles.communityDetail}>
+            {selectedCommunity ? (
+              <>
+                <div className={styles.postCard} style={{ background: bg, borderColor, padding: 18 }}>
+                  <div className={styles.communityHeaderRow}>
+                    <div>
+                      <h3 className={styles.sectionHeader} style={{ marginBottom: 6 }}>{selectedCommunity.name}</h3>
+                      <p className={styles.sectionSubheader} style={{ marginBottom: 0 }}>{selectedCommunity.description || 'No description yet.'}</p>
+                    </div>
+                    <button type="button" className={`${styles.connectButton} ${selectedCommunity.joined ? styles.connectedButton : ''}`} onClick={() => handleCommunityMembership(selectedCommunity)}>
+                      {selectedCommunity.joined ? selectedCommunity.role === 'owner' ? 'Owner' : 'Joined' : 'Join'}
+                    </button>
+                  </div>
+                </div>
+                {selectedCommunity.canPost && (
+                  <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                    <strong>Start a discussion</strong>
+                    <input value={topicDraft.title} onChange={(event) => setTopicDraft((previous) => ({ ...previous, title: event.target.value }))} placeholder="Topic title" className={styles.communityInput} style={{ borderColor }} />
+                    <textarea value={topicDraft.body} onChange={(event) => setTopicDraft((previous) => ({ ...previous, body: event.target.value }))} placeholder="What should the community discuss?" className={styles.communityTextArea} style={{ borderColor }} />
+                    <button type="button" className={styles.connectButton} onClick={handleCreateTopic}>Post topic</button>
+                  </div>
+                )}
+                {selectedCommunity.joined && members.length === 0 && (
+                  <button type="button" className={styles.connectButton} onClick={() => refreshCommunityMembers(selectedCommunity.id).catch(() => {})}>Load members</button>
+                )}
+                {selectedCommunity.joined && members.length > 0 && (
+                  <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                    <div className={styles.communityHeaderRow}>
+                      <strong>Members</strong>
+                      {isCommunityOwner && (
+                        <div className={styles.communityInviteRow}>
+                          <select value={inviteTargetId} onChange={(event) => setInviteTargetId(event.target.value)} className={styles.communityInput} style={{ borderColor, marginTop: 0 }}>
+                            <option value="">Select user</option>
+                            {inviteCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                          </select>
+                          <button type="button" className={styles.connectButton} onClick={handleInviteMember} disabled={!inviteTargetId}>Add</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.communityMembers}>
+                      {members.map((member) => (
+                        <div key={member.userId} className={styles.communityMemberRow}>
+                          <div>
+                            <div className={styles.postAuthorName}>{member.name}</div>
+                            <div className={styles.postAuthorMeta}>{member.role} · {member.userRole || 'Member'} · {member.org || 'Tenant'}</div>
+                          </div>
+                          {isCommunityOwner && member.role !== 'owner' && (
+                            <div className={styles.communityMemberActions}>
+                              <button type="button" className={styles.linkButton} onClick={() => handleTransferOwner(member.userId)}>Make owner</button>
+                              <button type="button" className={styles.linkButton} onClick={() => handleRemoveMember(member.userId)}>Remove</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedCommunity.joined && topics.length === 0 && (
+                  <button type="button" className={styles.connectButton} onClick={() => refreshCommunityTopics(selectedCommunity.id).catch(() => {})}>Load discussions</button>
+                )}
+                {topics.map((topic) => (
+                  <div key={topic.id} className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                    <div className={styles.postAuthorName}>{topic.title}</div>
+                    <div className={styles.postAuthorMeta}>{topic.author} · {topic.role || 'Member'} · {new Date(topic.createdAt).toLocaleString()}</div>
+                    <div className={styles.postBody} style={{ padding: '10px 0 0' }}>{topic.body}</div>
+                    <div className={styles.communityTopicActions}>
+                      <button type="button" className={styles.postAction} onClick={() => toggleTopicReplies(topic.communityId, topic.id)} style={{ justifyContent: 'flex-start', paddingLeft: 0 }}>
+                        Replies ({topic.replyCount})
+                      </button>
+                      {(isCommunityOwner || topic.authorId === user?.id) && (
+                        <button type="button" className={styles.linkButton} onClick={() => handleDeleteTopic(topic.communityId, topic.id)}>Delete topic</button>
+                      )}
+                    </div>
+                    {expandedTopicId === topic.id && (
+                      <div className={styles.commentsSection}>
+                        {(communityReplies[topic.id] || []).map((reply) => (
+                          <div key={reply.id} className={styles.commentRow}>
+                            <strong>{reply.author}</strong>
+                            <span style={{ opacity: 0.65 }}> · {new Date(reply.createdAt).toLocaleString()}</span>
+                            <div>{reply.body}</div>
+                            {(isCommunityOwner || reply.authorId === user?.id) && (
+                              <button type="button" className={styles.linkButton} onClick={() => handleDeleteReply(topic.communityId, topic.id, reply.id)}>Delete reply</button>
+                            )}
+                          </div>
+                        ))}
+                        <div className={styles.communityReplyRow}>
+                          <input value={replyDrafts[topic.id] || ''} onChange={(event) => setReplyDrafts((previous) => ({ ...previous, [topic.id]: event.target.value }))} placeholder="Reply..." className={styles.communityInput} style={{ borderColor }} />
+                          <button type="button" className={styles.connectButton} onClick={() => handleCreateReply(topic.communityId, topic.id)}>Reply</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className={styles.postCard} style={{ background: bg, borderColor, padding: 24 }}>Create the first tenant community to begin.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderOpportunities = () => (
     <div>
       <h2 className={styles.sectionHeader}>Opportunities</h2>
@@ -450,6 +804,7 @@ const toggleConnect = async (userId: string) => {
   const renderContent = () => {
     switch (activeSubView) {
       case 'home': return renderHome();
+      case 'communities': return renderCommunities();
       case 'connect': return renderConnect();
       case 'network': return renderNetwork();
       case 'opportunities': return renderOpportunities();

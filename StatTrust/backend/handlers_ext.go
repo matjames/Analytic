@@ -52,7 +52,7 @@ func GetEncryptionKeyHandler(c *gin.Context) {
 func RotateEncryptionKeyHandler(c *gin.Context) {
 	var req struct {
 		KeyID     string `json:"key_id" binding:"required"`
-		Algorithm string `json:"algorithm"`   // optional — use existing if omitted
+		Algorithm string `json:"algorithm"` // optional — use existing if omitted
 		Purpose   string `json:"purpose"`
 		TenantID  string `json:"tenant_id"`
 	}
@@ -129,16 +129,16 @@ func RotateEncryptionKeyHandler(c *gin.Context) {
 
 	// Broadcast to event bus
 	publishEvent("secops.key.rotated", "encryption_key", newKey.ID, actorStr, old.TenantID, map[string]interface{}{
-		"old_key_id":  old.ID,
-		"new_key_id":  newKey.ID,
-		"algorithm":   old.Algorithm,
-		"purpose":     old.Purpose,
+		"old_key_id": old.ID,
+		"new_key_id": newKey.ID,
+		"algorithm":  old.Algorithm,
+		"purpose":    old.Purpose,
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"action":      "key_rotated",
-		"retired_key": old,
-		"new_key":     newKey,
+		"action":       "key_rotated",
+		"retired_key":  old,
+		"new_key":      newKey,
 		"ledger_index": block.Index,
 	})
 }
@@ -213,12 +213,12 @@ func IssueCertificateHandler(c *gin.Context) {
 
 	// Anchor to audit ledger
 	block := globalStore.AppendLedger("pki.certificate.issued", "StatTrust", statgateCAdid, map[string]interface{}{
-		"cert_id":      issued.ID,
-		"serial":       issued.SerialNumber,
-		"subject_did":  issued.SubjectDID,
-		"common_name":  issued.CommonName,
-		"tenant_id":    tenantID,
-		"not_after":    issued.NotAfter.Format(time.RFC3339),
+		"cert_id":     issued.ID,
+		"serial":      issued.SerialNumber,
+		"subject_did": issued.SubjectDID,
+		"common_name": issued.CommonName,
+		"tenant_id":   tenantID,
+		"not_after":   issued.NotAfter.Format(time.RFC3339),
 	})
 	issued.LedgerIndex = block.Index
 	globalStore.AddCertificate(issued) // update with ledger index
@@ -285,8 +285,8 @@ func TimestampHandler(c *gin.Context) {
 	var req struct {
 		ArtifactID   string `json:"artifact_id" binding:"required"`
 		ArtifactType string `json:"artifact_type" binding:"required"`
-		Sha256Hash   string `json:"sha256_hash"`   // pre-computed by caller, or we compute from content
-		Content      string `json:"content"`       // raw content to hash if hash not provided
+		Sha256Hash   string `json:"sha256_hash"` // pre-computed by caller, or we compute from content
+		Content      string `json:"content"`     // raw content to hash if hash not provided
 		PolicyOID    string `json:"policy_oid"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -334,19 +334,19 @@ func TimestampHandler(c *gin.Context) {
 
 	// Anchor on immutable audit ledger
 	block := globalStore.AppendLedger("trust.tsa.timestamp.issued", "StatTrust-TSA", "tsa-authority", map[string]interface{}{
-		"tsa_id":       saved.ID,
-		"artifact_id":  saved.ArtifactID,
-		"sha256":       saved.Sha256Hash,
-		"policy_oid":   saved.PolicyOID,
-		"tenant_id":    tenantID,
+		"tsa_id":      saved.ID,
+		"artifact_id": saved.ArtifactID,
+		"sha256":      saved.Sha256Hash,
+		"policy_oid":  saved.PolicyOID,
+		"tenant_id":   tenantID,
 	})
 	saved.LedgerIndex = block.Index
 	globalStore.AddTimestamp(saved)
 
 	publishEvent("trust.tsa.stamped", "timestamp", saved.ID, "tsa-authority", tenantID, map[string]interface{}{
-		"artifact_id":  saved.ArtifactID,
+		"artifact_id":   saved.ArtifactID,
 		"artifact_type": saved.ArtifactType,
-		"sha256":       saved.Sha256Hash,
+		"sha256":        saved.Sha256Hash,
 	})
 
 	c.JSON(http.StatusCreated, saved)
@@ -409,10 +409,10 @@ func RegisterTrustEntryHandler(c *gin.Context) {
 	tenantID, _ := tenantVal.(string)
 
 	globalStore.AppendLedger("trust.registry.registered", "StatTrust", actor, map[string]interface{}{
-		"did":               entry.DID,
-		"organization":      entry.OrganizationName,
-		"trust_level":       entry.TrustLevel,
-		"tenant_id":         tenantID,
+		"did":          entry.DID,
+		"organization": entry.OrganizationName,
+		"trust_level":  entry.TrustLevel,
+		"tenant_id":    tenantID,
 	})
 
 	publishEvent("trust.registry.entry.registered", "trust_registry", entry.DID, actor, tenantID, map[string]interface{}{
@@ -499,14 +499,15 @@ func TransferProvenanceHandler(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
 		NewOwner string `json:"new_owner" binding:"required"`
-		Action   string `json:"action"`   // TRANSFERRED, REVIEWED, PUBLISHED
+		Action   string `json:"action"` // TRANSFERRED, REVIEWED, PUBLISHED
 		Note     string `json:"note"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid transfer payload: " + err.Error()})
 		return
 	}
-	p, found := globalStore.GetProvenance(id)
+	tenantID, workspaceID := requestScope(c)
+	p, found := globalStore.GetProvenanceScoped(id, tenantID, workspaceID)
 	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Provenance record not found: " + id})
 		return
@@ -533,9 +534,9 @@ func TransferProvenanceHandler(c *gin.Context) {
 	}
 	p.CustodyChain = append(p.CustodyChain, custodyEvent)
 	p.CurrentOwner = req.NewOwner
-	globalStore.RegisterProvenance(*p)
+	globalStore.RegisterProvenanceScoped(*p, tenantID, workspaceID)
 
-	globalStore.AppendLedger("provenance.custody.transferred", p.OriginApp, actor, map[string]interface{}{
+	appendRequestLedger(c, "provenance.custody.transferred", p.OriginApp, actor, map[string]interface{}{
 		"artifact_id": p.ArtifactID,
 		"from_owner":  p.CurrentOwner,
 		"to_owner":    req.NewOwner,
@@ -561,11 +562,11 @@ func VerifySignatureHandler(c *gin.Context) {
 		h := sha256.Sum256([]byte(req.ContentData))
 		expectedHash := hex.EncodeToString(h[:])
 		c.JSON(http.StatusOK, gin.H{
-			"artifact_id":   req.ArtifactID,
-			"sha256":        expectedHash,
-			"verified":      true,
-			"algorithm":     "Ed25519",
-			"message":       "Signature structure valid — hash matches presented content",
+			"artifact_id": req.ArtifactID,
+			"sha256":      expectedHash,
+			"verified":    true,
+			"algorithm":   "Ed25519",
+			"message":     "Signature structure valid — hash matches presented content",
 		})
 		return
 	}

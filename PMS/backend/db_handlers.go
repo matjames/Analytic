@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
 	"time"
 
@@ -15,7 +16,6 @@ func generateUUID() string {
 	return uuid.New().String()
 }
 
-
 // ═══════════════════════════════════════════════════════════════════
 // PROJECTS
 // ═══════════════════════════════════════════════════════════════════
@@ -24,10 +24,11 @@ func dbGetProjects(c *gin.Context) {
 	rows, err := DB.Query(`
 		SELECT id, code, name, description, stage, progress, org, portfolio, programme,
 		       owner, start_date, end_date, target_geo, tags, budget_total, spent_total,
-		       risks_count, issues_count, created_time, updated_time
+		       risks_count, issues_count, created_time, updated_time, COALESCE(workspace_id, '')
 		FROM pms.projects
+		WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)
 		ORDER BY created_time DESC
-	`)
+	`, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -39,7 +40,7 @@ func dbGetProjects(c *gin.Context) {
 		var p Project
 		err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.Stage, &p.Progress,
 			&p.Org, &p.Portfolio, &p.Programme, &p.Owner, &p.StartDate, &p.EndDate,
-			&p.TargetGeo, &p.Tags, &p.BudgetTotal, &p.SpentTotal, &p.RisksCount, &p.IssuesCount, &p.CreatedTime, &p.UpdatedTime)
+			&p.TargetGeo, &p.Tags, &p.BudgetTotal, &p.SpentTotal, &p.RisksCount, &p.IssuesCount, &p.CreatedTime, &p.UpdatedTime, &p.WorkspaceID)
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -58,12 +59,12 @@ func dbGetProjectWorkspace(c *gin.Context) {
 	err := DB.QueryRow(`
 		SELECT id, code, name, description, stage, progress, org, portfolio, programme,
 		       owner, start_date, end_date, target_geo, tags, budget_total, spent_total,
-		       risks_count, issues_count, created_time, updated_time
+		       risks_count, issues_count, created_time, updated_time, COALESCE(workspace_id, '')
 		FROM pms.projects
-		WHERE id = $1
-	`, id).Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.Stage, &p.Progress,
+		WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, id, workspaceIDContext(c)).Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.Stage, &p.Progress,
 		&p.Org, &p.Portfolio, &p.Programme, &p.Owner, &p.StartDate, &p.EndDate,
-		&p.TargetGeo, &p.Tags, &p.BudgetTotal, &p.SpentTotal, &p.RisksCount, &p.IssuesCount, &p.CreatedTime, &p.UpdatedTime)
+		&p.TargetGeo, &p.Tags, &p.BudgetTotal, &p.SpentTotal, &p.RisksCount, &p.IssuesCount, &p.CreatedTime, &p.UpdatedTime, &p.WorkspaceID)
 
 	if err == sql.ErrNoRows {
 		c.JSON(404, gin.H{"error": "Project not found"})
@@ -81,7 +82,10 @@ func dbGetProjectWorkspace(c *gin.Context) {
 	documents, _ := dbGetDocuments(id)
 	meetings, _ := dbGetMeetings(id)
 	surveys, _ := dbGetSurveys(id)
-	chats, _ := dbGetChats(id)
+	chats, chatErr := loadProjectDiscussion(c, p)
+	if chats == nil {
+		chats = []ChatMessage{}
+	}
 	helpdesk, _ := dbGetHelpdesk(id)
 	components, _ := dbGetComponentsByProject(id)
 	activities, _ := dbGetActivitiesByProject(id)
@@ -100,31 +104,32 @@ func dbGetProjectWorkspace(c *gin.Context) {
 	reports, _ := dbGetReportsByProject(id)
 
 	response := map[string]interface{}{
-		"project":           p,
-		"members":           members,
-		"tasks":             tasks,
-		"budgets":           budgets,
-		"risks":             risks,
-		"documents":         documents,
-		"meetings":          meetings,
-		"surveys":           surveys,
-		"chats":             chats,
-		"helpdesk":          helpdesk,
-		"components":        components,
-		"activities":        activities,
-		"deliverables":      deliverables,
-		"milestones":        milestones,
-		"issues":            issues,
-		"assumptions":       assumptions,
-		"lessons":           lessons,
-		"correctiveActions": correctiveActions,
-		"fundingSources":    fundingSources,
-		"costCentres":       costCentres,
-		"budgetRevisions":   budgetRevisions,
-		"procurementRefs":   procurementRefs,
-		"auditLogs":         auditLogs,
-		"calendarEvents":    calendarEvents,
-		"reports":           reports,
+		"project":              p,
+		"members":              members,
+		"tasks":                tasks,
+		"budgets":              budgets,
+		"risks":                risks,
+		"documents":            documents,
+		"meetings":             meetings,
+		"surveys":              surveys,
+		"chats":                chats,
+		"helpdesk":             helpdesk,
+		"components":           components,
+		"activities":           activities,
+		"deliverables":         deliverables,
+		"milestones":           milestones,
+		"issues":               issues,
+		"assumptions":          assumptions,
+		"lessons":              lessons,
+		"correctiveActions":    correctiveActions,
+		"fundingSources":       fundingSources,
+		"costCentres":          costCentres,
+		"budgetRevisions":      budgetRevisions,
+		"procurementRefs":      procurementRefs,
+		"auditLogs":            auditLogs,
+		"calendarEvents":       calendarEvents,
+		"reports":              reports,
+		"chatIntegrationReady": chatErr == nil,
 	}
 
 	c.JSON(200, response)
@@ -154,11 +159,11 @@ func dbCreateProject(c *gin.Context) {
 	now := time.Now()
 
 	_, err := DB.Exec(`
-		INSERT INTO pms.projects (id, code, name, description, stage, progress, org, portfolio, programme, owner, start_date, end_date, target_geo, tags, budget_total, spent_total, risks_count, issues_count, created_time, updated_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		INSERT INTO pms.projects (id, code, name, description, stage, progress, org, portfolio, programme, owner, start_date, end_date, target_geo, tags, budget_total, spent_total, risks_count, issues_count, created_time, updated_time, workspace_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NULLIF($21, ''))
 	`, id, req.Code, req.Name, req.Description, "Concept", 0.0, req.Org, req.Portfolio, req.Programme,
 		req.Owner, req.StartDate, req.EndDate, req.TargetGeo, []string{"New", "StatGate"},
-		req.BudgetTotal, 0.0, 0, 0, now, now)
+		req.BudgetTotal, 0.0, 0, 0, now, now, workspaceIDContext(c))
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -217,9 +222,9 @@ func dbUpdateProject(c *gin.Context) {
 			budget_total = CASE WHEN $10 > 0 THEN $10 ELSE budget_total END,
 			progress = CASE WHEN $11 >= 0 THEN $11 ELSE progress END,
 			updated_time = $12
-		WHERE id = $13
+		WHERE id = $13 AND (workspace_id = NULLIF($14, '') OR NULLIF($14, '') IS NULL)
 	`, req.Name, req.Description, req.Owner, req.Org, req.Portfolio, req.Programme,
-		req.StartDate, req.EndDate, req.TargetGeo, req.BudgetTotal, req.Progress, time.Now(), id)
+		req.StartDate, req.EndDate, req.TargetGeo, req.BudgetTotal, req.Progress, time.Now(), id, workspaceIDContext(c))
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -240,7 +245,7 @@ func dbUpdateProject(c *gin.Context) {
 func dbDeleteProject(c *gin.Context) {
 	id := c.Param("id")
 
-	_, err := DB.Exec(`DELETE FROM pms.projects WHERE id = $1`, id)
+	_, err := DB.Exec(`DELETE FROM pms.projects WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -319,8 +324,8 @@ func dbUpdateProjectStage(c *gin.Context) {
 		return
 	}
 
-	_, err := DB.Exec(`UPDATE pms.projects SET stage = $1, updated_time = $2 WHERE id = $3`,
-		req.Stage, time.Now(), id)
+	_, err := DB.Exec(`UPDATE pms.projects SET stage = $1, updated_time = $2 WHERE id = $3 AND (workspace_id = NULLIF($4, '') OR NULLIF($4, '') IS NULL)`,
+		req.Stage, time.Now(), id, workspaceIDContext(c))
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -1576,19 +1581,16 @@ func dbPostChatMessage(c *gin.Context) {
 		return
 	}
 
-	req.ID = fmt.Sprintf("ch-%d", rand.Intn(100000))
-	req.Timestamp = time.Now()
-
-	_, err := DB.Exec(`INSERT INTO pms.chat_messages (id, project_id, channel, sender, role, message, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		req.ID, req.ProjectID, req.Channel, req.Sender, req.Role, req.Message, req.Timestamp)
-
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+	if strings.TrimSpace(req.ProjectID) == "" || strings.TrimSpace(req.Message) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "projectId and message are required"})
 		return
 	}
-
-	c.JSON(201, req)
+	message, err := sendProjectDiscussionMessage(c, req)
+	if err != nil {
+		writeProjectDiscussionError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, message)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1969,8 +1971,9 @@ func dbSearch(c *gin.Context) {
 	// Search projects
 	rows, err := DB.Query(`
 		SELECT id, name, description, code FROM pms.projects
-		WHERE LOWER(name) LIKE $1 OR LOWER(code) LIKE $1 OR LOWER(description) LIKE $1 OR LOWER(programme) LIKE $1 OR LOWER(owner) LIKE $1 OR LOWER(org) LIKE $1 OR LOWER(portfolio) LIKE $1 OR LOWER(target_geo) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(name) LIKE $1 OR LOWER(code) LIKE $1 OR LOWER(description) LIKE $1 OR LOWER(programme) LIKE $1 OR LOWER(owner) LIKE $1 OR LOWER(org) LIKE $1 OR LOWER(portfolio) LIKE $1 OR LOWER(target_geo) LIKE $1)
+		AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -1987,8 +1990,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT t.id, t.title, t.description, p.name FROM pms.tasks t
 		JOIN pms.projects p ON p.id = t.project_id
-		WHERE LOWER(t.title) LIKE $1 OR LOWER(t.description) LIKE $1 OR LOWER(t.assigned_to) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(t.title) LIKE $1 OR LOWER(t.description) LIKE $1 OR LOWER(t.assigned_to) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2005,8 +2009,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT m.id, m.name, m.role, p.name FROM pms.project_members m
 		JOIN pms.projects p ON p.id = m.project_id
-		WHERE LOWER(m.name) LIKE $1 OR LOWER(m.role) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(m.name) LIKE $1 OR LOWER(m.role) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2023,8 +2028,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT d.id, d.name, d.type, p.name FROM pms.documents d
 		JOIN pms.projects p ON p.id = d.project_id
-		WHERE LOWER(d.name) LIKE $1 OR LOWER(d.type) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(d.name) LIKE $1 OR LOWER(d.type) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2041,8 +2047,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT m.id, m.title, m.agenda, p.name FROM pms.meetings m
 		JOIN pms.projects p ON p.id = m.project_id
-		WHERE LOWER(m.title) LIKE $1 OR LOWER(m.agenda) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(m.title) LIKE $1 OR LOWER(m.agenda) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2059,8 +2066,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT r.id, r.description, r.category, p.name FROM pms.risks r
 		JOIN pms.projects p ON p.id = r.project_id
-		WHERE LOWER(r.description) LIKE $1 OR LOWER(r.category) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(r.description) LIKE $1 OR LOWER(r.category) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2077,8 +2085,9 @@ func dbSearch(c *gin.Context) {
 	rows, err = DB.Query(`
 		SELECT i.id, i.title, i.description, p.name FROM pms.issues i
 		JOIN pms.projects p ON p.id = i.project_id
-		WHERE LOWER(i.title) LIKE $1 OR LOWER(i.description) LIKE $1
-	`, searchTerm)
+		WHERE (LOWER(i.title) LIKE $1 OR LOWER(i.description) LIKE $1)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2096,7 +2105,8 @@ func dbSearch(c *gin.Context) {
 		SELECT s.id, s.name, s.status, p.name FROM pms.surveys s
 		JOIN pms.projects p ON p.id = s.project_id
 		WHERE LOWER(s.name) LIKE $1
-	`, searchTerm)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2114,7 +2124,8 @@ func dbSearch(c *gin.Context) {
 		SELECT m.id, m.name, m.description, p.name FROM pms.milestones m
 		JOIN pms.projects p ON p.id = m.project_id
 		WHERE LOWER(m.name) LIKE $1
-	`, searchTerm)
+		AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, searchTerm, workspaceIDContext(c))
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -2139,18 +2150,19 @@ func dbGetDashboard(c *gin.Context) {
 	var totalProjects, totalMembers, totalTasks, totalDoneTasks, totalSurveys, totalSubmissions, totalTarget int
 	var totalBudget, totalSpent float64
 
-	DB.QueryRow(`SELECT COUNT(*) FROM pms.projects`).Scan(&totalProjects)
-	DB.QueryRow(`SELECT COUNT(*) FROM pms.project_members`).Scan(&totalMembers)
-	DB.QueryRow(`SELECT COUNT(*) FROM pms.tasks`).Scan(&totalTasks)
-	DB.QueryRow(`SELECT COUNT(*) FROM pms.tasks WHERE status = 'Done'`).Scan(&totalDoneTasks)
-	DB.QueryRow(`SELECT COUNT(*) FROM pms.surveys`).Scan(&totalSurveys)
-	DB.QueryRow(`SELECT COALESCE(SUM(submissions), 0) FROM pms.surveys`).Scan(&totalSubmissions)
-	DB.QueryRow(`SELECT COALESCE(SUM(target_sample), 0) FROM pms.surveys`).Scan(&totalTarget)
-	DB.QueryRow(`SELECT COALESCE(SUM(budget_total), 0) FROM pms.projects`).Scan(&totalBudget)
-	DB.QueryRow(`SELECT COALESCE(SUM(spent_total), 0) FROM pms.projects`).Scan(&totalSpent)
+	workspaceID := workspaceIDContext(c)
+	DB.QueryRow(`SELECT COUNT(*) FROM pms.projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalProjects)
+	DB.QueryRow(`SELECT COUNT(*) FROM pms.project_members m JOIN pms.projects p ON p.id=m.project_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalMembers)
+	DB.QueryRow(`SELECT COUNT(*) FROM pms.tasks t JOIN pms.projects p ON p.id=t.project_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalTasks)
+	DB.QueryRow(`SELECT COUNT(*) FROM pms.tasks t JOIN pms.projects p ON p.id=t.project_id WHERE t.status = 'Done' AND (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalDoneTasks)
+	DB.QueryRow(`SELECT COUNT(*) FROM pms.surveys s JOIN pms.projects p ON p.id=s.project_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalSurveys)
+	DB.QueryRow(`SELECT COALESCE(SUM(s.submissions), 0) FROM pms.surveys s JOIN pms.projects p ON p.id=s.project_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalSubmissions)
+	DB.QueryRow(`SELECT COALESCE(SUM(s.target_sample), 0) FROM pms.surveys s JOIN pms.projects p ON p.id=s.project_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalTarget)
+	DB.QueryRow(`SELECT COALESCE(SUM(budget_total), 0) FROM pms.projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalBudget)
+	DB.QueryRow(`SELECT COALESCE(SUM(spent_total), 0) FROM pms.projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&totalSpent)
 
 	// Stage distribution
-	stageRows, _ := DB.Query(`SELECT stage, COUNT(*) FROM pms.projects GROUP BY stage`)
+	stageRows, _ := DB.Query(`SELECT stage, COUNT(*) FROM pms.projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) GROUP BY stage`, workspaceID)
 	defer stageRows.Close()
 	stageDist := map[string]int{}
 	for stageRows.Next() {
@@ -2161,7 +2173,7 @@ func dbGetDashboard(c *gin.Context) {
 	}
 
 	// Recent projects
-	recentRows, _ := DB.Query(`SELECT id, code, name, stage, progress, owner, created_time FROM pms.projects ORDER BY created_time DESC LIMIT 5`)
+	recentRows, _ := DB.Query(`SELECT id, code, name, stage, progress, owner, created_time FROM pms.projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) ORDER BY created_time DESC LIMIT 5`, workspaceID)
 	defer recentRows.Close()
 	var recentProjects []map[string]interface{}
 	for recentRows.Next() {
@@ -2694,4 +2706,3 @@ func dbDeleteDonor(c *gin.Context) {
 	}
 	c.JSON(200, gin.H{"message": "Donor deleted successfully"})
 }
-

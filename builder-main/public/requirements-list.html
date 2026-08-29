@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StatGate Report Builder - Requirements Documents</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/requirements-form.css">
+</head>
+<body class="requirements-page">
+    <header class="header" role="banner">
+        <div class="header-left">
+            <a href="index.html" class="header-brand">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo" loading="lazy">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <a href="requirements/form" class="btn btn-secondary btn-sm" title="Open requirements form">Open Form</a>
+            <a href="index.html" class="btn btn-secondary btn-sm" title="Back to app">Back to app</a>
+        </div>
+    </header>
+
+    <main class="requirements-shell">
+        <section class="requirements-hero">
+            <p class="eyebrow">Digital Reporting Requirements Collection Document</p>
+            <h1>Requirements Documents</h1>
+            <p class="hero-copy">Browse all submitted requirements specifications from the local requirements repository.</p>
+            <div id="list-status" class="submit-status hidden" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="section-card requirements-list-card">
+            <div class="requirements-list-toolbar">
+                <input type="search" id="requirements-search" class="requirements-search" placeholder="Search by report name, program area, department, owner, or status">
+                <button type="button" id="requirements-refresh" class="btn btn-secondary btn-sm">Refresh</button>
+            </div>
+            <div id="requirements-list" class="requirements-list"></div>
+        </section>
+    </main>
+
+    <script type="module" src="js/requirements-list.js"></script>
+</body>
+</html>

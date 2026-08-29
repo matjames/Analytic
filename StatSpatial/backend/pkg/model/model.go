@@ -40,6 +40,8 @@ type Classification struct {
 
 type GeoLayer struct {
 	ID           string    `json:"id"`
+	TenantID     string    `json:"tenant_id,omitempty"`
+	WorkspaceID  string    `json:"workspace_id,omitempty"`
 	Name         string    `json:"name"`
 	Description  string    `json:"description,omitempty"`
 	GeometryType string    `json:"geometry_type"` // polygon | point | line
@@ -51,6 +53,8 @@ type GeoLayer struct {
 
 type GeoFeature struct {
 	ID          string                 `json:"id"`
+	TenantID    string                 `json:"tenant_id,omitempty"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
 	LayerID     string                 `json:"layer_id"`
 	AdminUnitID *string                `json:"admin_unit_id,omitempty"`
 	Name        string                 `json:"name"`
@@ -61,6 +65,8 @@ type GeoFeature struct {
 
 type SpatialIndex struct {
 	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id,omitempty"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
 	AdminUnitID string    `json:"admin_unit_id"`
 	TargetType  string    `json:"target_type"` // facility | dataset | indicator | organization | project
 	TargetID    string    `json:"target_id"`
@@ -73,6 +79,8 @@ type SpatialIndex struct {
 
 type FederatedNode struct {
 	ID           string     `json:"id"`
+	TenantID     string     `json:"tenant_id,omitempty"`
+	WorkspaceID  string     `json:"workspace_id,omitempty"`
 	Name         string     `json:"name"`
 	NodeType     string     `json:"node_type"` // district | ministry | agency | regional_body | international
 	URL          string     `json:"url,omitempty"`
@@ -87,6 +95,8 @@ type FederatedNode struct {
 
 type DataSharingAgreement struct {
 	ID           string     `json:"id"`
+	TenantID     string     `json:"tenant_id,omitempty"`
+	WorkspaceID  string     `json:"workspace_id,omitempty"`
 	Title        string     `json:"title"`
 	SourceNodeID string     `json:"source_node_id"`
 	TargetNodeID string     `json:"target_node_id"`
@@ -101,6 +111,8 @@ type DataSharingAgreement struct {
 
 type FederatedDataset struct {
 	ID          string     `json:"id"`
+	TenantID    string     `json:"tenant_id,omitempty"`
+	WorkspaceID string     `json:"workspace_id,omitempty"`
 	NodeID      string     `json:"node_id"`
 	ExternalID  string     `json:"external_id,omitempty"`
 	Name        string     `json:"name"`
@@ -114,6 +126,8 @@ type FederatedDataset struct {
 
 type SyncLog struct {
 	ID            string     `json:"id"`
+	TenantID      string     `json:"tenant_id,omitempty"`
+	WorkspaceID   string     `json:"workspace_id,omitempty"`
 	NodeID        string     `json:"node_id"`
 	DatasetID     string     `json:"dataset_id,omitempty"`
 	Status        string     `json:"status"` // success | partial | failed
@@ -127,10 +141,12 @@ type SyncLog struct {
 // ─── Shared ───────────────────────────────────────────────────────────────
 
 type NodeLink struct {
-	ID         string    `json:"id"`
-	SourceType string    `json:"source_type"`
-	SourceID   string    `json:"source_id"`
-	TargetType string    `json:"target_type"`
-	TargetID   string    `json:"target_id"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id,omitempty"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	SourceType  string    `json:"source_type"`
+	SourceID    string    `json:"source_id"`
+	TargetType  string    `json:"target_type"`
+	TargetID    string    `json:"target_id"`
+	CreatedAt   time.Time `json:"created_at"`
 }

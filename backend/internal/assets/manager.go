@@ -12,6 +12,7 @@ type Asset struct {
 	AssetType         string                 `json:"asset_type"` // "notebook", "dashboard", "widget", "metric"
 	ContentDefinition map[string]interface{} `json:"content_definition"`
 	OwnerID           string                 `json:"owner_id"` // Tenant ID
+	WorkspaceID       string                 `json:"workspace_id,omitempty"`
 	VersionTag        string                 `json:"version_tag"`
 	LastModified      string                 `json:"last_modified"`
 }
@@ -22,6 +23,7 @@ type AssetHistory struct {
 	AssetType         string                 `json:"asset_type"`
 	ContentDefinition map[string]interface{} `json:"content_definition"`
 	OwnerID           string                 `json:"owner_id"`
+	WorkspaceID       string                 `json:"workspace_id,omitempty"`
 	VersionTag        string                 `json:"version_tag"`
 	CreatedAt         string                 `json:"created_at"`
 }
@@ -50,6 +52,7 @@ func (m *Manager) initSchema() error {
 		asset_type VARCHAR(64) NOT NULL,
 		content_definition JSONB NOT NULL,
 		owner_id VARCHAR(128) NOT NULL,
+		workspace_id VARCHAR(128),
 		version_tag VARCHAR(32) NOT NULL DEFAULT '1.0.0',
 		last_modified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);
@@ -60,9 +63,15 @@ func (m *Manager) initSchema() error {
 		asset_type VARCHAR(64) NOT NULL,
 		content_definition JSONB NOT NULL,
 		owner_id VARCHAR(128) NOT NULL,
+		workspace_id VARCHAR(128),
 		version_tag VARCHAR(32) NOT NULL,
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);
+
+	ALTER TABLE analytical_assets ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
+	ALTER TABLE asset_history ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
+	CREATE INDEX IF NOT EXISTS idx_analytical_assets_owner_workspace ON analytical_assets(owner_id, workspace_id);
+	CREATE INDEX IF NOT EXISTS idx_asset_history_asset_workspace ON asset_history(asset_id, workspace_id);
 	`
 	_, err := m.db.Exec(query)
 	return err
@@ -85,42 +94,48 @@ func (m *Manager) SaveAsset(asset Asset) error {
 
 	// 1. Upsert into analytical_assets
 	upsertQuery := `
-	INSERT INTO analytical_assets (id, asset_type, content_definition, owner_id, version_tag, last_modified)
-	VALUES ($1, $2, $3, $4, $5, $6)
+	INSERT INTO analytical_assets (id, asset_type, content_definition, owner_id, workspace_id, version_tag, last_modified)
+	VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7)
 	ON CONFLICT (id) DO UPDATE SET
 		asset_type = EXCLUDED.asset_type,
 		content_definition = EXCLUDED.content_definition,
 		owner_id = EXCLUDED.owner_id,
+		workspace_id = EXCLUDED.workspace_id,
 		version_tag = EXCLUDED.version_tag,
-		last_modified = EXCLUDED.last_modified;
+		last_modified = EXCLUDED.last_modified
+	WHERE analytical_assets.owner_id = EXCLUDED.owner_id
+	  AND analytical_assets.workspace_id IS NOT DISTINCT FROM EXCLUDED.workspace_id;
 	`
-	_, err = m.db.Exec(upsertQuery, asset.ID, asset.AssetType, string(contentBytes), asset.OwnerID, asset.VersionTag, now)
+	result, err := m.db.Exec(upsertQuery, asset.ID, asset.AssetType, string(contentBytes), asset.OwnerID, asset.WorkspaceID, asset.VersionTag, now)
 	if err != nil {
 		return err
+	}
+	if affected, rowsErr := result.RowsAffected(); rowsErr == nil && affected == 0 {
+		return fmt.Errorf("asset id already belongs to another tenant or workspace")
 	}
 
 	// 2. Record immutable audit snapshot in asset_history
 	historyQuery := `
-	INSERT INTO asset_history (asset_id, asset_type, content_definition, owner_id, version_tag, created_at)
-	VALUES ($1, $2, $3, $4, $5, $6);
+	INSERT INTO asset_history (asset_id, asset_type, content_definition, owner_id, workspace_id, version_tag, created_at)
+	VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7);
 	`
-	_, err = m.db.Exec(historyQuery, asset.ID, asset.AssetType, string(contentBytes), asset.OwnerID, asset.VersionTag, now)
+	_, err = m.db.Exec(historyQuery, asset.ID, asset.AssetType, string(contentBytes), asset.OwnerID, asset.WorkspaceID, asset.VersionTag, now)
 	return err
 }
 
-func (m *Manager) GetAsset(id string) (*Asset, error) {
+func (m *Manager) GetAsset(id, ownerID, workspaceID string) (*Asset, error) {
 	if m.db == nil {
 		return nil, fmt.Errorf("database unavailable")
 	}
 
-	query := `SELECT id, asset_type, content_definition, owner_id, version_tag, last_modified FROM analytical_assets WHERE id = $1;`
-	row := m.db.QueryRow(query, id)
+	query := `SELECT id, asset_type, content_definition, owner_id, COALESCE(workspace_id, ''), version_tag, last_modified FROM analytical_assets WHERE id = $1 AND owner_id = $2 AND ($3 = '' OR workspace_id = $3);`
+	row := m.db.QueryRow(query, id, ownerID, workspaceID)
 
 	var a Asset
 	var contentRaw string
 	var lastMod time.Time
 
-	if err := row.Scan(&a.ID, &a.AssetType, &contentRaw, &a.OwnerID, &a.VersionTag, &lastMod); err != nil {
+	if err := row.Scan(&a.ID, &a.AssetType, &contentRaw, &a.OwnerID, &a.WorkspaceID, &a.VersionTag, &lastMod); err != nil {
 		return nil, err
 	}
 
@@ -129,16 +144,16 @@ func (m *Manager) GetAsset(id string) (*Asset, error) {
 	return &a, nil
 }
 
-func (m *Manager) ListAssets(ownerID string, assetType string) ([]Asset, error) {
+func (m *Manager) ListAssets(ownerID, workspaceID, assetType string) ([]Asset, error) {
 	if m.db == nil {
 		return []Asset{}, nil
 	}
 
-	query := `SELECT id, asset_type, content_definition, owner_id, version_tag, last_modified FROM analytical_assets WHERE owner_id = $1`
-	args := []interface{}{ownerID}
+	query := `SELECT id, asset_type, content_definition, owner_id, COALESCE(workspace_id, ''), version_tag, last_modified FROM analytical_assets WHERE owner_id = $1 AND ($2 = '' OR workspace_id = $2)`
+	args := []interface{}{ownerID, workspaceID}
 
 	if assetType != "" {
-		query += ` AND asset_type = $2`
+		query += ` AND asset_type = $3`
 		args = append(args, assetType)
 	}
 	query += ` ORDER BY last_modified DESC;`
@@ -154,7 +169,7 @@ func (m *Manager) ListAssets(ownerID string, assetType string) ([]Asset, error) 
 		var a Asset
 		var contentRaw string
 		var lastMod time.Time
-		if err := rows.Scan(&a.ID, &a.AssetType, &contentRaw, &a.OwnerID, &a.VersionTag, &lastMod); err == nil {
+		if err := rows.Scan(&a.ID, &a.AssetType, &contentRaw, &a.OwnerID, &a.WorkspaceID, &a.VersionTag, &lastMod); err == nil {
 			json.Unmarshal([]byte(contentRaw), &a.ContentDefinition)
 			a.LastModified = lastMod.Format(time.RFC3339)
 			assets = append(assets, a)
@@ -163,13 +178,13 @@ func (m *Manager) ListAssets(ownerID string, assetType string) ([]Asset, error) 
 	return assets, nil
 }
 
-func (m *Manager) GetAssetHistory(assetID string) ([]AssetHistory, error) {
+func (m *Manager) GetAssetHistory(assetID, ownerID, workspaceID string) ([]AssetHistory, error) {
 	if m.db == nil {
 		return []AssetHistory{}, nil
 	}
 
-	query := `SELECT history_id, asset_id, asset_type, content_definition, owner_id, version_tag, created_at FROM asset_history WHERE asset_id = $1 ORDER BY history_id DESC;`
-	rows, err := m.db.Query(query, assetID)
+	query := `SELECT history_id, asset_id, asset_type, content_definition, owner_id, COALESCE(workspace_id, ''), version_tag, created_at FROM asset_history WHERE asset_id = $1 AND owner_id = $2 AND ($3 = '' OR workspace_id = $3) ORDER BY history_id DESC;`
+	rows, err := m.db.Query(query, assetID, ownerID, workspaceID)
 	if err != nil {
 		return []AssetHistory{}, err
 	}
@@ -180,7 +195,7 @@ func (m *Manager) GetAssetHistory(assetID string) ([]AssetHistory, error) {
 		var h AssetHistory
 		var contentRaw string
 		var createdAt time.Time
-		if err := rows.Scan(&h.HistoryID, &h.AssetID, &h.AssetType, &contentRaw, &h.OwnerID, &h.VersionTag, &createdAt); err == nil {
+		if err := rows.Scan(&h.HistoryID, &h.AssetID, &h.AssetType, &contentRaw, &h.OwnerID, &h.WorkspaceID, &h.VersionTag, &createdAt); err == nil {
 			json.Unmarshal([]byte(contentRaw), &h.ContentDefinition)
 			h.CreatedAt = createdAt.Format(time.RFC3339)
 			history = append(history, h)

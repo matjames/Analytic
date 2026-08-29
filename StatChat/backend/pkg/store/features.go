@@ -147,8 +147,9 @@ func CreateTask(task model.Task) (model.Task, error) {
 	if task.CreatedAt.IsZero() {
 		task.CreatedAt = time.Now().UTC()
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO tasks (id, title, description, assignee, priority, due_date, status, conversation_id, created_by, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		task.ID, task.Title, nullString(task.Description), nullString(task.Assignee), task.Priority, nullString(task.DueDate), task.Status, nullString(task.ConversationID), task.CreatedBy, task.CreatedAt, nullTime(task.UpdatedAt))
+	task.TenantID = normalizedTenantID(task.TenantID)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO tasks (id, tenant_id, title, description, assignee, priority, due_date, status, conversation_id, created_by, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		task.ID, task.TenantID, task.Title, nullString(task.Description), nullString(task.Assignee), task.Priority, nullString(task.DueDate), task.Status, nullString(task.ConversationID), task.CreatedBy, task.CreatedAt, nullTime(task.UpdatedAt))
 	return task, err
 }
 
@@ -235,8 +236,18 @@ func GetNotifications(userID string) ([]model.Notification, error) {
 	return notifications, rows.Err()
 }
 
-func MarkNotificationRead(notificationID string) error {
-	_, err := db.ExecContext(context.Background(), `UPDATE notifications SET read = true WHERE id = $1`, notificationID)
+func MarkNotificationRead(notificationID, userID string) error {
+	result, err := db.ExecContext(context.Background(), `UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2`, notificationID, userID)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return sql.ErrNoRows
+	}
 	return err
 }
 

@@ -37,7 +37,7 @@ func main() {
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Internal-API-Key", "X-Request-ID", "X-Tenant-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Internal-API-Key", "X-Request-ID", "X-Tenant-ID", "X-Workspace-ID"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -77,6 +77,23 @@ func main() {
 			c.Next()
 		})
 	}
+	v1.Use(func(c *gin.Context) {
+		workspaceID := c.GetHeader("X-Workspace-ID")
+		if workspaceID != "" {
+			if len(workspaceID) > 128 {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+				return
+			}
+			for i, r := range workspaceID {
+				if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && i > 0) || r == '_') {
+					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+					return
+				}
+			}
+		}
+		c.Set("workspace_id", workspaceID)
+		c.Next()
+	})
 
 	{
 		v1.GET("/summary", SummaryHandler)

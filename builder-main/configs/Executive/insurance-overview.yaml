@@ -1,0 +1,84 @@
+id: insurance-overview
+title: Insurance Portfolio Overview
+description: Premium charges and demographic breakdowns from the local insurance dataset
+category: Executive
+sections:
+  - id: kpi-row
+    title: Key Indicators
+    layout: four-column
+    components:
+      - type: kpi
+        title: Total Charges
+        accentColor: "#165c92"
+        query:
+          table: ml_staging.insurance
+          aggregations:
+            - column: charges
+              function: sum
+              alias: total_charges
+      - type: kpi
+        title: Average Age
+        accentColor: "#1a7ab5"
+        query:
+          table: ml_staging.insurance
+          aggregations:
+            - column: age
+              function: avg
+              alias: avg_age
+      - type: kpi
+        title: Smokers
+        query:
+          table: ml_staging.insurance
+          where: smoker = 'yes'
+          aggregations:
+            - column: smoker
+              function: count
+              alias: smoker_count
+      - type: kpi
+        title: Avg Charges
+        query:
+          table: ml_staging.insurance
+          aggregations:
+            - column: charges
+              function: avg
+              alias: avg_charges
+
+  - id: section-graphs
+    title: Risk & Geography
+    layout: two-column
+    components:
+      - type: pie
+        title: Charges by Smoker
+        query:
+          table: ml_staging.insurance
+          aggregations:
+            - column: charges
+              function: sum
+              alias: total_charges
+          groupBy:
+            - field: smoker
+      - type: bar
+        title: Average Charges by Region
+        query:
+          table: ml_staging.insurance
+          aggregations:
+            - column: charges
+              function: avg
+              alias: avg_charges
+          groupBy:
+            - field: region
+          orderBy:
+            - field: avg_charges
+              direction: desc
+
+  - id: section-linelist
+    title: Policy Line List
+    layout: single
+    components:
+      - type: table_advanced
+        title: Policy Line List (sample)
+        sql: >
+          SELECT age, sex, bmi, children, smoker, region, charges
+          FROM ml_staging.insurance
+          ORDER BY charges DESC
+          LIMIT 20

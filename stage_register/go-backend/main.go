@@ -107,9 +107,13 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:3000",
+			"http://localhost:3007",
+			"http://localhost:3009",
 			"http://localhost:5000",
 			"http://localhost:5001",
 			"http://host.docker.internal:3000",
+			"http://host.docker.internal:3007",
+			"http://host.docker.internal:3009",
 			"http://host.docker.internal:5000",
 			"http://host.docker.internal:5001",
 		},

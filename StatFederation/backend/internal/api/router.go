@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -43,7 +44,7 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	} else {
 		corsCfg.AllowOrigins = strings.Split(cfg.CORSOrigin, ",")
 	}
-	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Request-ID"}
+	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Workspace-ID", "X-Request-ID"}
 	corsCfg.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	corsCfg.AllowCredentials = true
 	r.Use(cors.New(corsCfg))
@@ -71,6 +72,22 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		api.Use(cfg.AuthValidator.GinMiddleware())
 		api.Use(tenant.GinTenantIsolation())
 	}
+	api.Use(func(c *gin.Context) {
+		workspaceID := c.GetHeader("X-Workspace-ID")
+		if len(workspaceID) > 128 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+			return
+		}
+		for i, r := range workspaceID {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && i > 0) || r == '_') {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+				return
+			}
+		}
+		c.Set("workspace_id", workspaceID)
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "workspace_id", workspaceID))
+		c.Next()
+	})
 
 	h := cfg.Handlers
 
@@ -101,6 +118,8 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		fed.POST("/indicators", h.CreateIndicator)
 		fed.GET("/indicators/:id", h.GetIndicator)
 		fed.PUT("/indicators/:id/values", h.UpdateIndicatorValue)
+		fed.POST("/indicators/push", h.PushIndicators)
+		fed.POST("/indicators/ingest", h.IngestIndicators)
 		fed.GET("/calendar", h.OfficialStatisticsCalendar)
 
 		// Metadata Harmonization

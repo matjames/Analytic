@@ -13,19 +13,20 @@ def validate_asset_id(asset_id):
     return asset_id
 
 
-def get_dashboard_asset_metadata(statgate_engine, asset_id, owner_id='tenant-alpha'):
-    metadata = statgate_engine.load_dashboard_metadata(asset_id, strict=True)
+def get_dashboard_asset_metadata(statgate_engine, asset_id, owner_id='tenant-alpha', workspace_id=None):
+    metadata = statgate_engine.load_dashboard_metadata(asset_id, strict=True, **({'workspace_id': workspace_id} if workspace_id else {}))
     return {
         'id': asset_id,
         'asset_type': metadata.get('asset_type', 'dashboard'),
         'content_definition': metadata,
         'owner_id': owner_id,
+        'workspace_id': workspace_id or '',
         'version_tag': metadata.get('version_tag', '1.0.0'),
         'metadata': metadata,
     }
 
 
-def build_asset_payload(dashboard_id, asset_type, content_definition, owner_id, version_tag='1.0.0'):
+def build_asset_payload(dashboard_id, asset_type, content_definition, owner_id, version_tag='1.0.0', workspace_id=None):
     validate_asset_id(dashboard_id)
     if not isinstance(asset_type, str) or not asset_type.strip():
         raise ValueError('Asset type is required.')
@@ -40,6 +41,7 @@ def build_asset_payload(dashboard_id, asset_type, content_definition, owner_id, 
         'asset_type': asset_type,
         'content_definition': content_definition,
         'owner_id': owner_id,
+        'workspace_id': workspace_id or '',
         'version_tag': version_tag,
     }
 
@@ -50,18 +52,23 @@ def save_dashboard_asset(statgate_engine, asset_payload):
     if asset_payload.get('owner_id') and not isinstance(asset_payload['owner_id'], str):
         raise ValueError('Owner identifier must be a string.')
 
-    result = statgate_engine.save_dashboard_metadata(asset_payload['id'], asset_payload['content_definition'])
+    save_args = (asset_payload['id'], asset_payload['content_definition'])
+    if asset_payload.get('workspace_id'):
+        result = statgate_engine.save_dashboard_metadata(*save_args, workspace_id=asset_payload['workspace_id'])
+    else:
+        result = statgate_engine.save_dashboard_metadata(*save_args)
     return {
         **result,
         'id': asset_payload['id'],
         'asset_type': asset_payload['asset_type'],
         'owner_id': asset_payload['owner_id'],
+        'workspace_id': asset_payload.get('workspace_id', ''),
         'version_tag': asset_payload['version_tag'],
     }
 
 
-def list_dashboard_assets(statgate_engine, dashboards_dir=None):
-    dashboards_dir = dashboards_dir or os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'dashboards')
+def list_dashboard_assets(statgate_engine, dashboards_dir=None, workspace_id=None):
+    dashboards_dir = dashboards_dir or os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'dashboards', workspace_id or '')
     assets_list = []
     if not os.path.exists(dashboards_dir):
         return assets_list
@@ -71,12 +78,13 @@ def list_dashboard_assets(statgate_engine, dashboards_dir=None):
             continue
 
         asset_id = filename[:-5]
-        metadata = statgate_engine.load_dashboard_metadata(asset_id)
+        metadata = statgate_engine.load_dashboard_metadata(asset_id, **({'workspace_id': workspace_id} if workspace_id else {}))
         assets_list.append({
             'id': asset_id,
             'asset_type': metadata.get('asset_type', 'dashboard'),
             'content_definition': metadata,
             'owner_id': 'tenant-alpha',
+            'workspace_id': workspace_id or '',
             'version_tag': metadata.get('version_tag', '1.0.0'),
             'last_modified': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(os.path.getmtime(os.path.join(dashboards_dir, filename)))),
         })

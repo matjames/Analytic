@@ -4,27 +4,33 @@ import React, { useState, useEffect, useRef } from 'react';
 // registry (single source: frontend/config/services.json, served live via the
 // launcher). Keep this list in sync with that registry.
 const STATGATE_APPS = [
-  { id: 'analytics',  name: 'Analytics',           icon: '📊', url: 'http://localhost:5000' },
-  { id: 'registry',   name: 'Field Registry',       icon: '🏥', url: 'http://localhost:3007' },
-  { id: 'helpdesk',   name: 'Operations Helpdesk',  icon: '🎫', url: 'http://localhost:3005' },
-  { id: 'statchat',   name: 'StatChat',             icon: '💬', url: 'http://localhost:3009' },
-  { id: 'pms',        name: 'PMS',                  icon: '🏗️', url: 'http://localhost:3010', current: true },
-  { id: 'rms',        name: 'RMS',                  icon: '🔬', url: 'http://localhost:3011' },
-  { id: 'governance', name: 'StatGovernance',       icon: '🛡️', url: 'http://localhost:3012' },
-  { id: 'statcollect',name: 'StatCollect',          icon: '📥', url: 'http://localhost:8080' },
-  { id: 'statspatial',name: 'StatSpatial',          icon: '🗺️', url: 'http://localhost:4200' },
-  { id: 'enterprise', name: 'Enterprise',           icon: '🧩', url: 'http://localhost:8096' },
-  { id: 'jupyter',    name: 'JupyterHub',           icon: '📓', url: 'http://localhost:8000' },
-  { id: 'superset',   name: 'Superset BI',          icon: '📈', url: 'http://localhost:8088' },
-  { id: 'grafana',    name: 'Grafana',              icon: '📉', url: 'http://localhost:3003' },
-  { id: 'mlflow',     name: 'MLflow',               icon: '🤖', url: 'http://localhost:5002' },
+  { id: 'launcher', name: 'All Apps', icon: 'SG', url: 'http://localhost:3006' },
+  { id: 'analytics', name: 'Analytics', icon: '📊', url: 'http://localhost:5000' },
+  { id: 'registry', name: 'Registry', icon: '🪪', url: 'http://localhost:3007' },
+  { id: 'helpdesk', name: 'Helpdesk', icon: '🎧', url: 'http://localhost:3005' },
+  { id: 'statchat', name: 'StatChat', icon: '💬', url: 'http://localhost:3009' },
+  { id: 'pms', name: 'PMS', icon: '🏗️', url: 'http://localhost:3010', current: true },
+  { id: 'rms', name: 'RMS', icon: '🔬', url: 'http://localhost:3011' },
+  { id: 'governance', name: 'Governance', icon: '⚖️', url: 'http://localhost:3012' },
+  { id: 'spatial', name: 'Spatial', icon: '🗺️', url: 'http://localhost:3014' },
+{ id: 'report-builder', name: 'Report Builder', icon: '🧮', url: 'http://localhost:8110/builder.html' },
 ];
 
 export default function StatGateHeader({ searchValue, onSearchChange, userName = 'Sarah Jenkins', userRole = 'Admin' }) {
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [branding, setBranding] = useState({ display_name: 'StatGate', logo_url: '', primary_color: '#165c92', secondary_color: '#0f3f5f' });
   const launcherRef = useRef(null);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('registry_jwt') || localStorage.getItem('token');
+    const registryAPI = import.meta.env.VITE_REGISTRY_API_URL || 'http://localhost:9090/api';
+    fetch(`${registryAPI}/organisation/branding`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (data) setBranding(prev => ({ ...prev, ...data })); })
+      .catch(() => {});
+  }, []);
 
   // Close overlays on outside click
   useEffect(() => {
@@ -44,12 +50,16 @@ export default function StatGateHeader({ searchValue, onSearchChange, userName =
   }, []);
 
   return (
-    <header className="statgate-header">
+    <header className="statgate-header" style={{ background: `linear-gradient(135deg, ${branding.primary_color} 0%, ${branding.secondary_color} 100%)` }}>
       {/* Left: Brand */}
       <div className="header-brand">
-        <div className="header-logo">SG</div>
+        {branding.logo_url ? (
+          <img className="header-logo" src={branding.logo_url} alt={branding.display_name} />
+        ) : (
+          <img className="header-logo" src="/logo.png" alt="StatGate" onError={(e) => { e.target.style.display='none'; }} style={{ borderRadius: 6, background: 'rgba(255,255,255,0.12)', padding: 2 }} />
+        )}
         <div className="header-brand-text">
-          <span className="header-brand-name">StatGate</span>
+          <span className="header-brand-name">{branding.display_name}</span>
           <span className="header-brand-sub">Projects Management System</span>
         </div>
       </div>

@@ -1,0 +1,110 @@
+id: global-health-overview
+title: Global Health Trends
+description: Country-level health and development indicators from the local global_health dataset
+category: Global
+sections:
+  - id: kpi-row
+    title: Headline Indicators
+    layout: four-column
+    components:
+      - type: kpi
+        title: Avg Life Expectancy
+        accentColor: "#165c92"
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Life_Expectancy
+              function: avg
+              alias: avg_life
+      - type: kpi
+        title: Avg GDP per Capita
+        accentColor: "#1a7ab5"
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: GDP_Per_Capita
+              function: avg
+              alias: avg_gdp
+      - type: kpi
+        title: Avg Immunization Rate
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Immunization_Rate
+              function: avg
+              alias: avg_imm
+      - type: kpi
+        title: Avg Obesity Rate
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Obesity_Rate_Percent
+              function: avg
+              alias: avg_obesity
+
+  - id: section-map
+    title: World View
+    layout: single
+    components:
+      - type: choropleth
+        title: Average Life Expectancy by Country
+        data:
+          geojson_path: /assets/world_countries.geojson
+          color_scheme: ["#dbeafe", "#93c5fd", "#3b82f6", "#165c92"]
+          legend_title: "Avg Life Expectancy"
+          bin_labels: [Low, Medium, High, Very High]
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Life_Expectancy
+              function: avg
+              alias: life_expectancy
+          groupBy:
+            - field: Country
+        columnMapping:
+          district: Country
+          value: life_expectancy
+
+  - id: section-trend
+    title: Trends
+    layout: two-column
+    components:
+      - type: line
+        title: Global Average Life Expectancy Over Time
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Life_Expectancy
+              function: avg
+              alias: avg_life
+          groupBy:
+            - field: Year
+              format: year
+      - type: bar
+        title: Top 10 by Life Expectancy
+        query:
+          table: ml_staging.global_health
+          aggregations:
+            - column: Life_Expectancy
+              function: max
+              alias: max_life
+          groupBy:
+            - field: Country
+          orderBy:
+            - field: max_life
+              direction: desc
+          limit: 10
+
+  - id: section-linelist
+    title: Country Detail
+    layout: single
+    components:
+      - type: table_advanced
+        title: Country Line List (sample)
+        sql: >
+          SELECT "Country", "Year", "Life_Expectancy",
+                 "GDP_Per_Capita", "Urban_Population_Percent",
+                 "Immunization_Rate", "Obesity_Rate_Percent"
+          FROM ml_staging.global_health
+          ORDER BY "Year" DESC, "Life_Expectancy" DESC
+          LIMIT 20

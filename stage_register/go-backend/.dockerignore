@@ -1,0 +1,8 @@
+.git
+.gocache
+.env
+bin
+uploads
+*.exe
+*.log
+app

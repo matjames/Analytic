@@ -4,7 +4,7 @@
 -- ═══════════════════════════════════════════════════════════
 
 -- Create RMS database
-CREATE DATABASE rms;
+SELECT 'CREATE DATABASE rms' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rms') \gexec
 
 -- Password injected from environment (RMS_DB_PASSWORD), never hardcoded.
 \getenv RMS_PW RMS_DB_PASSWORD
@@ -292,4 +292,23 @@ CREATE TABLE IF NOT EXISTS rms.open_access_repo (
     repo_name     VARCHAR(100),
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Runtime migrations connect as RMS, so bootstrap objects must be owned by it.
+DO $$
+DECLARE
+    obj RECORD;
+BEGIN
+    FOR obj IN
+        SELECT c.relkind, n.nspname, c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'rms' AND c.relkind IN ('r', 'p', 'S')
+    LOOP
+        IF obj.relkind = 'S' THEN
+            EXECUTE format('ALTER SEQUENCE %I.%I OWNER TO %I', obj.nspname, obj.relname, 'RMS');
+        ELSE
+            EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', obj.nspname, obj.relname, 'RMS');
+        END IF;
+    END LOOP;
+END $$;
 

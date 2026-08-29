@@ -1,0 +1,163 @@
+district,facility,latitude,longitude,source
+Abim,Abim General Hospital,2.698421,33.657635,Uganda MFL
+Abim,Abim Obolokome Health Centre II,2.588517,33.790931,Uganda MFL
+Abim,Adea Health Centre II,2.514285,33.665456,Uganda MFL
+Abim,Alerek Health Centre III,2.798173,33.726127,Uganda MFL
+Abim,Amita Prisons Health Centre II,2.719767,33.551498,Uganda MFL
+Abim,Arembwola Health Centre II,2.718538,33.585473,Uganda MFL
+Abim,Atunga Health Centre II,2.745802,33.676000,Uganda MFL
+Abim,Awach Health Centre II,2.629728,33.568034,Uganda MFL
+Abim,Gangming Health Centre II,2.553427,33.591264,Uganda MFL
+Abim,Kanu Health Centre II,2.706127,33.608328,Uganda MFL
+Abim,Katabok (Abim) Health Centre II,2.592487,33.722407,Uganda MFL
+Abim,Kiru Health Centre II,2.638939,33.663533,Uganda MFL
+Abim,Koya Health Centre II,2.726238,33.716745,Uganda MFL
+Abim,Morulem Health Centre III,2.589492,33.757386,Uganda MFL
+Abim,Nyakwae Health Centre III,2.527386,33.946472,Uganda MFL
+Abim,Opopongo Health Centre II,2.611356,33.873686,Uganda MFL
+Abim,Oreta Health Centre II,2.492153,33.910445,Uganda MFL
+Abim,Orwamuge Health Centre III,2.535943,33.621682,Uganda MFL
+Abim,Oscar Military Battalion Health Centre II,2.584551,33.650145,Uganda MFL
+Abim,Pupu Kamuya Health Centre II,2.507543,33.877258,Uganda MFL
+Abim,Wilela Health Centre II,2.655102,33.712791,Uganda MFL
+Amudat,Abiliyep Health Centre III,2.101644,34.893388,Uganda MFL
+Amudat,Achorichor Health Centre II,2.101842,34.819227,Uganda MFL
+Amudat,Alakas Health Centre II,1.858830,34.995733,Uganda MFL
+Amudat,Amudat Health Centre II,1.930592,34.952909,Uganda MFL
+Amudat,Amudat Hospital,1.953373,34.943183,Uganda MFL
+Amudat,Cheptapoyo Health Centre II,1.662541,34.946440,Uganda MFL
+Amudat,Karita Health Centre IV,1.545105,34.832576,Uganda MFL
+Amudat,Katabok Health Centre III,1.727683,34.925105,Uganda MFL
+Amudat,Lokales Health Centre II,1.449163,34.729772,Uganda MFL
+Amudat,Loroo Health Centre III,2.207894,34.898052,Uganda MFL
+Arua,Kuluva Hospital,2.945911,30.933686,Uganda MFL
+Arua City,Tropical Medical Health Centre II,3.039605,30.887963,Uganda MFL
+Isingiro,Kanywamaizi Health Centre III,-0.894585,30.629045,Uganda MFL
+Kaabong,Kaabong General Hospital,3.512735,34.132188,Uganda MFL
+Kaabong,Kaabong Mission Health Centre III,3.525578,34.126032,Uganda MFL
+Kaabong,Kaabong Police Health Centre II,3.517079,34.132526,Uganda MFL
+Kaabong,Kaimese Health Centre III,3.530057,34.046412,Uganda MFL
+Kaabong,Kakamar Health Centre II,3.492531,34.114418,Uganda MFL
+Kaabong,Kalapata Health Centre III,3.660935,34.190687,Uganda MFL
+Kaabong,Kamacharikol Health Centre II,3.610664,34.095735,Uganda MFL
+Kaabong,Kamion Health Centre III,3.732044,34.249949,Uganda MFL
+Kaabong,Kathile Health Centre III,3.650015,34.078070,Uganda MFL
+Kaabong,Kopoth Health Centre III,3.365087,34.123309,Uganda MFL
+Kaabong,Lochom Health Centre II,3.420418,34.145079,Uganda MFL
+Kaabong,Lodiko Health Centre II,3.536625,34.155104,Uganda MFL
+Kaabong,Lokanayona Health Centre II,3.376805,34.232502,Uganda MFL
+Kaabong,Lokerui Health Centre II,3.552505,34.082389,Uganda MFL
+Kaabong,Lokolia Health Centre III,3.590907,34.141026,Uganda MFL
+Kaabong,Lokwakaramoe Health Centre II,3.718364,34.125842,Uganda MFL
+Kaabong,Lomeris Health Centre II,3.526108,34.094607,Uganda MFL
+Kaabong,Lomodoch Health Centre II,3.565608,34.029893,Uganda MFL
+Kaabong,Lotim Health Centre II,3.658480,34.117276,Uganda MFL
+Kaabong,Loyoro Health Centre III,3.326299,34.239251,Uganda MFL
+Kaabong,Morukori Health Centre II,3.621753,34.153561,Uganda MFL
+Kaabong,Morulem Health Centre II,3.605885,34.180766,Uganda MFL
+Kaabong,Narengepak Health Centre II,3.672990,34.017623,Uganda MFL
+Kaabong,Nariamaoi Health Centre II,3.616878,34.048493,Uganda MFL
+Kaabong,Timu Health Centre II,3.654471,34.275661,Uganda MFL
+Kaabong,Usake Health Centre II,3.778755,34.036334,Uganda MFL
+Kampala,Butabika National Referral Hospital,0.314992,32.658506,Uganda MFL
+Kampala,Kisugu Health Centre III,0.306515,32.611936,Uganda MFL
+Kamwenge,Kyempango Health Centre III,0.283908,30.680008,Uganda MFL
+Kamwenge,Rukunyu General Hospital,0.258160,30.449204,Uganda MFL
+Karenga,Kacholo Health Centre III,3.763198,33.938611,Uganda MFL
+Karenga,Kalimon Health Centre III,3.612162,33.900854,Uganda MFL
+Karenga,Kapedo Health Centre III,3.687125,33.944079,Uganda MFL
+Karenga,Karenga Health Centre IV,3.566056,33.696380,Uganda MFL
+Karenga,Kidepo Health Centre II,3.612026,33.690275,Uganda MFL
+Karenga,Kocholo Health Centre II,3.767406,33.899089,Healthsites/OSM (exact)
+Karenga,Lobalangit Health Centre III,3.476185,33.692093,Uganda MFL
+Karenga,Lokori Health Centre II,3.639212,33.642073,Uganda MFL
+Karenga,Pire Health Centre II,3.509552,33.662427,Uganda MFL
+Karenga,St. Jude Kapedo Health Centre II,3.685721,33.949821,Uganda MFL
+Kikuube,Bugambe Tea Health Centre III,1.442716,31.202969,Uganda MFL
+Kikuube,Kabwoya Health Centre III,1.246056,31.084991,Uganda MFL
+Kikuube,Kaseeta Health Centre III,1.386559,30.994547,Uganda MFL
+Kikuube,Kisaaru Tea Health Centre II,1.241122,31.002167,Uganda MFL
+Kikuube,Kyangwali Health Centre IV,1.212376,30.801120,Uganda MFL
+Kikuube,Kyehoro Health Centre III,1.506093,30.939478,Uganda MFL
+Kikuube,Ngurwe Health Centre III,1.196676,30.750453,Uganda MFL
+Kikuube,Nsozi Health Centre III,1.246996,30.948696,Uganda MFL
+Kikuube,Rwenyawawa Health Centre III,1.160340,30.728425,Uganda MFL
+Kikuube,Sebigoro Health Centre III,1.440297,30.915581,Uganda MFL
+Kotido,405 Brigade Health Centre III,2.975220,34.228043,Uganda MFL
+Kotido,Apa Lopama Health Centre II,3.175825,33.796022,Uganda MFL
+Kotido,Apa Lopus Health Centre II,2.824866,34.010092,Uganda MFL
+Kotido,Kacheri Health Centre III,3.165961,33.928928,Uganda MFL
+Kotido,Kamoru Health Centre II,2.940476,34.082518,Uganda MFL
+Kotido,Kanawat Health Centre III,2.998128,34.085786,Uganda MFL
+Kotido,KDDO Health Centre III,3.002076,34.109993,Uganda MFL
+Kotido,Kotido General Hospital,3.014915,34.115907,Uganda MFL
+Kotido,Kotido Police Health Centre II,3.010788,34.115832,Uganda MFL
+Kotido,Kotido Prisons Health Centre II,3.014025,34.110999,Uganda MFL
+Kotido,Lokiding Health Centre II,3.106286,33.956801,Uganda MFL
+Kotido,Lokitelaebu Health Centre III,2.989332,34.000986,Uganda MFL
+Kotido,Lookorok Health Centre II,3.020111,34.175524,Uganda MFL
+Kotido,Lopuyo Health Centre II,3.059263,34.032548,Uganda MFL
+Kotido,Losakucha Health Centre II,3.118096,33.911886,Uganda MFL
+Kotido,Losilang Health Centre II,3.056162,34.137690,Uganda MFL
+Kotido,Nakapelimoru Health Centre III,3.004976,34.198181,Uganda MFL
+Kotido,Nakwakwa Health Centre II,3.066462,33.981325,Uganda MFL
+Kotido,Napumpum Health Centre III,2.928450,34.119353,Uganda MFL
+Kotido,Panyangara Health Centre III,2.963736,34.140941,Uganda MFL
+Kotido,Rengen Health Centre III,3.069756,34.103114,Uganda MFL
+Kotido,Rikitae Health Centre II,2.943337,34.157388,Uganda MFL
+Kyegegwa,Kazinga Health Centre III,0.315902,30.863075,Uganda MFL
+Kyegegwa,Migamba Health Centre II,0.444198,30.883416,Uganda MFL
+Kyegegwa,Mpara Health Centre III,0.383139,30.984574,Uganda MFL
+Moroto,Acherer Health Centre II,2.445330,34.602097,Uganda MFL
+Moroto,Army Barracks Health Centre III,2.541095,34.667927,Uganda MFL
+Moroto,Dmos Clinic,2.533717,34.647999,Uganda MFL
+Moroto,Kakingol Health Centre III,2.586397,34.743702,Uganda MFL
+Moroto,Kalemungole Health Centre III,2.389150,34.861386,Uganda MFL
+Moroto,Kodonyo Health Centre II,2.447681,34.703865,Uganda MFL
+Moroto,Kosiroi Health Centre II,2.416865,34.844069,Uganda MFL
+Moroto,Lopelipel Health Centre II,2.498476,34.833098,Uganda MFL
+Moroto,Loputuk Health Centre III,2.498380,34.647706,Uganda MFL
+Moroto,Lotirir Health Centre II,2.476571,34.606925,Uganda MFL
+Moroto,Moroto Police Health Centre II,2.531751,34.660485,Uganda MFL
+Moroto,Moroto Prisons Health Centre II,2.525699,34.668771,Uganda MFL
+Moroto,Moroto Regional Referral Hospital,2.530645,34.656898,Uganda MFL
+Moroto,Nadunget Health Centre III,2.512368,34.581806,Uganda MFL
+Moroto,Nakapelimen Health Centre III,2.527322,34.660926,Uganda MFL
+Moroto,Nakiloro Health Centre II,2.617957,34.734716,Uganda MFL
+Moroto,Rupa Health Centre II,2.565917,34.661600,Uganda MFL
+Moroto,St. Pius Kidepo Health Centre III,2.567837,34.621944,Uganda MFL
+Moroto,Tapac Health Centre III,2.460386,34.786737,Uganda MFL
+Nabilatuk,Lolachat Health Centre III,1.939649,34.557350,Uganda MFL
+Nabilatuk,Lorengedwat Health Centre III,2.359549,34.578835,Uganda MFL
+Nabilatuk,Nabilatuk Health Centre IV,2.055023,34.576053,Uganda MFL
+Nabilatuk,Nabilatuk Mission Health Centre II,2.068840,34.587384,Uganda MFL
+Nabilatuk,Natirae Health Centre II,1.915466,34.517177,Uganda MFL
+Nabilatuk,Nayonai Angikalio Health Centre II,2.036282,34.541974,Uganda MFL
+Nakapiripirit,Amaler Health Centre III,1.755576,34.617783,Uganda MFL
+Nakapiripirit,Karinga Health Centre II,1.838944,34.738403,Uganda MFL
+Nakapiripirit,Lemusui Health Centre III,1.765121,34.808309,Uganda MFL
+Nakapiripirit,Lomorunyangae Health Centre II,1.767089,34.568452,Uganda MFL
+Nakapiripirit,Moruita 407 Bregade Health Centre III,1.892224,34.746126,Uganda MFL
+Nakapiripirit,Moruita Health Centre II,1.887116,34.755506,Uganda MFL
+Nakapiripirit,Nabulenger Health Centre II,1.838904,34.567713,Uganda MFL
+Nakapiripirit,Nakaale Health Centre II,1.857013,34.615247,Uganda MFL
+Nakapiripirit,Nakapiripirit Health Centre III,1.852976,34.719805,Uganda MFL
+Nakapiripirit,Namalu Health Centre III,1.803736,34.594860,Uganda MFL
+Nakapiripirit,Namalu Prisons Health Centre II,1.761244,34.614054,Uganda MFL
+Nakapiripirit,Tokora Health Centre IV,1.840991,34.665894,Uganda MFL
+Napak,Amedek Health Centre II,2.081790,34.244419,Uganda MFL
+Napak,Apeitolim Health Centre II,2.359615,33.913424,Uganda MFL
+Napak,Iriri Health Centre III,2.117965,34.227089,Uganda MFL
+Napak,Kalokengel Health Centre II,2.352786,34.522513,Uganda MFL
+Napak,Kangole Health Centre III,2.438301,34.488753,Uganda MFL
+Napak,Lokopo Health Centre III,2.480808,34.343549,Uganda MFL
+Napak,Lopeei Health Centre III,2.525729,34.363770,Uganda MFL
+Napak,Lorengechora Health Centre III,2.219011,34.254855,Uganda MFL
+Napak,Lotome Health Centre III,2.368634,34.527455,Uganda MFL
+Napak,Morulinga Health Centre II,2.415030,34.466702,Uganda MFL
+Napak,Nabwal Health Centre II,1.996214,34.277390,Uganda MFL
+Napak,Nakichumet Health Centre II,2.313439,34.336961,Uganda MFL
+Napak,Namendera Health Centre II,2.118038,34.227426,Uganda MFL
+Napak,Ngoleriet Health Centre II,2.469027,34.474334,Uganda MFL
+Napak,St. Kizito Matany Hospital,2.442322,34.394262,Uganda MFL
+Pakwach,Alwi Health Centre III,2.463611,31.353929,Uganda MFL

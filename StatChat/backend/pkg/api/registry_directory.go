@@ -32,12 +32,15 @@ func registryAPIURL() string {
 }
 
 // registryDirectory is the canonical staff directory for StatChat. The
-// Registry authorizes the request with the same SSO token the browser used for
-// StatChat; no Registry password or second user database is involved.
-func registryDirectory(ctx context.Context, authorization string) ([]model.User, error) {
+// Registry authorizes the request with either the shared SSO token or StatChat's
+// internal credential. Internal requests carry the authenticated tenant scope.
+func registryDirectory(ctx context.Context, authorization, tenantID string) ([]model.User, error) {
 	endpoint := registryAPIURL() + "/users"
 	internalKey := strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY"))
 	if internalKey != "" {
+		if strings.TrimSpace(tenantID) == "" {
+			return nil, fmt.Errorf("registry directory requires tenant scope")
+		}
 		endpoint = registryAPIURL() + "/internal/users"
 	} else if strings.TrimSpace(authorization) == "" {
 		return nil, fmt.Errorf("registry directory requires a shared bearer token or internal service credential")
@@ -51,6 +54,7 @@ func registryDirectory(ctx context.Context, authorization string) ([]model.User,
 	}
 	if internalKey != "" {
 		req.Header.Set("X-StatGate-Internal-Key", internalKey)
+		req.Header.Set("X-Tenant-ID", strings.TrimSpace(tenantID))
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}

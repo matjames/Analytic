@@ -42,6 +42,7 @@ func setupTestApp() (*api.Handlers, http.Handler, store.Store) {
 	diplomacyGW := diplomacy.NewDiplomacyGateway(memStore)
 	compliance := diplomacy.NewComplianceEvaluator(memStore)
 	fedSearch := diplomacy.NewFederatedSearchHub(memStore)
+	pushProtocol := engine.NewPushProtocol(memStore)
 
 	eventBus, _ := events.NewEventBus(events.Config{
 		Source:  "statfederation-test",
@@ -51,7 +52,7 @@ func setupTestApp() (*api.Handlers, http.Handler, store.Store) {
 
 	handlers := api.NewHandlers(
 		memStore, fedEngine, queryRouter, harmonizer,
-		diplomacyGW, compliance, fedSearch, eventWorker,
+		diplomacyGW, compliance, fedSearch, eventWorker, pushProtocol,
 	)
 
 	promMetrics := getTestMetrics()
@@ -107,6 +108,57 @@ func TestNSSNodeRegistryAndProbe(t *testing.T) {
 
 	if wProbe.Code != http.StatusOK {
 		t.Fatalf("Expected 200 OK on node probe, got %d: %s", wProbe.Code, wProbe.Body.String())
+	}
+}
+
+func TestWorkspaceScopedFederationNodes(t *testing.T) {
+	_, router, _ := setupTestApp()
+
+	invalidReq, _ := http.NewRequest("GET", "/api/v1/federation/nodes", nil)
+	invalidReq.Header.Set("X-Workspace-ID", "bad-workspace-id")
+	invalid := httptest.NewRecorder()
+	router.ServeHTTP(invalid, invalidReq)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("Expected invalid workspace header to return 400, got %d", invalid.Code)
+	}
+
+	node := models.FederatedNode{
+		Name:         "Workspace Federation Node",
+		Code:         "NSS-WORKSPACE-1",
+		NodeType:     models.NodeTypeDistrict,
+		Jurisdiction: "NATIONAL",
+		EndpointURL:  "https://workspace.dist.gov.statgate/api",
+	}
+	body, _ := json.Marshal(node)
+	registerReq, _ := http.NewRequest("POST", "/api/v1/federation/nodes", bytes.NewBuffer(body))
+	registerReq.Header.Set("Content-Type", "application/json")
+	registerReq.Header.Set("X-Workspace-ID", "workspace_one")
+	registered := httptest.NewRecorder()
+	router.ServeHTTP(registered, registerReq)
+	if registered.Code != http.StatusCreated {
+		t.Fatalf("Expected workspace node registration to return 201, got %d: %s", registered.Code, registered.Body.String())
+	}
+
+	for _, workspace := range []string{"workspace_one", "workspace_two"} {
+		listReq, _ := http.NewRequest("GET", "/api/v1/federation/nodes", nil)
+		listReq.Header.Set("X-Workspace-ID", workspace)
+		listed := httptest.NewRecorder()
+		router.ServeHTTP(listed, listReq)
+		if listed.Code != http.StatusOK {
+			t.Fatalf("Expected workspace node list to return 200, got %d", listed.Code)
+		}
+		var response struct {
+			Nodes []models.FederatedNode `json:"nodes"`
+		}
+		if err := json.Unmarshal(listed.Body.Bytes(), &response); err != nil {
+			t.Fatalf("Decode workspace node list: %v", err)
+		}
+		if workspace == "workspace_one" && len(response.Nodes) != 1 {
+			t.Fatalf("Expected one node in workspace_one, got %d", len(response.Nodes))
+		}
+		if workspace == "workspace_two" && len(response.Nodes) != 0 {
+			t.Fatalf("Expected no nodes in workspace_two, got %d", len(response.Nodes))
+		}
 	}
 }
 
@@ -418,5 +470,60 @@ func TestSystemEndpoints(t *testing.T) {
 	router.ServeHTTP(wM, reqM)
 	if wM.Code != http.StatusOK {
 		t.Errorf("Expected 200 on /metrics, got %d", wM.Code)
+	}
+}
+
+// 9. Test Indicator Push & Ingest Protocol
+func TestIndicatorPushAndIngestProtocol(t *testing.T) {
+	_, router, s := setupTestApp()
+	ctx := context.Background()
+
+	// 1. Ingest an SDMX dataset
+	sdmxPayload := map[string]interface{}{
+		"header": map[string]interface{}{
+			"id":        "push-test-001",
+			"test":      true,
+			"prepared":  time.Now().UTC().Format(time.RFC3339),
+			"dataSetID": "DS-SDG-2026",
+			"sender": map[string]interface{}{
+				"id":   "node-moh-002",
+				"name": "Ministry of Health",
+			},
+		},
+		"dataSets": []map[string]interface{}{
+			{
+				"action": "Replace",
+				"observations": map[string]interface{}{
+					"IND-HEALTH-IMMUNIZATION": map[string]interface{}{
+						"code":          "IND-HEALTH-IMMUNIZATION",
+						"title":         "DTP3 Immunization Coverage Rate",
+						"domain":        "health",
+						"value":         89.4,
+						"unit":          "Percentage",
+						"freq":          "ANNUAL",
+						"sdmxDimension": "HEALTH_IMMUN_DTP3",
+					},
+				},
+			},
+		},
+	}
+	body, _ := json.Marshal(sdmxPayload)
+	req, _ := http.NewRequest("POST", "/api/v1/federation/indicators/ingest", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Source-Node", "node-moh-002")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on indicator ingest, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify the ingested indicator is now in the store
+	ind, err := s.GetIndicatorByCode(ctx, "IND-HEALTH-IMMUNIZATION")
+	if err != nil || ind == nil {
+		t.Fatalf("Expected ingested indicator in store, got error: %v", err)
+	}
+	if ind.CurrentValue == nil || *ind.CurrentValue != 89.4 {
+		t.Errorf("Expected indicator value 89.4, got %v", ind.CurrentValue)
 	}
 }

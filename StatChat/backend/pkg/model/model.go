@@ -56,6 +56,7 @@ const (
 type Conversation struct {
 	ID              string           `json:"id"`
 	TenantID        string           `json:"tenantId,omitempty"`
+	ObjectRef       string           `json:"objectRef,omitempty"`
 	Name            string           `json:"name"`
 	Type            ConversationType `json:"type"`
 	MemberIDs       []string         `json:"memberIds"`
@@ -65,6 +66,7 @@ type Conversation struct {
 	LatestMessageAt time.Time        `json:"latestMessageAt,omitempty"`
 	AttachmentCount int              `json:"attachmentCount,omitempty"`
 	UnreadCount     int              `json:"unreadCount,omitempty"`
+	Metadata        map[string]any   `json:"metadata,omitempty"`
 }
 
 type ConversationCategory string
@@ -95,12 +97,22 @@ type GroupCategory struct {
 }
 
 type Channel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenantId,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Visibility  string    `json:"visibility"`
+	CreatedBy   string    `json:"createdBy,omitempty"`
+	CreatedAt   time.Time `json:"createdAt,omitempty"`
+	MemberCount int       `json:"memberCount"`
+	Joined      bool      `json:"joined"`
+	Archived    bool      `json:"archived"`
 }
 
 type Post struct {
 	ID          string        `json:"id"`
+	TenantID    string        `json:"tenantId,omitempty"`
+	AuthorID    string        `json:"authorId,omitempty"`
 	Author      string        `json:"author"`
 	Role        string        `json:"role"`
 	Org         string        `json:"org"`
@@ -116,12 +128,30 @@ type Post struct {
 
 type PostComment struct {
 	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId,omitempty"`
+	AuthorID  string    `json:"authorId,omitempty"`
 	PostID    string    `json:"postId"`
 	Author    string    `json:"author"`
 	Role      string    `json:"role,omitempty"`
 	Org       string    `json:"org,omitempty"`
 	Text      string    `json:"text"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+type PollOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Votes int    `json:"votes"`
+}
+
+type Poll struct {
+	ID        string       `json:"id"`
+	TenantID  string       `json:"tenantId,omitempty"`
+	Question  string       `json:"question"`
+	Options   []PollOption `json:"options"`
+	CreatedBy string       `json:"createdBy"`
+	CreatedAt time.Time    `json:"createdAt"`
+	Voted     bool         `json:"voted"`
 }
 
 type Connection struct {
@@ -132,6 +162,60 @@ type Connection struct {
 	ConnectedRole string    `json:"connectedRole"`
 	ConnectedOrg  string    `json:"connectedOrg"`
 	ConnectedAt   time.Time `json:"connectedAt"`
+}
+
+type Community struct {
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenantId,omitempty"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Visibility   string    `json:"visibility"`
+	CreatedBy    string    `json:"createdBy"`
+	CreatedAt    time.Time `json:"createdAt"`
+	MemberCount  int       `json:"memberCount"`
+	TopicCount   int       `json:"topicCount"`
+	Joined       bool      `json:"joined"`
+	Role         string    `json:"role,omitempty"`
+	CanPost      bool      `json:"canPost"`
+	LatestPostAt time.Time `json:"latestPostAt,omitempty"`
+}
+
+type CommunityMember struct {
+	CommunityID string    `json:"communityId"`
+	UserID      string    `json:"userId"`
+	Name        string    `json:"name"`
+	Role        string    `json:"role"`
+	UserRole    string    `json:"userRole,omitempty"`
+	Org         string    `json:"org,omitempty"`
+	JoinedAt    time.Time `json:"joinedAt"`
+}
+
+type CommunityTopic struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenantId,omitempty"`
+	CommunityID string    `json:"communityId"`
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	AuthorID    string    `json:"authorId"`
+	Author      string    `json:"author"`
+	Role        string    `json:"role,omitempty"`
+	Org         string    `json:"org,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
+	ReplyCount  int       `json:"replyCount"`
+}
+
+type CommunityReply struct {
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenantId,omitempty"`
+	CommunityID string    `json:"communityId"`
+	TopicID     string    `json:"topicId"`
+	AuthorID    string    `json:"authorId"`
+	Author      string    `json:"author"`
+	Role        string    `json:"role,omitempty"`
+	Org         string    `json:"org,omitempty"`
+	Body        string    `json:"body"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type Opportunity struct {
@@ -202,6 +286,7 @@ type WellnessPost struct {
 
 type KnowledgeExpert struct {
 	ID          string   `json:"id"`
+	TenantID    string   `json:"tenantId,omitempty"`
 	Name        string   `json:"name"`
 	Role        string   `json:"role"`
 	Org         string   `json:"org"`
@@ -210,15 +295,18 @@ type KnowledgeExpert struct {
 	Articles    int      `json:"articles"`
 	Rating      float64  `json:"rating"`
 	Avatar      string   `json:"avatar"`
+	Following   bool     `json:"following,omitempty"`
 }
 
 type KnowledgeArticle struct {
 	ID        string `json:"id"`
+	TenantID  string `json:"tenantId,omitempty"`
 	Title     string `json:"title"`
 	Author    string `json:"author"`
 	Category  string `json:"category"`
 	ReadTime  string `json:"readTime"`
 	Excerpt   string `json:"excerpt"`
+	Content   string `json:"content,omitempty"`
 	Likes     int    `json:"likes"`
 	Views     int    `json:"views"`
 	Published string `json:"published"`
@@ -226,18 +314,25 @@ type KnowledgeArticle struct {
 
 type KnowledgeIdea struct {
 	ID          string `json:"id"`
+	TenantID    string `json:"tenantId,omitempty"`
 	Title       string `json:"title"`
 	Author      string `json:"author"`
+	AuthorID    string `json:"authorId,omitempty"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
 	Votes       int    `json:"votes"`
 	Status      string `json:"status"`
+	Upvoted     bool   `json:"upvoted,omitempty"`
 }
 
 type KnowledgePost struct {
 	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId,omitempty"`
 	Title     string    `json:"title"`
 	Author    string    `json:"author"`
+	AuthorID  string    `json:"authorId,omitempty"`
+	Role      string    `json:"role,omitempty"`
+	Org       string    `json:"org,omitempty"`
 	Category  string    `json:"category"`
 	Content   string    `json:"content"`
 	CreatedBy string    `json:"createdBy"`
@@ -254,25 +349,54 @@ type MessageAttachment struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type MessageLocation struct {
+	MessageID      string    `json:"messageId,omitempty"`
+	Latitude       float64   `json:"latitude"`
+	Longitude      float64   `json:"longitude"`
+	AccuracyMeters float64   `json:"accuracyMeters,omitempty"`
+	Label          string    `json:"label,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
 type Message struct {
-	ID              string              `json:"id"`
-	TenantID        string              `json:"tenantId,omitempty"`
-	ConversationID  string              `json:"conversationId,omitempty"`
-	ChannelID       string              `json:"channelId,omitempty"`
-	SenderID        string              `json:"senderId,omitempty"`
-	Sender          string              `json:"sender"`
-	Text            string              `json:"text"`
-	CreatedAt       time.Time           `json:"createdAt"`
-	UpdatedAt       time.Time           `json:"updatedAt,omitempty"`
-	DeletedAt       time.Time           `json:"deletedAt,omitempty"`
-	ParentMessageID string              `json:"parentMessageId,omitempty"`
-	ThreadRootID    string              `json:"threadRootId,omitempty"`
-	Status          string              `json:"status"`
-	DeliveryStatus  string              `json:"deliveryStatus,omitempty"`
-	Attachments     []MessageAttachment `json:"attachments,omitempty"`
-	Reactions       []MessageReaction   `json:"reactions,omitempty"`
-	Pinned          bool                `json:"pinned,omitempty"`
-	ReadBy          []string            `json:"readBy,omitempty"`
+	ID                     string              `json:"id"`
+	TenantID               string              `json:"tenantId,omitempty"`
+	ConversationID         string              `json:"conversationId,omitempty"`
+	ChannelID              string              `json:"channelId,omitempty"`
+	SenderID               string              `json:"senderId,omitempty"`
+	Sender                 string              `json:"sender"`
+	Text                   string              `json:"text"`
+	CreatedAt              time.Time           `json:"createdAt"`
+	UpdatedAt              time.Time           `json:"updatedAt,omitempty"`
+	DeletedAt              time.Time           `json:"deletedAt,omitempty"`
+	ParentMessageID        string              `json:"parentMessageId,omitempty"`
+	ThreadRootID           string              `json:"threadRootId,omitempty"`
+	Status                 string              `json:"status"`
+	DeliveryStatus         string              `json:"deliveryStatus,omitempty"`
+	Attachments            []MessageAttachment `json:"attachments,omitempty"`
+	Reactions              []MessageReaction   `json:"reactions,omitempty"`
+	Pinned                 bool                `json:"pinned,omitempty"`
+	ReadBy                 []string            `json:"readBy,omitempty"`
+	ForwardedFromMessageID string              `json:"forwardedFromMessageId,omitempty"`
+	ForwardedFromSender    string              `json:"forwardedFromSender,omitempty"`
+	Location               *MessageLocation    `json:"location,omitempty"`
+	MentionUserIDs         []string            `json:"mentionUserIds,omitempty"`
+	MentionAll             bool                `json:"mentionAll,omitempty"`
+	SavedAt                time.Time           `json:"savedAt,omitempty"`
+}
+
+type ScheduledMessage struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId,omitempty"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Sender         string    `json:"sender"`
+	Text           string    `json:"text"`
+	ScheduledFor   time.Time `json:"scheduledFor"`
+	Status         string    `json:"status"`
+	MessageID      string    `json:"messageId,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type MessageReaction struct {
@@ -301,6 +425,7 @@ type ReadReceipt struct {
 
 type Task struct {
 	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId,omitempty"`
 	Title          string    `json:"title"`
 	Description    string    `json:"description,omitempty"`
 	Assignee       string    `json:"assignee,omitempty"`
@@ -311,6 +436,22 @@ type Task struct {
 	CreatedBy      string    `json:"createdBy"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt,omitempty"`
+}
+
+type CalendarEvent struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId,omitempty"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description,omitempty"`
+	Location       string    `json:"location,omitempty"`
+	StartAt        time.Time `json:"startAt"`
+	EndAt          time.Time `json:"endAt"`
+	AllDay         bool      `json:"allDay"`
+	ConversationID string    `json:"conversationId,omitempty"`
+	AttendeeIDs    []string  `json:"attendeeIds"`
+	CreatedBy      string    `json:"createdBy"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type Notification struct {
@@ -328,6 +469,39 @@ type GatewayEnvelope struct {
 	Event    string      `json:"event"`
 	TenantID string      `json:"tenantId,omitempty"`
 	Payload  interface{} `json:"payload"`
+}
+
+type RetentionPolicy struct {
+	TenantID      string    `json:"tenantId"`
+	RetentionDays int       `json:"retentionDays"`
+	Enabled       bool      `json:"enabled"`
+	UpdatedBy     string    `json:"updatedBy"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+type LegalHold struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId"`
+	ConversationID string    `json:"conversationId,omitempty"`
+	Name           string    `json:"name"`
+	Reason         string    `json:"reason"`
+	Status         string    `json:"status"`
+	CreatedBy      string    `json:"createdBy"`
+	CreatedAt      time.Time `json:"createdAt"`
+	ReleasedBy     string    `json:"releasedBy,omitempty"`
+	ReleasedAt     time.Time `json:"releasedAt,omitempty"`
+}
+
+type ComplianceAuditEvent struct {
+	ID         string         `json:"id"`
+	TenantID   string         `json:"tenantId"`
+	ActorID    string         `json:"actorId"`
+	Action     string         `json:"action"`
+	TargetType string         `json:"targetType"`
+	TargetID   string         `json:"targetId"`
+	Details    map[string]any `json:"details,omitempty"`
+	CreatedAt  time.Time      `json:"createdAt"`
 }
 
 type Presence struct {
@@ -355,6 +529,7 @@ const (
 
 type CallSession struct {
 	ID           string     `json:"id"`
+	TenantID     string     `json:"tenantId"`
 	RoomID       string     `json:"roomId"`
 	RoomName     string     `json:"roomName"`
 	Kind         CallKind   `json:"kind"`
@@ -387,8 +562,20 @@ type CallRecording struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type CallQualitySample struct {
+	ID            string    `json:"id"`
+	SessionID     string    `json:"sessionId"`
+	UserID        string    `json:"userId"`
+	RTTMs         float64   `json:"rttMs"`
+	JitterMs      float64   `json:"jitterMs"`
+	PacketLossPct float64   `json:"packetLossPct"`
+	BitrateKbps   float64   `json:"bitrateKbps"`
+	Quality       string    `json:"quality"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
 type CallSignal struct {
-	Type      string `json:"type"` // offer | answer | ice-candidate | join | leave
+	Type      string `json:"type"` // offer | answer | ice-candidate | screen-share-* | mute-*
 	SessionID string `json:"sessionId"`
 	From      string `json:"from"`
 	FromName  string `json:"fromName,omitempty"`

@@ -52,6 +52,7 @@ func runMigrations() {
 	CREATE TABLE IF NOT EXISTS pipeline_runs (
 		id VARCHAR(100) PRIMARY KEY,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
+		workspace_id VARCHAR(128),
 		repo_name VARCHAR(255) NOT NULL,
 		branch VARCHAR(100) NOT NULL,
 		commit_sha VARCHAR(64) NOT NULL,
@@ -68,6 +69,7 @@ func runMigrations() {
 	CREATE TABLE IF NOT EXISTS deployment_records (
 		id VARCHAR(100) PRIMARY KEY,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
+		workspace_id VARCHAR(128),
 		service_name VARCHAR(100) NOT NULL,
 		version VARCHAR(50) NOT NULL,
 		environment VARCHAR(100) NOT NULL,
@@ -79,6 +81,8 @@ func runMigrations() {
 		deployed_at TIMESTAMPTZ DEFAULT NOW(),
 		rollback_version VARCHAR(50)
 	);
+	ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
+	ALTER TABLE deployment_records ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
 
 	CREATE TABLE IF NOT EXISTS cloud_clusters (
 		id VARCHAR(100) PRIMARY KEY,

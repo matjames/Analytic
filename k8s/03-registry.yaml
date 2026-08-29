@@ -1,0 +1,172 @@
+---
+# StatGate Registry API (Go backend)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-registry-api
+  namespace: statgate
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: statgate-registry-api
+  template:
+    metadata:
+      labels:
+        app: statgate-registry-api
+    spec:
+      containers:
+      - name: registry-api
+        image: analytic-statgate-registry-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9090
+          name: http
+        env:
+        - name: PORT
+          value: "9090"
+        - name: REGISTRY_DB_HOST
+          value: "postgres"
+        - name: REGISTRY_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: POSTGRES_PORT
+        - name: REGISTRY_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: REGISTRY_DB_USER
+        - name: REGISTRY_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: REGISTRY_DB_PASSWORD
+        - name: REGISTRY_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: REGISTRY_DB_NAME
+        - name: STATGATE_REGISTRY_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_REGISTRY_JWT_SECRET
+        - name: BASIC_AUTH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: BASIC_AUTH_USERNAME
+        - name: BASIC_AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: BASIC_AUTH_PASSWORD
+        - name: STATGATE_INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_INTERNAL_API_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 9090
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-registry-api
+  namespace: statgate
+  labels:
+    app: statgate-registry-api
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-registry-api
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: http
+
+---
+# StatGate Registry UI (React frontend)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statgate-registry-ui
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statgate-registry-ui
+  template:
+    metadata:
+      labels:
+        app: statgate-registry-ui
+    spec:
+      containers:
+      - name: registry-ui
+        image: analytic-statgate-registry-ui:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: REACT_APP_API_BASE_URL_PROD
+          value: "http://statgate-registry-api:9090/api"
+        - name: REACT_APP_API_BASE_URL_DEV
+          value: "http://statgate-registry-api:9090/api"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statgate-registry-ui
+  namespace: statgate
+  labels:
+    app: statgate-registry-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: statgate-registry-ui
+  ports:
+  - port: 3007
+    targetPort: 80
+    protocol: TCP
+    name: http

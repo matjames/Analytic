@@ -7,23 +7,23 @@ import (
 )
 
 type MemStore struct {
-	mu           sync.RWMutex
-	pipelines    map[string]PipelineRun
-	deployments  map[string]DeploymentRecord
-	releases     map[string]ReleaseTrain
-	configs      map[string]EnvironmentConfig
-	clusters     map[string]CloudCluster
-	costs        []CloudCostRecord
-	readiness    map[string]ProductionReadinessCheck
-	slos         map[string]SLOBudget
-	runbooks     []RunbookExecution
-	drDrills     []DisasterRecoveryDrill
-	telemetry    map[string]ServiceTelemetry
-	logs         []CentralizedLog
-	traces       []DistributedTraceSpan
-	cmdb         map[string]CMDBItem
-	alerts       map[string]AlertIncident
-	statusComps  map[string]PublicStatusComponent
+	mu          sync.RWMutex
+	pipelines   map[string]PipelineRun
+	deployments map[string]DeploymentRecord
+	releases    map[string]ReleaseTrain
+	configs     map[string]EnvironmentConfig
+	clusters    map[string]CloudCluster
+	costs       []CloudCostRecord
+	readiness   map[string]ProductionReadinessCheck
+	slos        map[string]SLOBudget
+	runbooks    []RunbookExecution
+	drDrills    []DisasterRecoveryDrill
+	telemetry   map[string]ServiceTelemetry
+	logs        []CentralizedLog
+	traces      []DistributedTraceSpan
+	cmdb        map[string]CMDBItem
+	alerts      map[string]AlertIncident
+	statusComps map[string]PublicStatusComponent
 }
 
 var globalStore *MemStore
@@ -257,12 +257,12 @@ func (s *MemStore) ListClusters() []CloudCluster {
 	return res
 }
 
-func (s *MemStore) ListPipelines(tenantID string) []PipelineRun {
+func (s *MemStore) ListPipelines(tenantID, workspaceID string) []PipelineRun {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]PipelineRun, 0, len(s.pipelines))
 	for _, v := range s.pipelines {
-		if tenantID == "" || v.TenantID == tenantID {
+		if (tenantID == "" || v.TenantID == tenantID) && (workspaceID == "" || v.WorkspaceID == workspaceID) {
 			res = append(res, v)
 		}
 	}
@@ -287,12 +287,12 @@ func (s *MemStore) TriggerPipeline(req PipelineRun) PipelineRun {
 	return req
 }
 
-func (s *MemStore) ListDeployments(tenantID string) []DeploymentRecord {
+func (s *MemStore) ListDeployments(tenantID, workspaceID string) []DeploymentRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]DeploymentRecord, 0, len(s.deployments))
 	for _, v := range s.deployments {
-		if tenantID == "" || v.TenantID == tenantID {
+		if (tenantID == "" || v.TenantID == tenantID) && (workspaceID == "" || v.WorkspaceID == workspaceID) {
 			res = append(res, v)
 		}
 	}

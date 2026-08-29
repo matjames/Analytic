@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StatGate Report Builder - User Management</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/builder.css">
+    <link rel="stylesheet" href="css/user-management.css">
+</head>
+<body>
+    <!-- Toast for success/error feedback (user management operations) -->
+    <div id="um-toast" class="um-toast hidden" role="status" aria-live="polite">
+        <span id="um-toast-message"></span>
+        <button type="button" class="um-toast-close" aria-label="Dismiss">&times;</button>
+    </div>
+
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header-left">
+            <a href="index.html" class="header-brand">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo" loading="lazy">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <a href="index.html" class="btn-header-action" title="Back to app">Back to app</a>
+        </div>
+    </header>
+
+    <!-- Top Navigation: Users, Roles, Role Permissions, Groups -->
+    <nav class="builder-nav">
+        <div class="builder-tabs">
+            <button class="builder-tab active" data-tab="users" type="button">
+                <span class="tab-label">Users</span>
+            </button>
+            <button class="builder-tab" data-tab="roles" type="button">
+                <span class="tab-label">Roles</span>
+            </button>
+            <button class="builder-tab" data-tab="role-permissions" type="button">
+                <span class="tab-label">Role Permissions</span>
+            </button>
+            <button class="builder-tab" data-tab="groups" type="button">
+                <span class="tab-label">Groups</span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="builder-container panel-collapsed">
+        <!-- Main Content Area -->
+        <main class="builder-main">
+            <!-- Tab: Users -->
+            <section class="tab-content" id="tab-users">
+                <h2>Users</h2>
+                <p class="tab-description">Manage application users: view, add, edit, and remove user accounts.</p>
+                <div id="um-users-container"></div>
+            </section>
+
+            <!-- Tab: Roles (client roles) -->
+            <section class="tab-content hidden" id="tab-roles">
+                <h2>Roles</h2>
+                <p class="tab-description">Client roles for this application. Create and manage roles assigned to users and groups.</p>
+                <div id="um-roles-container"></div>
+            </section>
+
+            <!-- Tab: Role Permissions v2 - client roles only; dropdown + configs tree (no realm roles table) -->
+            <section class="tab-content hidden" id="tab-role-permissions">
+                <h2>Role Permissions</h2>
+                <p class="tab-description">Select a client role and set which reports and folders from the configs directory that role can access.</p>
+                <div id="um-permissions-container">
+                    <div class="um-toolbar um-role-permissions-toolbar">
+                        <label class="um-role-label" for="um-role-permissions-select">Role (client roles only)</label>
+                        <select id="um-role-permissions-select" class="form-input um-role-select" aria-label="Select client role" style="min-width: 180px;">
+                            <option value="">Loading roles…</option>
+                        </select>
+                        <button type="button" class="btn-primary" id="um-role-permissions-save">Save permissions</button>
+                    </div>
+                    <p class="um-permissions-for">Permissions for: <strong id="um-permissions-role-name"></strong></p>
+                    <div class="um-tree-actions">
+                        <button type="button" class="btn-small" id="um-tree-select-all">Select all</button>
+                        <button type="button" class="btn-small" id="um-tree-deselect-all">Deselect all</button>
+                        <label class="um-tree-extra-cb"><input type="checkbox" id="um-perm-builder" data-path="__builder"> Builder</label>
+                        <label class="um-tree-extra-cb"><input type="checkbox" id="um-perm-admin" data-path="__admin"> Admin rights</label>
+                    </div>
+                    <div id="um-configs-tree" class="um-configs-tree" aria-label="Reports and folders tree">
+                        <p class="um-message">Loading configs tree…</p>
+                    </div>
+                    <div id="um-role-permissions-message" class="um-message"></div>
+                </div>
+            </section>
+
+            <!-- Tab: Groups (create, edit, delete groups and assign client roles per group) -->
+            <section class="tab-content hidden" id="tab-groups">
+                <h2>Groups</h2>
+                <p class="tab-description">Manage groups: create, edit, and delete. Use Assign roles on a row to assign or remove client roles for that group.</p>
+                <div id="um-groups-container"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal: Create/Edit User -->
+    <div id="um-modal-user" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3>User</h3>
+            <input type="hidden" id="um-user-form-id">
+            <div class="form-group">
+                <label for="um-user-username">Username *</label>
+                <input type="text" id="um-user-username" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="um-user-email">Email</label>
+                <input type="email" id="um-user-email" class="form-input">
+            </div>
+            <div class="form-group">
+                <label for="um-user-firstName">First name</label>
+                <input type="text" id="um-user-firstName" class="form-input">
+            </div>
+            <div class="form-group">
+                <label for="um-user-lastName">Last name</label>
+                <input type="text" id="um-user-lastName" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="um-user-enabled" checked> Enabled
+                </label>
+            </div>
+            <div id="um-user-password-section" class="form-group">
+                <label for="um-user-password">Password</label>
+                <input type="password" id="um-user-password" class="form-input" autocomplete="new-password" placeholder="Leave blank to set later">
+                <label class="checkbox-label" style="margin-top:6px;">
+                    <input type="checkbox" id="um-user-password-temporary"> Temporary (user must change on next login)
+                </label>
+            </div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Reset password -->
+    <div id="um-modal-reset-password" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3>Reset password — <span class="um-modal-reset-username"></span></h3>
+            <div class="form-group">
+                <label for="um-reset-password-value">New password *</label>
+                <input type="password" id="um-reset-password-value" class="form-input" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="um-reset-password-temporary"> Temporary (user must change on next login)
+                </label>
+            </div>
+            <p id="um-reset-password-message" class="um-message"></p>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save">Set password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Assign client roles to user -->
+    <div id="um-modal-roles" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3>Assign client roles — <span class="um-modal-roles-username"></span></h3>
+            <div class="um-modal-roles-list"></div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Create/Edit client role -->
+    <div id="um-modal-role" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3 id="um-modal-role-title">New client role</h3>
+            <div class="form-group">
+                <label for="um-role-name">Name *</label>
+                <input type="text" id="um-role-name" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="um-role-description">Description</label>
+                <input type="text" id="um-role-description" class="form-input">
+            </div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save" id="um-modal-role-submit">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Create/Edit Group -->
+    <div id="um-modal-group" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3>Group</h3>
+            <input type="hidden" id="um-group-form-id">
+            <div class="form-group">
+                <label for="um-group-name">Name *</label>
+                <input type="text" id="um-group-name" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="um-group-path">Path</label>
+                <input type="text" id="um-group-path" class="form-input" placeholder="/group-name">
+            </div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Assign roles to group -->
+    <div id="um-modal-group-roles" class="um-modal hidden">
+        <div class="um-modal-backdrop"></div>
+        <div class="um-modal-box">
+            <h3>Assign client roles to group — <span class="um-modal-group-roles-name"></span></h3>
+            <div class="um-modal-group-roles-list"></div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn-secondary um-modal-close">Cancel</button>
+                <button type="button" class="btn-primary um-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initAuth } from './js/auth.js';
+        import { initUserManagementUI } from './js/user-management.js';
+
+        (function () {
+            var tabs = document.querySelectorAll('.builder-nav .builder-tab');
+            var contents = document.querySelectorAll('.builder-main .tab-content');
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    var targetId = 'tab-' + tab.getAttribute('data-tab');
+                    tabs.forEach(function (t) { t.classList.remove('active'); });
+                    contents.forEach(function (c) {
+                        c.classList.toggle('hidden', c.id !== targetId);
+                    });
+                    tab.classList.add('active');
+                });
+            });
+        })();
+
+        (async function () {
+            try {
+                await initAuth();
+                initUserManagementUI();
+            } catch (e) {
+                console.error('User management init failed:', e);
+                var c = document.getElementById('um-users-container');
+                if (c) c.innerHTML = '<p class="um-error">Failed to load: ' + (e.message || 'Unknown error') + '. Ensure you are logged in and have the admin_manage role.</p>';
+            }
+        })();
+    </script>
+</body>
+</html>

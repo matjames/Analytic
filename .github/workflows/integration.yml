@@ -2,12 +2,21 @@ name: Integration & Security Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: StatGate secret scan (SG-SEC-2026-08)
+        shell: pwsh
+        run: |
+          ./scripts/secret-scan.ps1 -RepoRoot $PWD
+
+  go-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,17 +24,17 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: StatGate secret scan (SG-SEC-2026-08)
-        shell: pwsh
-        run: |
-          ./scripts/secret-scan.ps1 -RepoRoot $PWD
-      - name: Go build (all modules)
+      - name: Build and test all Go modules
         shell: bash
         run: |
           set -e
-          for m in enterprise/core PMS/backend RMS/backend StatGovernance/backend backend StatChat/backend stage_register/go-backend StatCollect enterprise/search; do
-            echo "building $m"
-            (cd "$m" && go build ./...)
+          # Every directory with a go.mod is a module. Build AND test each one
+          # so compile failures and red unit tests both fail CI.
+          for mod in $(find . -name go.mod -not -path '*/node_modules/*' -not -path '*/vendor/*' | sort); do
+            dir=$(dirname "$mod")
+            echo "=== $dir ==="
+            (cd "$dir" && go build ./...)
+            (cd "$dir" && go test ./... -count=1)
           done
       - name: docker-compose configuration validation
         shell: bash
@@ -35,6 +44,10 @@ jobs:
           # required-variable mechanism.
           for v in KAGGLE_DB_PASSWORD HELPDESK_DB_PASSWORD REGISTRY_DB_PASSWORD STATCHAT_DB_PASSWORD \
                     PMS_DB_PASSWORD RMS_DB_PASSWORD GOVERNANCE_DB_PASSWORD STATCOLLECT_DB_PASSWORD \
+                    STATSPATIAL_DB_PASSWORD KNOWLEDGE_DB_PASSWORD AIENG_DB_PASSWORD LMS_DB_PASSWORD \
+                    GIS_DB_PASSWORD BPM_DB_PASSWORD STATFEDERATION_DB_PASSWORD STATIOT_DB_PASSWORD \
+                    STATDATA_DB_PASSWORD \
+                    REDIS_PASSWORD \
                     STATGATE_INTERNAL_API_KEY STATGATE_REGISTRY_JWT_SECRET FLASK_SECRET_KEY \
                     BASIC_AUTH_USERNAME BASIC_AUTH_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD \
                     GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD AIRFLOW_USER AIRFLOW_PASSWORD \
@@ -43,9 +56,60 @@ jobs:
           done
           docker compose -f docker-compose.yml config --quiet
 
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install analytics UI test deps
+        working-directory: frontend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install -r requirements.txt
+      - name: Run analytics pytest suite
+        working-directory: frontend
+        run: |
+          python -m pytest -x -q
+
+  frontend-builds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - appluancher
+          - enterprise/design-system
+          - helpdesk-master/frontend
+          - PMS/frontend
+          - RMS/frontend
+          - stage_register/frontend
+          - StatChat/frontend
+          - StatGovernance/frontend
+          - StatOps/frontend
+          - StatSpatial/frontend
+          - StatTrust/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install locked dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+      - name: Build production frontend
+        working-directory: ${{ matrix.app }}
+        run: npm run build
+
   integration:
     runs-on: ubuntu-latest
-    needs: security-scan
+    needs: [ security-scan, go-build-and-test, python-tests, frontend-builds ]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx

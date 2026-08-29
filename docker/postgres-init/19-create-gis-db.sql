@@ -1,7 +1,7 @@
 -- Geospatial & Remote Sensing (App 9 — P44 GIS, Remote Sensing & Drone
 -- Integration) database and role.
 -- Password injected from environment (GIS_DB_PASSWORD), never hardcoded.
-CREATE DATABASE gis_intelligence;
+SELECT 'CREATE DATABASE gis_intelligence' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'gis_intelligence') \gexec
 
 \getenv gis_pw GIS_DB_PASSWORD
 SELECT format('CREATE ROLE "GISEngine" WITH LOGIN PASSWORD %L', :'gis_pw')

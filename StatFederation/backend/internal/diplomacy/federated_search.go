@@ -2,7 +2,14 @@ package diplomacy
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"statfederation-backend/internal/models"
 	"statfederation-backend/internal/store"
@@ -10,7 +17,9 @@ import (
 
 // FederatedSearchHub coordinates cross-agency and international knowledge discovery
 type FederatedSearchHub struct {
-	store store.Store
+	store        store.Store
+	httpClient   *http.Client
+	sourceNodeID string // this hub's federated node identity (for DSA gating)
 }
 
 // SearchQuery encapsulated search parameters
@@ -22,7 +31,19 @@ type SearchQuery struct {
 
 // NewFederatedSearchHub creates a new federated search hub
 func NewFederatedSearchHub(s store.Store) *FederatedSearchHub {
-	return &FederatedSearchHub{store: s}
+	return &FederatedSearchHub{
+		store: s,
+		httpClient: &http.Client{
+			Timeout: 4 * time.Second,
+		},
+	}
+}
+
+// SetSourceNodeID records the identity of this hub so DSA-authorised peer
+// broadcasts can be gated correctly. Should be the same node code used when
+// registering this hub in the node registry.
+func (fsh *FederatedSearchHub) SetSourceNodeID(id string) {
+	fsh.sourceNodeID = id
 }
 
 // ExecuteFederatedSearch searches across local and remote federated catalogs
@@ -59,7 +80,15 @@ func (fsh *FederatedSearchHub) ExecuteFederatedSearch(
 		}
 	}
 
-	// 3. Fallback mock entries if no results found in clean test store
+	// 3. Broadcast the query to DSA-authorised peer hubs and merge their results.
+	peerResults := fsh.broadcast(ctx, q, tenantID)
+	results = append(results, peerResults...)
+
+	// 4. Rank all results by relevance score (descending, stable) and de-duplicate.
+	results = fsh.rankAndDedupe(results)
+
+	// 5. Fallback mock entries if no results found in a clean catalog (so local
+	// development and the federation test harness remain demonstrable).
 	if len(results) == 0 {
 		results = append(results, &models.FederatedSearchResult{
 			NodeID:           "node-au-003",
@@ -78,6 +107,132 @@ func (fsh *FederatedSearchHub) ExecuteFederatedSearch(
 	}
 
 	return results, nil
+}
+
+// broadcast dispatches the search query to every registered peer node that is
+// covered by an active DSA (in either direction) and aggregates their
+// /api/public/search responses into FederatedSearchResult entries. Unreachable
+// peers are tolerated (skipped) so a single offline hub cannot break the
+// federated query.
+func (fsh *FederatedSearchHub) broadcast(ctx context.Context, q SearchQuery, tenantID string) []*models.FederatedSearchResult {
+	nodes, err := fsh.store.ListNodes(ctx, tenantID, "", "")
+	if err != nil {
+		return nil
+	}
+
+	var out []*models.FederatedSearchResult
+	for _, n := range nodes {
+		if n.EndpointURL == "" || n.ID == fsh.sourceNodeID {
+			continue
+		}
+		// DSA gate: only query peers with an active agreement. An empty domain
+		// matches any active DSA between the two nodes (provider/consumer in
+		// either direction). When this hub's identity is unknown we fall back to
+		// querying all peers and rely on the peer's own authorisation.
+		if fsh.sourceNodeID != "" {
+			authorised := false
+			if _, err := fsh.store.FindActiveDSA(ctx, n.ID, fsh.sourceNodeID, ""); err == nil {
+				authorised = true
+			}
+			if !authorised {
+				if _, err := fsh.store.FindActiveDSA(ctx, fsh.sourceNodeID, n.ID, ""); err == nil {
+					authorised = true
+				}
+			}
+			if !authorised {
+				continue
+			}
+		}
+
+		base := strings.TrimRight(n.EndpointURL, "/")
+		u := base + "/api/public/search?q=" + url.QueryEscape(q.Keyword)
+		if q.ResourceType != "" {
+			u += "&resource_type=" + url.QueryEscape(q.ResourceType)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := fsh.httpClient.Do(req)
+		if err != nil {
+			log.Printf("[FederatedSearch] peer %s unreachable: %v", n.Name, err)
+			continue
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			continue
+		}
+
+		peerResults := fsh.parsePeerResults(body)
+		for _, r := range peerResults {
+			if r.NodeID == "" {
+				r.NodeID = n.ID
+			}
+			if r.NodeName == "" {
+				r.NodeName = n.Name
+			}
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// parsePeerResults decodes a peer /api/public/search response. It accepts a
+// bare JSON array, a {"results":[...]} envelope, or a {"data":[...]} envelope.
+func (fsh *FederatedSearchHub) parsePeerResults(body []byte) []*models.FederatedSearchResult {
+	var direct []*models.FederatedSearchResult
+	if err := json.Unmarshal(body, &direct); err == nil {
+		return direct
+	}
+	var wrapped struct {
+		Results []*models.FederatedSearchResult `json:"results"`
+		Data    []*models.FederatedSearchResult `json:"data"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil {
+		if len(wrapped.Results) > 0 {
+			return wrapped.Results
+		}
+		return wrapped.Data
+	}
+	return nil
+}
+
+// rankAndDedupe orders results by descending relevance score (stable) and
+// removes duplicates keyed by remote resource ID + node ID.
+func (fsh *FederatedSearchHub) rankAndDedupe(results []*models.FederatedSearchResult) []*models.FederatedSearchResult {
+	seen := make(map[string]struct{}, len(results))
+	var scored []*models.FederatedSearchResult
+	var unscored []*models.FederatedSearchResult
+
+	for _, r := range results {
+		if r == nil {
+			continue
+		}
+		key := r.RemoteResourceID + "|" + r.NodeID
+		if key == "|" {
+			key = r.Title + "|" + r.NodeID
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if r.Score > 0 {
+			scored = append(scored, r)
+		} else {
+			unscored = append(unscored, r)
+		}
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
+
+	ordered := make([]*models.FederatedSearchResult, 0, len(scored)+len(unscored))
+	ordered = append(ordered, scored...)
+	ordered = append(ordered, unscored...)
+	return ordered
 }
 
 // SeedSampleSearchIndices seeds mock catalogs for testing

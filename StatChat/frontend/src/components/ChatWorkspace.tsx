@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import type { Conversation, Message, MessageAttachment, CallSession, CallParticipant } from '../types';
-import { addReaction, removeReaction, pinMessage, unpinMessage, editChatMessage, deleteChatMessage, markMessageRead, clearConversation, muteConversation, unmuteConversation, toggleFavourite } from '../api/client';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import type { Conversation, Message, MessageAttachment, CallSession, CallParticipant, User, ScheduledMessage, MediaCatalogItem, RetentionPolicy, LegalHold, ComplianceAuditEvent } from '../types';
+import { addReaction, removeReaction, pinMessage, unpinMessage, editChatMessage, deleteChatMessage, forwardChatMessage, fetchScheduledMessages, scheduleChatMessage, cancelScheduledMessage, searchChatMedia, sendChatMedia, sendChatLocation, markMessageRead, clearConversation, muteConversation, unmuteConversation, toggleFavourite, requestChatAssistant, fetchConversationMembers, addConversationMember, removeConversationMember, fetchAllUsers, fetchSavedMessages, saveChatMessage, unsaveChatMessage, exportConversation, fetchRetentionPolicy, updateRetentionPolicy, enforceRetention, fetchLegalHolds, createLegalHold, releaseLegalHold, fetchComplianceAudit, removeCallParticipant, updateCallParticipantRole, type ConversationMembership } from '../api/client';
 import { useCall } from '../hooks/useCall';
 import CallOverlay from './CallOverlay';
 import AudioAttachment from './AudioAttachment';
@@ -8,19 +8,25 @@ import styles from './ChatWorkspace.module.css';
 
 interface Props {
   conversation?: Conversation;
+  conversations: Conversation[];
   messages: Message[];
   draft: string;
   theme: 'light' | 'dark';
   isMobile: boolean;
   currentUserName?: string;
   currentUserId?: string;
+  currentUserRoles?: string[];
   typingUsers?: string[];
+  viewType?: 'direct' | 'group' | 'channel';
   onDraftChange: (value: string) => void;
-  onSend: (textOverride?: string, replyContext?: { parentMessageId?: string; threadRootId?: string }) => void;
+  onSend: (textOverride?: string, replyContext?: { parentMessageId?: string; threadRootId?: string }, mentionContext?: { mentionUserIds?: string[]; mentionAll?: boolean }) => void;
   onUploadAttachment?: (file: File, text?: string) => Promise<void> | void;
   onCloseMobile?: () => void;
   onMessageUpdate?: (updated: Message) => void;
+  onMessageCreated?: (created: Message) => void;
   onMessageDelete?: (messageId: string) => void;
+  focusedMessageId?: string;
+  onOpenMessage?: (conversationId: string, messageId: string) => void;
 }
 
 const quickEmojis = ['❤️', '😂', '👍', '😮', '😢', '🙏'];
@@ -47,6 +53,11 @@ function getAvatarText(name: string) {
   return cleaned.slice(0, 2).toUpperCase();
 }
 
+function mentionAlias(user: User) {
+  const emailAlias = user.email?.split('@')[0]?.replace(/[^A-Za-z0-9._-]/g, '');
+  return emailAlias || user.name.replace(/\s+/g, '.').replace(/[^A-Za-z0-9._-]/g, '');
+}
+
 interface Reaction {
   emoji: string;
   count: number;
@@ -55,19 +66,25 @@ interface Reaction {
 
 export default function ChatWorkspace({
   conversation,
+  conversations,
   messages,
   draft,
   theme,
   isMobile,
   currentUserName,
   currentUserId,
+  currentUserRoles = [],
   typingUsers = [],
   onDraftChange,
   onSend,
   onUploadAttachment,
   onCloseMobile,
   onMessageUpdate,
+  onMessageCreated,
   onMessageDelete,
+  focusedMessageId,
+  onOpenMessage,
+  viewType = 'direct',
 }: Props) {
   const [callActive, setCallActive] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
@@ -75,6 +92,13 @@ export default function ChatWorkspace({
     session,
     participants,
     localStream,
+    screenStream,
+    isScreenSharing,
+    remoteScreenSharers,
+    screenShareSupported,
+    connectionState,
+    quality,
+    qualityMetrics,
     micMuted,
     cameraOff,
     connecting,
@@ -83,6 +107,10 @@ export default function ChatWorkspace({
     joinCall,
     toggleMute,
     toggleCamera,
+    toggleScreenShare,
+    requestMute,
+    pendingMuteRequest,
+    respondToMuteRequest,
     hangUp,
     endCall,
   } = useCall({
@@ -122,6 +150,54 @@ export default function ChatWorkspace({
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [pendingVoiceNote, setPendingVoiceNote] = useState<{ blob: Blob; url: string; mimeType: string } | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantResponse, setAssistantResponse] = useState('');
+  const [membership, setMembership] = useState<ConversationMembership | null>(null);
+  const [memberDirectory, setMemberDirectory] = useState<User[]>([]);
+  const [memberManagerOpen, setMemberManagerOpen] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [memberError, setMemberError] = useState('');
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardTargetId, setForwardTargetId] = useState('');
+  const [forwardError, setForwardError] = useState('');
+  const [forwardBusy, setForwardBusy] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState('');
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([]);
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [mediaKind, setMediaKind] = useState<'gif' | 'sticker'>('gif');
+  const [mediaQuery, setMediaQuery] = useState('');
+  const deferredMediaQuery = useDeferredValue(mediaQuery);
+  const [mediaItems, setMediaItems] = useState<MediaCatalogItem[]>([]);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaError, setMediaError] = useState('');
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState<{ latitude: number; longitude: number; accuracyMeters: number } | null>(null);
+  const [locationLabel, setLocationLabel] = useState('');
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [selectedMentionIds, setSelectedMentionIds] = useState<string[]>([]);
+  const [mentionAll, setMentionAll] = useState(false);
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+  const [savedMessages, setSavedMessages] = useState<Message[]>([]);
+  const [savedPanelOpen, setSavedPanelOpen] = useState(false);
+  const [savedBusy, setSavedBusy] = useState(false);
+  const [savedError, setSavedError] = useState('');
+  const [complianceOpen, setComplianceOpen] = useState(false);
+  const [retentionPolicy, setRetentionPolicy] = useState<RetentionPolicy | null>(null);
+  const [legalHolds, setLegalHolds] = useState<LegalHold[]>([]);
+  const [complianceAudit, setComplianceAudit] = useState<ComplianceAuditEvent[]>([]);
+  const [retentionDays, setRetentionDays] = useState(365);
+  const [retentionEnabled, setRetentionEnabled] = useState(false);
+  const [holdName, setHoldName] = useState('');
+  const [holdReason, setHoldReason] = useState('');
+  const [holdScope, setHoldScope] = useState<'tenant' | 'conversation'>('conversation');
+  const [complianceBusy, setComplianceBusy] = useState(false);
+  const [complianceError, setComplianceError] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
@@ -132,6 +208,341 @@ export default function ChatWorkspace({
 
   const isDark = theme === 'dark';
   const isChannel = conversation?.type === 'channel';
+  const mentionMatch = draft.match(/@([A-Za-z0-9._-]*)$/);
+  const mentionQuery = mentionMatch?.[1].toLowerCase() ?? '';
+  const mentionCandidates = useMemo(() => {
+    if (!mentionMatch || !conversation) return [];
+    const memberIDs = new Set(conversation.type === 'channel' ? memberDirectory.map((user) => user.id) : (membership?.memberIds ?? conversation.memberIds ?? []));
+    return memberDirectory
+      .filter((candidate) => candidate.id !== currentUserId && memberIDs.has(candidate.id))
+      .filter((candidate) => `${candidate.name} ${mentionAlias(candidate)}`.toLowerCase().includes(mentionQuery))
+      .slice(0, 6);
+  }, [conversation, currentUserId, memberDirectory, membership?.memberIds, mentionMatch, mentionQuery]);
+
+  const handleComposerChange = (value: string) => {
+    onDraftChange(value);
+    setSelectedMentionIds((current) => current.filter((id) => {
+      const mentionedUser = memberDirectory.find((candidate) => candidate.id === id);
+      return mentionedUser ? value.includes(`@${mentionAlias(mentionedUser)}`) : false;
+    }));
+    if (!/@(?:all|channel)\b/i.test(value)) setMentionAll(false);
+  };
+  const handleRemoveCallParticipant = async (userId: string) => {
+    if (!session) return;
+    try {
+      await removeCallParticipant(session.id, userId);
+    } catch {
+      setAttachmentNote('Could not remove that call participant.');
+    }
+  };
+
+  const handleChangeCallParticipantRole = async (userId: string, role: 'moderator' | 'participant') => {
+    if (!session) return;
+    try {
+      await updateCallParticipantRole(session.id, userId, role);
+    } catch {
+      setAttachmentNote('Could not update that call participant role.');
+    }
+  };
+
+  const selectMention = (candidate?: User, selectAll = false) => {
+    const atIndex = draft.lastIndexOf('@');
+    if (atIndex < 0) return;
+    const token = selectAll ? '@all' : `@${mentionAlias(candidate as User)}`;
+    onDraftChange(`${draft.slice(0, atIndex)}${token} `);
+    if (selectAll) {
+      setMentionAll(true);
+    } else if (candidate) {
+      setSelectedMentionIds((current) => current.includes(candidate.id) ? current : [...current, candidate.id]);
+    }
+    inputRef.current?.focus();
+  };
+
+  const renderMessageText = (message: Message) => {
+    const aliases = new Set((message.mentionUserIds ?? []).map((id) => {
+      const mentionedUser = memberDirectory.find((candidate) => candidate.id === id);
+      return mentionedUser ? `@${mentionAlias(mentionedUser)}`.toLowerCase() : '';
+    }).filter(Boolean));
+    return message.text.split(/(@[A-Za-z0-9._-]+)/g).map((part, index) => {
+      const isMention = aliases.has(part.toLowerCase()) || (message.mentionAll && /^@(all|channel)$/i.test(part));
+      return isMention ? <mark key={`${part}-${index}`} className={styles.mentionToken}>{part}</mark> : part;
+    });
+  };
+
+  const openSavedMessages = async () => {
+    setSavedPanelOpen(true);
+    setSavedBusy(true);
+    setSavedError('');
+    try {
+      const saved = await fetchSavedMessages();
+      setSavedMessages(saved);
+      setSavedMessageIds(new Set(saved.map((message) => message.id)));
+    } catch (error) {
+      setSavedError(error instanceof Error ? error.message : 'Unable to load saved messages');
+    } finally {
+      setSavedBusy(false);
+    }
+  };
+
+  const toggleSavedMessage = async (message: Message) => {
+    const isSaved = savedMessageIds.has(message.id);
+    setSavedBusy(true);
+    setSavedError('');
+    try {
+      if (isSaved) {
+        await unsaveChatMessage(message.id);
+        setSavedMessageIds((current) => { const next = new Set(current); next.delete(message.id); return next; });
+        setSavedMessages((current) => current.filter((item) => item.id !== message.id));
+        setAttachmentNote('Removed from saved messages');
+      } else {
+        const saved = await saveChatMessage(message.id);
+        setSavedMessageIds((current) => new Set(current).add(message.id));
+        setSavedMessages((current) => [{ ...message, savedAt: saved.savedAt }, ...current.filter((item) => item.id !== message.id)]);
+        setAttachmentNote('Message saved privately');
+      }
+    } catch (error) {
+      setSavedError(error instanceof Error ? error.message : 'Unable to update saved message');
+    } finally {
+      setSavedBusy(false);
+      setActiveMessageActions(null);
+    }
+  };
+
+  const handleForwardMessage = async () => {
+    if (!forwardingMessage || !forwardTargetId) return;
+    setForwardBusy(true);
+    setForwardError('');
+    try {
+      await forwardChatMessage(forwardingMessage.id, forwardTargetId);
+      setForwardingMessage(null);
+      setForwardTargetId('');
+      setAttachmentNote('Message forwarded');
+    } catch (error) {
+      setForwardError(error instanceof Error ? error.message : 'Unable to forward message');
+    } finally {
+      setForwardBusy(false);
+    }
+  };
+
+  const openScheduleManager = async () => {
+    if (!conversation) return;
+    const localDefault = new Date(Date.now() + 5 * 60 * 1000);
+    localDefault.setMinutes(localDefault.getMinutes() - localDefault.getTimezoneOffset());
+    setScheduledFor(localDefault.toISOString().slice(0, 16));
+    setScheduleError('');
+    setScheduleOpen(true);
+    try {
+      setScheduledMessages(await fetchScheduledMessages(conversation.id));
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : 'Unable to load scheduled messages');
+    }
+  };
+
+  const handleScheduleMessage = async () => {
+    if (!conversation || !draft.trim() || !scheduledFor) return;
+    setScheduleBusy(true);
+    setScheduleError('');
+    try {
+      const created = await scheduleChatMessage(conversation.id, draft.trim(), new Date(scheduledFor).toISOString());
+      setScheduledMessages((current) => [...current, created].sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)));
+      onDraftChange('');
+      setAttachmentNote('Message scheduled');
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : 'Unable to schedule message');
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+
+  const handleCancelScheduledMessage = async (id: string) => {
+    setScheduleBusy(true);
+    setScheduleError('');
+    try {
+      await cancelScheduledMessage(id);
+      setScheduledMessages((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : 'Unable to cancel scheduled message');
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mediaPickerOpen) return;
+    let cancelled = false;
+    setMediaBusy(true);
+    setMediaError('');
+    searchChatMedia(deferredMediaQuery, mediaKind)
+      .then((items) => { if (!cancelled) setMediaItems(items); })
+      .catch((error) => { if (!cancelled) setMediaError(error instanceof Error ? error.message : 'Unable to search media'); })
+      .finally(() => { if (!cancelled) setMediaBusy(false); });
+    return () => { cancelled = true; };
+  }, [deferredMediaQuery, mediaKind, mediaPickerOpen]);
+
+  const handleSendMedia = async (item: MediaCatalogItem) => {
+    if (!conversation) return;
+    setMediaBusy(true);
+    setMediaError('');
+    try {
+      const created = await sendChatMedia(conversation.id, item.id);
+      onMessageCreated?.(created);
+      setMediaPickerOpen(false);
+      setAttachmentNote(`${item.label} sent`);
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Unable to send media');
+    } finally {
+      setMediaBusy(false);
+    }
+  };
+
+  const requestLocation = () => {
+    if (!conversation) return;
+    setLocationError('');
+    setPendingLocation(null);
+    setLocationLabel('');
+    if (!navigator.geolocation) {
+      setLocationError('Location access is not supported by this browser.');
+      setLocationOpen(true);
+      return;
+    }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPendingLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracyMeters: position.coords.accuracy });
+        setLocationLabel('');
+        setLocationOpen(true);
+        setLocationBusy(false);
+      },
+      (error) => {
+        const message = error.code === error.PERMISSION_DENIED
+          ? 'Location permission was not granted.'
+          : error.code === error.TIMEOUT
+            ? 'Location lookup timed out. Please try again.'
+            : 'Your location could not be determined.';
+        setLocationError(message);
+        setLocationOpen(true);
+        setLocationBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  };
+
+  const handleSendLocation = async () => {
+    if (!conversation || !pendingLocation) return;
+    setLocationBusy(true);
+    setLocationError('');
+    try {
+      const created = await sendChatLocation(conversation.id, { ...pendingLocation, label: locationLabel.trim() || undefined });
+      onMessageCreated?.(created);
+      setLocationOpen(false);
+      setPendingLocation(null);
+      setLocationLabel('');
+      setAttachmentNote('Location shared');
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Unable to share location');
+    } finally {
+      setLocationBusy(false);
+    }
+  };
+  // A conversation is only actionable when it belongs to the active sidebar
+  // view. e.g. the default #general channel must not render its composer while
+  // the user is on the "Chats" (direct) or "Groups" (group) view — it should
+  // still ask them to pick something first.
+  const hasValidConversation = Boolean(
+    conversation &&
+      (viewType === 'direct' ? conversation.type === 'direct'
+        : viewType === 'group' ? conversation.type === 'group'
+        : conversation.type === 'channel')
+  );
+
+  const reloadMembership = async () => {
+    if (!conversation || conversation.type === 'direct') {
+      setMembership(null);
+      return;
+    }
+    const result = await fetchConversationMembers(conversation.id);
+    setMembership(result);
+  };
+
+  useEffect(() => {
+    setMemberManagerOpen(false);
+    setMemberError('');
+    setSelectedMemberId('');
+    setSelectedMentionIds([]);
+    setMentionAll(false);
+    reloadMembership().catch(() => setMembership(null));
+    fetchAllUsers().then(setMemberDirectory).catch(() => setMemberDirectory([]));
+    if (conversation) {
+      fetchSavedMessages({ conversationId: conversation.id })
+        .then((saved) => setSavedMessageIds(new Set(saved.map((message) => message.id))))
+        .catch(() => setSavedMessageIds(new Set()));
+    }
+  }, [conversation?.id, conversation?.type]);
+
+  useEffect(() => {
+    if (!focusedMessageId || !messages.some((message) => message.id === focusedMessageId)) return;
+    const frame = window.requestAnimationFrame(() => document.getElementById(`message-${focusedMessageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedMessageId, messages]);
+
+  const openMemberManager = async () => {
+    setMenuOpen(false);
+    setMemberError('');
+    setMemberManagerOpen(true);
+    try {
+      const [nextMembership, users] = await Promise.all([
+        conversation ? fetchConversationMembers(conversation.id) : Promise.reject(new Error('conversation unavailable')),
+        fetchAllUsers(),
+      ]);
+      setMembership(nextMembership);
+      setMemberDirectory(users);
+    } catch (reason) {
+      setMemberError(reason instanceof Error ? reason.message : 'Unable to load members');
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!conversation || !selectedMemberId) return;
+    setMemberBusy(true);
+    setMemberError('');
+    try {
+      await addConversationMember(conversation.id, selectedMemberId);
+      await reloadMembership();
+      setSelectedMemberId('');
+    } catch (reason) {
+      setMemberError(reason instanceof Error ? reason.message : 'Unable to add member');
+    } finally {
+      setMemberBusy(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!conversation) return;
+    setMemberBusy(true);
+    setMemberError('');
+    try {
+      await removeConversationMember(conversation.id, userId);
+      await reloadMembership();
+    } catch (reason) {
+      setMemberError(reason instanceof Error ? reason.message : 'Unable to remove member');
+    } finally {
+      setMemberBusy(false);
+    }
+  };
+
+  const runAssistant = async (mode: 'summary' | 'actions' | 'draft') => {
+    if (!conversation) return;
+    setAssistantLoading(true);
+    try {
+      const response = await requestChatAssistant(conversation.id, mode);
+      setAssistantResponse(response);
+      if (mode === 'draft') onDraftChange(response);
+    } catch (reason) {
+      setAssistantResponse(reason instanceof Error ? reason.message : 'Assistant request failed');
+    } finally {
+      setAssistantLoading(false);
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -439,18 +850,106 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
     }
   };
 
-  const handleExportChat = () => {
-    if (!messages.length) return;
-    const lines = messages.map((m) => `[${new Date(m.createdAt).toLocaleString()}] ${m.sender}: ${m.text}`).join('\n');
-    const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `statchat-${conversation?.name ?? 'chat'}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const canManageCompliance = currentUserRoles.some((role) => ['admin', 'superadmin', 'tenant_admin', 'platform_admin'].includes(role.toLowerCase()));
+
+  const handleExportChat = async (format: 'json' | 'csv', includeDeleted = false) => {
+    if (!conversation) return;
     setMenuOpen(false);
-    setAttachmentNote('📊 Chat exported');
+    try {
+      const { blob, filename } = await exportConversation(conversation.id, format, includeDeleted);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setAttachmentNote(`Conversation exported as ${format.toUpperCase()}.`);
+    } catch {
+      setAttachmentNote('Could not export this conversation.');
+    }
+  };
+
+  const loadCompliance = async () => {
+    setComplianceBusy(true);
+    setComplianceError('');
+    try {
+      const [policy, holds, audit] = await Promise.all([fetchRetentionPolicy(), fetchLegalHolds(), fetchComplianceAudit()]);
+      setRetentionPolicy(policy);
+      setRetentionDays(policy.retentionDays);
+      setRetentionEnabled(policy.enabled);
+      setLegalHolds(holds);
+      setComplianceAudit(audit);
+    } catch {
+      setComplianceError('Could not load compliance controls.');
+    } finally {
+      setComplianceBusy(false);
+    }
+  };
+
+  const openCompliance = () => {
+    setMenuOpen(false);
+    setComplianceOpen(true);
+    void loadCompliance();
+  };
+
+  const handleSaveRetention = async () => {
+    if (retentionDays < 1 || retentionDays > 3650) {
+      setComplianceError('Retention must be between 1 and 3650 days.');
+      return;
+    }
+    setComplianceBusy(true);
+    setComplianceError('');
+    try {
+      const policy = await updateRetentionPolicy(retentionDays, retentionEnabled);
+      setRetentionPolicy(policy);
+      setComplianceAudit(await fetchComplianceAudit());
+    } catch {
+      setComplianceError('Could not save the retention policy.');
+    } finally {
+      setComplianceBusy(false);
+    }
+  };
+
+  const handleEnforceRetention = async () => {
+    if (!window.confirm('Apply the active retention policy now? Eligible messages are permanently removed unless protected by a legal hold.')) return;
+    setComplianceBusy(true);
+    setComplianceError('');
+    try {
+      const result = await enforceRetention();
+      setAttachmentNote(`Retention complete: ${result.deletedMessages} message(s) removed.`);
+      await loadCompliance();
+    } catch {
+      setComplianceError('Could not enforce the retention policy.');
+      setComplianceBusy(false);
+    }
+  };
+
+  const handleCreateHold = async () => {
+    if (!holdName.trim() || !holdReason.trim() || (holdScope === 'conversation' && !conversation)) return;
+    setComplianceBusy(true);
+    setComplianceError('');
+    try {
+      await createLegalHold({ name: holdName.trim(), reason: holdReason.trim(), conversationId: holdScope === 'conversation' ? conversation?.id : undefined });
+      setHoldName('');
+      setHoldReason('');
+      await loadCompliance();
+    } catch {
+      setComplianceError('Could not create the legal hold.');
+      setComplianceBusy(false);
+    }
+  };
+
+  const handleReleaseHold = async (hold: LegalHold) => {
+    if (!window.confirm(`Release legal hold "${hold.name}"?`)) return;
+    setComplianceBusy(true);
+    setComplianceError('');
+    try {
+      await releaseLegalHold(hold.id);
+      await loadCompliance();
+    } catch {
+      setComplianceError('Could not release the legal hold.');
+      setComplianceBusy(false);
+    }
   };
 
   const [muted, setMuted] = useState(false);
@@ -510,16 +1009,24 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
       return;
     }
 
+    const activeMentionIds = selectedMentionIds.filter((id) => {
+      const mentionedUser = memberDirectory.find((candidate) => candidate.id === id);
+      return mentionedUser ? draft.includes(`@${mentionAlias(mentionedUser)}`) : false;
+    });
+    const mentionContext = { mentionUserIds: activeMentionIds, mentionAll: mentionAll && /@(?:all|channel)\b/i.test(draft) };
+
     if (replyTo) {
       const replyContext = {
         parentMessageId: replyTo.parentMessageId ?? replyTo.id,
         threadRootId: replyTo.threadRootId ?? replyTo.id,
       };
-      onSend(draft, replyContext);
+      onSend(draft, replyContext, mentionContext);
       setReplyTo(null);
     } else {
-      onSend();
+      onSend(draft, undefined, mentionContext);
     }
+    setSelectedMentionIds([]);
+    setMentionAll(false);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -586,9 +1093,9 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
             {isChannel ? '#' : headerAvatarText}
           </div>
           <div className={styles.headerInfo}>
-            <h2 className={styles.chatName}>{conversation?.name ?? 'Select a conversation'}</h2>
+            <h2 className={styles.chatName}>{hasValidConversation ? conversation?.name : 'Select a conversation'}</h2>
             <p className={`${styles.chatStatus} ${conversation?.type === 'channel' ? styles.chatStatusOffline : ''}`}>
-              {conversation?.type === 'direct' ? '● online' : conversation?.type === 'channel' ? `${conversation.memberIds?.length ?? 0} members` : 'Select a chat'}
+              {!hasValidConversation ? 'Select a chat from the list to start messaging' : conversation?.type === 'direct' ? '● online' : conversation?.type === 'channel' ? `${conversation.memberIds?.length ?? 0} members` : `${conversation.memberIds?.length ?? 0} members`}
             </p>
           </div>
         </div>
@@ -603,6 +1110,9 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
               style={{ background: isDark ? '#0f3f5f' : '#f0f7fb', color: isDark ? '#e8eef4' : '#1a1a1a' }}
             />
           </div>
+          {hasValidConversation && <button type="button" className={styles.savedHeaderButton} onClick={openSavedMessages} title="Saved messages">Saved</button>}
+          {hasValidConversation && (
+          <>
           <button
             type="button"
             className={styles.iconButton}
@@ -665,7 +1175,13 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
                 </button>
                 <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={handleToggleMute}>🔔 Mute notifications</button>
                 <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={handleToggleFavourite}>⭐ Add to favourites</button>
-                <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={handleExportChat}>📊 Export chat</button>
+                <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={() => handleExportChat('json')}>Export JSON</button>
+                <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={() => handleExportChat('csv')}>Export CSV</button>
+                {canManageCompliance && <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={openCompliance}>Compliance and retention</button>}
+                <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={openScheduleManager}>Scheduled messages</button>
+                {membership?.canManage && conversation?.type !== 'direct' && (
+                  <button type="button" className={styles.menuItem} style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }} onClick={openMemberManager}>Manage members</button>
+                )}
                 <button
                   type="button"
                   className={`${styles.menuItem} ${styles.menuItemDanger}`}
@@ -676,8 +1192,194 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
       </header>
+
+      {complianceOpen && canManageCompliance && (
+        <div role="presentation" onClick={() => setComplianceOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 35, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(8, 25, 38, 0.68)' }}>
+          <section role="dialog" aria-modal="true" aria-label="Compliance and retention" onClick={(event) => event.stopPropagation()} style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflow: 'auto', display: 'grid', gap: 20, padding: 24, background: isDark ? '#0f3f5f' : '#fff', color: isDark ? '#e8eef4' : '#17212b', boxShadow: '0 24px 70px rgba(0,0,0,.32)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+              <div><h3 style={{ margin: 0 }}>Compliance and retention</h3><p style={{ margin: '6px 0 0', opacity: .7, fontSize: 13 }}>Tenant-wide controls. Every change and export is audited.</p></div>
+              <button type="button" onClick={() => setComplianceOpen(false)} aria-label="Close compliance controls" style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 22, cursor: 'pointer' }}>x</button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10, padding: 16, background: isDark ? '#0a324d' : '#f3f7fa' }}>
+              <strong>Retention policy</strong>
+              <p style={{ margin: 0, opacity: .72, fontSize: 13 }}>Disabled policies preserve all messages. Active legal holds always override deletion.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={retentionEnabled} onChange={(event) => setRetentionEnabled(event.target.checked)} /> Enabled</label>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>Days <input type="number" min={1} max={3650} value={retentionDays} onChange={(event) => setRetentionDays(Number(event.target.value))} style={{ width: 100, padding: '8px 10px' }} /></label>
+                <button type="button" disabled={complianceBusy} onClick={handleSaveRetention} style={{ border: 0, background: '#165c92', color: '#fff', padding: '9px 14px', cursor: 'pointer' }}>Save policy</button>
+                <button type="button" disabled={complianceBusy || !retentionPolicy?.enabled} onClick={handleEnforceRetention} style={{ border: '1px solid #d92d20', background: 'transparent', color: '#d92d20', padding: '8px 13px', cursor: 'pointer' }}>Enforce now</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <strong>Create legal hold</strong>
+              <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+                <label><input type="radio" checked={holdScope === 'conversation'} onChange={() => setHoldScope('conversation')} /> Current conversation</label>
+                <label><input type="radio" checked={holdScope === 'tenant'} onChange={() => setHoldScope('tenant')} /> Entire tenant</label>
+              </div>
+              <input value={holdName} maxLength={120} onChange={(event) => setHoldName(event.target.value)} placeholder="Hold name" style={{ padding: '10px 12px' }} />
+              <textarea value={holdReason} maxLength={1000} onChange={(event) => setHoldReason(event.target.value)} placeholder="Reason and case reference" rows={3} style={{ padding: '10px 12px', resize: 'vertical' }} />
+              <button type="button" disabled={complianceBusy || !holdName.trim() || !holdReason.trim()} onClick={handleCreateHold} style={{ justifySelf: 'start', border: 0, background: '#1f7a68', color: '#fff', padding: '9px 14px', cursor: 'pointer' }}>Place hold</button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong>Legal holds</strong>
+              {legalHolds.length === 0 && <span style={{ opacity: .68, fontSize: 13 }}>No legal holds have been created.</span>}
+              {legalHolds.map((hold) => <div key={hold.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: 12, background: isDark ? '#0a324d' : '#f3f7fa' }}><div><b>{hold.name}</b><span style={{ display: 'block', opacity: .7, fontSize: 12 }}>{hold.conversationId ? `Conversation ${hold.conversationId}` : 'Entire tenant'} | {hold.status}</span><span style={{ display: 'block', marginTop: 3, fontSize: 13 }}>{hold.reason}</span></div>{hold.status === 'active' && <button type="button" disabled={complianceBusy} onClick={() => handleReleaseHold(hold)} style={{ alignSelf: 'center', border: '1px solid #d92d20', background: 'transparent', color: '#d92d20', padding: '7px 10px', cursor: 'pointer' }}>Release</button>}</div>)}
+            </div>
+
+            {conversation && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}><strong style={{ width: '100%' }}>Administrator export</strong><span style={{ width: '100%', opacity: .68, fontSize: 12 }}>Includes soft-deleted records; attachment files are represented by audited metadata links.</span><button type="button" onClick={() => handleExportChat('json', true)}>Export all JSON</button><button type="button" onClick={() => handleExportChat('csv', true)}>Export all CSV</button></div>}
+
+            <div style={{ display: 'grid', gap: 7 }}><strong>Recent audit activity</strong>{complianceAudit.slice(0, 20).map((event) => <div key={event.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 1fr) 2fr auto', gap: 10, fontSize: 12, padding: '7px 0', borderBottom: '1px solid rgba(128,145,155,.25)' }}><b>{event.action}</b><span>{event.actorId}</span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</div>
+            {complianceError && <p role="alert" style={{ margin: 0, color: '#d92d20' }}>{complianceError}</p>}
+            {complianceBusy && <span aria-live="polite" style={{ fontSize: 13 }}>Updating compliance state...</span>}
+          </section>
+        </div>
+      )}
+
+      {memberManagerOpen && membership?.canManage && (
+        <div role="dialog" aria-modal="true" aria-label="Manage conversation members" style={{ position: 'absolute', inset: 0, zIndex: 30, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(8, 25, 38, 0.56)' }}>
+          <div style={{ width: 'min(460px, 100%)', maxHeight: '80vh', overflow: 'auto', padding: 22, background: isDark ? '#0f3f5f' : '#fff', color: isDark ? '#e8eef4' : '#17212b', boxShadow: '0 24px 70px rgba(0,0,0,.28)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Conversation members</h3>
+                <p style={{ margin: '5px 0 0', opacity: .68, fontSize: 13 }}>Only the owner or a tenant administrator can make changes.</p>
+              </div>
+              <button type="button" onClick={() => setMemberManagerOpen(false)} style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 22, cursor: 'pointer' }} aria-label="Close member manager">x</button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8, margin: '20px 0' }}>
+              {membership.memberIds.map((memberId) => {
+                const member = memberDirectory.find((user) => user.id === memberId);
+                const isOwner = memberId === membership.ownerId;
+                return (
+                  <div key={memberId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 12px', background: isDark ? '#0a324d' : '#f3f7fa' }}>
+                    <div>
+                      <strong style={{ display: 'block', fontSize: 14 }}>{member?.name ?? memberId}</strong>
+                      <span style={{ opacity: .65, fontSize: 12 }}>{isOwner ? 'Owner' : member?.email ?? memberId}</span>
+                    </div>
+                    {!isOwner && <button type="button" disabled={memberBusy} onClick={() => handleRemoveMember(memberId)} style={{ border: '1px solid #d92d20', background: 'transparent', color: '#d92d20', padding: '7px 10px', cursor: 'pointer' }}>Remove</button>}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={selectedMemberId} onChange={(event) => setSelectedMemberId(event.target.value)} disabled={memberBusy} style={{ flex: 1, minWidth: 0, padding: '9px 10px', border: '1px solid #b8c7d1', background: isDark ? '#0a324d' : '#fff', color: 'inherit' }}>
+                <option value="">Select a tenant member</option>
+                {memberDirectory.filter((user) => !membership.memberIds.includes(user.id)).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </select>
+              <button type="button" disabled={memberBusy || !selectedMemberId} onClick={handleAddMember} style={{ border: 0, background: '#165c92', color: '#fff', padding: '9px 14px', cursor: 'pointer' }}>Add</button>
+            </div>
+            {memberError && <p role="alert" style={{ margin: '12px 0 0', color: '#d92d20', fontSize: 13 }}>{memberError}</p>}
+          </div>
+        </div>
+      )}
+
+      {forwardingMessage && (
+        <div role="presentation" onClick={() => setForwardingMessage(null)} style={{ position: 'absolute', inset: 0, zIndex: 31, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(8, 25, 38, 0.62)' }}>
+          <section role="dialog" aria-modal="true" aria-label="Forward message" onClick={(event) => event.stopPropagation()} style={{ width: 'min(440px, 100%)', display: 'grid', gap: 16, padding: 22, background: isDark ? '#0f3f5f' : '#fff', color: isDark ? '#e8eef4' : '#17212b', boxShadow: '0 24px 70px rgba(0,0,0,.28)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'start' }}>
+              <div><h3 style={{ margin: 0 }}>Forward message</h3><p style={{ margin: '5px 0 0', opacity: .68, fontSize: 13 }}>Choose a conversation you can access.</p></div>
+              <button type="button" onClick={() => setForwardingMessage(null)} aria-label="Close forward dialog" style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 22, cursor: 'pointer' }}>x</button>
+            </div>
+            <blockquote className={styles.forwardPreview}>{forwardingMessage.text}</blockquote>
+            <select value={forwardTargetId} onChange={(event) => setForwardTargetId(event.target.value)} disabled={forwardBusy} style={{ width: '100%', padding: '10px 12px', border: '1px solid #b8c7d1', background: isDark ? '#0a324d' : '#fff', color: 'inherit' }}>
+              <option value="">Select destination</option>
+              {conversations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            {forwardError && <p role="alert" style={{ margin: 0, color: '#d92d20', fontSize: 13 }}>{forwardError}</p>}
+            <button type="button" disabled={!forwardTargetId || forwardBusy} onClick={handleForwardMessage} style={{ border: 0, background: '#1f7a68', color: '#fff', padding: '10px 14px', cursor: 'pointer', opacity: !forwardTargetId || forwardBusy ? .55 : 1 }}>
+              {forwardBusy ? 'Forwarding...' : 'Forward'}
+            </button>
+          </section>
+        </div>
+      )}
+
+      {scheduleOpen && conversation && (
+        <div role="presentation" onClick={() => setScheduleOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 32, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(8, 25, 38, 0.64)' }}>
+          <section role="dialog" aria-modal="true" aria-label="Scheduled messages" onClick={(event) => event.stopPropagation()} style={{ width: 'min(520px, 100%)', maxHeight: '82vh', overflow: 'auto', display: 'grid', gap: 16, padding: 22, background: isDark ? '#0f3f5f' : '#fff', color: isDark ? '#e8eef4' : '#17212b', boxShadow: '0 24px 70px rgba(0,0,0,.28)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'start' }}>
+              <div><h3 style={{ margin: 0 }}>Scheduled messages</h3><p style={{ margin: '5px 0 0', opacity: .68, fontSize: 13 }}>{conversation.name}. Times are shown in your local timezone.</p></div>
+              <button type="button" onClick={() => setScheduleOpen(false)} aria-label="Close scheduled messages" style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 22, cursor: 'pointer' }}>x</button>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label htmlFor="scheduled-message-time" style={{ fontSize: 13, fontWeight: 700 }}>Delivery time</label>
+              <input id="scheduled-message-time" type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} style={{ padding: '10px 12px', border: '1px solid #b8c7d1', background: isDark ? '#0a324d' : '#fff', color: 'inherit' }} />
+              <div className={styles.scheduleDraftPreview}>{draft.trim() || 'Type a draft in the composer before scheduling.'}</div>
+              <button type="button" disabled={scheduleBusy || !draft.trim() || !scheduledFor} onClick={handleScheduleMessage} style={{ border: 0, background: '#1f7a68', color: '#fff', padding: '10px 14px', cursor: 'pointer', opacity: scheduleBusy || !draft.trim() || !scheduledFor ? .55 : 1 }}>
+                {scheduleBusy ? 'Saving...' : 'Schedule draft'}
+              </button>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <strong style={{ fontSize: 13 }}>Pending</strong>
+              {scheduledMessages.length === 0 && <span style={{ opacity: .65, fontSize: 13 }}>No pending messages in this conversation.</span>}
+              {scheduledMessages.map((item) => (
+                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '10px 12px', background: isDark ? '#0a324d' : '#f3f7fa' }}>
+                  <div style={{ minWidth: 0 }}><span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 14 }}>{item.text}</span><time style={{ opacity: .65, fontSize: 12 }}>{new Date(item.scheduledFor).toLocaleString()}</time></div>
+                  <button type="button" disabled={scheduleBusy} onClick={() => handleCancelScheduledMessage(item.id)} style={{ border: '1px solid #d92d20', background: 'transparent', color: '#d92d20', padding: '7px 10px', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              ))}
+            </div>
+            {scheduleError && <p role="alert" style={{ margin: 0, color: '#d92d20', fontSize: 13 }}>{scheduleError}</p>}
+          </section>
+        </div>
+      )}
+
+      {locationOpen && (
+        <div role="presentation" onClick={() => setLocationOpen(false)} className={styles.locationBackdrop}>
+          <section role="dialog" aria-modal="true" aria-label="Confirm location sharing" onClick={(event) => event.stopPropagation()} className={`${styles.locationDialog} ${isDark ? styles.locationDialogDark : ''}`}>
+            <div className={styles.locationDialogHeader}>
+              <div><h3>Share your location?</h3><p>Your position is sent only after you confirm below.</p></div>
+              <button type="button" onClick={() => setLocationOpen(false)} aria-label="Close location dialog">x</button>
+            </div>
+            {pendingLocation && (
+              <div className={styles.locationCoordinates}>
+                <strong>{pendingLocation.latitude.toFixed(5)}, {pendingLocation.longitude.toFixed(5)}</strong>
+                <span>Estimated accuracy: {Math.round(pendingLocation.accuracyMeters)} m</span>
+              </div>
+            )}
+            <label className={styles.locationLabel}>
+              Optional label
+              <input value={locationLabel} onChange={(event) => setLocationLabel(event.target.value)} maxLength={120} placeholder="e.g. Nairobi office" disabled={!pendingLocation || locationBusy} />
+            </label>
+            <p className={styles.locationPrivacy}>The map provider is not contacted while viewing this message. A map opens only when someone selects its link.</p>
+            {locationError && <p role="alert" className={styles.mediaError}>{locationError}</p>}
+            <div className={styles.locationActions}>
+              <button type="button" onClick={() => setLocationOpen(false)}>Cancel</button>
+              <button type="button" disabled={!pendingLocation || locationBusy} onClick={handleSendLocation}>{locationBusy ? 'Sharing...' : 'Confirm and share'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {savedPanelOpen && (
+        <div role="presentation" className={styles.savedBackdrop} onClick={() => setSavedPanelOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-label="Saved messages" className={`${styles.savedPanel} ${isDark ? styles.savedPanelDark : ''}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.savedPanelHeader}>
+              <div><h3>Saved messages</h3><p>Private to your account and limited to conversations you can still access.</p></div>
+              <button type="button" onClick={() => setSavedPanelOpen(false)} aria-label="Close saved messages">x</button>
+            </div>
+            {savedError && <p role="alert" className={styles.mediaError}>{savedError}</p>}
+            <div className={styles.savedMessageList} aria-busy={savedBusy}>
+              {savedMessages.map((message) => (
+                <article key={message.id} className={styles.savedMessageCard}>
+                  <button type="button" onClick={() => { onOpenMessage?.(message.conversationId, message.id); setSavedPanelOpen(false); }}>
+                    <strong>{message.sender}</strong><span>{message.text}</span><time>{new Date(message.savedAt ?? message.createdAt).toLocaleString()}</time>
+                  </button>
+                  <button type="button" disabled={savedBusy} onClick={() => toggleSavedMessage(message)} aria-label="Remove saved message">Remove</button>
+                </article>
+              ))}
+              {!savedBusy && savedMessages.length === 0 && <p className={styles.savedEmpty}>No saved messages yet. Use a message's action menu to save it.</p>}
+            </div>
+          </section>
+        </div>
+      )}
 
       <div
         ref={streamRef}
@@ -685,13 +1387,15 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
       >
         <div className={styles.systemBanner}>
           <div className={`${styles.systemBannerInner} ${isDark ? styles.systemBannerInnerDark : ''}`}>
-            🔒 Messages are end-to-end encrypted within StatGate
+            Messages are access-controlled within your StatGate tenant
           </div>
         </div>
 
         {visibleMessages.length === 0 ? (
           <div className={styles.emptyState}>
-            No messages yet. Start the conversation!
+            {hasValidConversation
+              ? 'No messages yet. Start the conversation!'
+              : 'Select a conversation from the list to start messaging.'}
           </div>
         ) : (
           messageGroups.map((group, groupIndex) => (
@@ -709,16 +1413,31 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
 
                 return (
                   <div
+                    id={`message-${message.id}`}
                     key={message.id}
-                    className={`${styles.messageRow} ${isOwnMessage ? styles.messageRowSent : styles.messageRowReceived}`}
+                    className={`${styles.messageRow} ${isOwnMessage ? styles.messageRowSent : styles.messageRowReceived} ${focusedMessageId === message.id ? styles.focusedMessage : ''}`}
                   >
                     <div
-                      className={`${styles.messageBubble} ${isOwnMessage ? (isDark ? styles.sentDark : styles.sent) : (isDark ? styles.receivedDark : styles.received)}`}
+                    className={`${styles.messageBubble} ${isOwnMessage ? (isDark ? styles.sentDark : styles.sent) : (isDark ? styles.receivedDark : styles.received)} ${(message.mentionAll || message.mentionUserIds?.includes(currentUserId ?? '')) ? styles.mentionedBubble : ''}`}
                       onClick={() => setActiveQuickReactions(activeQuickReactions === message.id ? null : message.id)}
                       onDoubleClick={() => toggleReaction(message.id, '❤️')}
                     >
                       {showSender && <div className={styles.senderName}>{message.sender}</div>}
-                      <div className={styles.messageText}>{message.text}</div>
+                      {message.forwardedFromMessageId && (
+                        <div className={styles.forwardedLabel}>Forwarded from {message.forwardedFromSender || 'another conversation'}</div>
+                      )}
+                      <div className={styles.messageText}>{renderMessageText(message)}</div>
+                      {message.location && (
+                        <div className={styles.locationCard} onClick={(event) => event.stopPropagation()}>
+                          <div className={styles.locationPin} aria-hidden="true"><span /></div>
+                          <div className={styles.locationDetails}>
+                            <strong>{message.location.label || 'Shared location'}</strong>
+                            <span>{message.location.latitude.toFixed(5)}, {message.location.longitude.toFixed(5)}</span>
+                            {message.location.accuracyMeters ? <small>Accuracy about {Math.round(message.location.accuracyMeters)} m</small> : null}
+                          </div>
+                          <a href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(message.location.latitude)}&mlon=${encodeURIComponent(message.location.longitude)}#map=16/${encodeURIComponent(message.location.latitude)}/${encodeURIComponent(message.location.longitude)}`} target="_blank" rel="noreferrer">Open map</a>
+                        </div>
+                      )}
                       {message.attachments?.length ? (
                         <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {message.attachments.map((attachment) => renderAttachment(attachment))}
@@ -812,6 +1531,22 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
                             >
                               ↩️ Reply
                             </button>
+                            <button
+                              type="button"
+                              className={styles.messageActionItem}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setForwardingMessage(message);
+                                setForwardTargetId('');
+                                setForwardError('');
+                                setActiveMessageActions(null);
+                              }}
+                            >
+                              Forward
+                            </button>
+                            <button type="button" className={styles.messageActionItem} disabled={savedBusy} onClick={(event) => { event.stopPropagation(); void toggleSavedMessage(message); }}>
+                              {savedMessageIds.has(message.id) ? 'Remove saved' : 'Save message'}
+                            </button>
                             {isOwnMessage && (
                               <button
                                 type="button"
@@ -890,10 +1625,32 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
         </div>
       )}
 
+      {assistantOpen && (
+        <section className={styles.assistantPanel} style={{ background: isDark ? '#0f3f5f' : '#f4f8fb' }} aria-label="Conversation assistant">
+          <div className={styles.assistantHeader}>
+            <strong>Conversation assistant</strong>
+            <button type="button" onClick={() => setAssistantOpen(false)} aria-label="Close assistant">Close</button>
+          </div>
+          <p className={styles.assistantNote}>Uses only messages you are permitted to read. Drafts are inserted for review and never sent automatically.</p>
+          <div className={styles.assistantActions}>
+            <button type="button" disabled={assistantLoading} onClick={() => runAssistant('summary')}>Summarize</button>
+            <button type="button" disabled={assistantLoading} onClick={() => runAssistant('actions')}>Find actions</button>
+            <button type="button" disabled={assistantLoading} onClick={() => runAssistant('draft')}>Draft reply</button>
+          </div>
+          {assistantResponse && <pre className={styles.assistantResponse}>{assistantResponse}</pre>}
+        </section>
+      )}
+
+      {hasValidConversation && (
       <footer className={styles.inputFooter} style={{ background: isDark ? '#0a2b45' : '#ffffff' }}>
         <input ref={fileInputRef} type="file" className={styles.hiddenInput} accept="audio/*,video/*,image/*,.pdf,.doc,.docx,.txt" onChange={handleAttachment} />
         <button type="button" className={styles.attachButton} onClick={() => fileInputRef.current?.click()} title="Attach">
           ＋
+        </button>
+        <button type="button" className={styles.assistantButton} onClick={() => setAssistantOpen((value) => !value)} title="Conversation assistant" aria-pressed={assistantOpen}>AI</button>
+        <button type="button" className={styles.mediaButton} onClick={() => setMediaPickerOpen((value) => !value)} title="GIFs and stickers" aria-pressed={mediaPickerOpen}>GIF</button>
+        <button type="button" className={styles.locationButton} onClick={requestLocation} title="Share location" disabled={locationBusy} aria-label="Share current location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.1 7-12A7 7 0 1 0 5 9c0 5.9 7 12 7 12Zm0-9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z" fill="currentColor" /></svg>
         </button>
         <div className={`${styles.inputBar} ${isDark ? styles.inputBarDark : ''}`}>
           <button
@@ -909,12 +1666,27 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
             className={styles.messageInput}
             value={draft}
             placeholder="Type a message..."
-            onChange={(event) => onDraftChange(event.target.value)}
+            onChange={(event) => handleComposerChange(event.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             style={{ color: isDark ? '#e8eef4' : '#1a1a1a' }}
           />
         </div>
+
+        {mentionMatch && (mentionCandidates.length > 0 || (membership?.canManage && /^(all|channel)?$/i.test(mentionQuery))) && (
+          <div className={`${styles.mentionPicker} ${isDark ? styles.mentionPickerDark : ''}`} role="listbox" aria-label="Mention a conversation member">
+            {membership?.canManage && /^(all|channel)?$/i.test(mentionQuery) && (
+              <button type="button" onClick={() => selectMention(undefined, true)} role="option">
+                <strong>@all</strong><span>Notify everyone in this conversation</span>
+              </button>
+            )}
+            {mentionCandidates.map((candidate) => (
+              <button key={candidate.id} type="button" onClick={() => selectMention(candidate)} role="option">
+                <strong>{candidate.name}</strong><span>@{mentionAlias(candidate)}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {(recording || pendingVoiceNote) && (
           <div className={`${styles.inputHint} ${isDark ? styles.inputHintDark : ''}`}>
@@ -938,6 +1710,29 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
               </button>
             ))}
           </div>
+        )}
+
+        {mediaPickerOpen && (
+          <section className={`${styles.mediaPicker} ${isDark ? styles.mediaPickerDark : ''}`} role="dialog" aria-label="GIF and sticker picker">
+            <div className={styles.mediaPickerHeader}>
+              <div className={styles.mediaTabs}>
+                <button type="button" className={mediaKind === 'gif' ? styles.mediaTabActive : ''} onClick={() => setMediaKind('gif')}>Animated</button>
+                <button type="button" className={mediaKind === 'sticker' ? styles.mediaTabActive : ''} onClick={() => setMediaKind('sticker')}>Stickers</button>
+              </div>
+              <button type="button" onClick={() => setMediaPickerOpen(false)} aria-label="Close media picker">x</button>
+            </div>
+            <input type="search" value={mediaQuery} onChange={(event) => setMediaQuery(event.target.value)} placeholder={`Search ${mediaKind === 'gif' ? 'animated reactions' : 'stickers'}`} maxLength={60} />
+            {mediaError && <p role="alert" className={styles.mediaError}>{mediaError}</p>}
+            <div className={styles.mediaGrid} aria-busy={mediaBusy}>
+              {mediaItems.map((item) => (
+                <button key={item.id} type="button" disabled={mediaBusy} onClick={() => handleSendMedia(item)} title={`Send ${item.label}`}>
+                  <img src={item.previewUrl} alt="" />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+              {!mediaBusy && mediaItems.length === 0 && <p>No matching media.</p>}
+            </div>
+          </section>
         )}
 
         {editingMessage ? (
@@ -974,6 +1769,7 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
           </button>
         )}
       </footer>
+      )}
 
       {attachmentNote && (
         <div className={styles.attachmentHint}>{attachmentNote}</div>
@@ -997,13 +1793,28 @@ const [editingMessage, setEditingMessage] = useState<Message | null>(null);
           session={session}
           participants={participants}
           localStream={localStream}
+          screenStream={screenStream}
           remoteStreams={remoteStreams}
+          remoteScreenSharers={remoteScreenSharers}
           micMuted={micMuted}
           cameraOff={cameraOff}
+          isScreenSharing={isScreenSharing}
+          screenShareSupported={screenShareSupported}
           connecting={connecting}
+          callError={callError}
+          connectionState={connectionState}
+          quality={quality}
+          qualityMetrics={qualityMetrics}
+          currentUserId={currentUserId}
           currentUserName={currentUserName}
           onToggleMute={toggleMute}
           onToggleCamera={toggleCamera}
+          onToggleScreenShare={toggleScreenShare}
+          onRemoveParticipant={handleRemoveCallParticipant}
+          onRequestMute={requestMute}
+          onChangeParticipantRole={handleChangeCallParticipantRole}
+          pendingMuteRequest={pendingMuteRequest}
+          onRespondToMuteRequest={respondToMuteRequest}
           onHangUp={() => {
             setCallActive(false);
             hangUp();

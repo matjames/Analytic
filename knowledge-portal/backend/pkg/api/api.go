@@ -29,6 +29,18 @@ func RegisterRoutes(r *mux.Router) {
 	pub.HandleFunc("/subscriptions", CreateSubscriptionHandler).Methods("POST")
 	pub.HandleFunc("/feedback", CreateFeedbackHandler).Methods("POST")
 
+	// ── Open Standards & Global Interoperability APIs (CKAN, SDMX, RSS) ──
+	r.HandleFunc("/api/3/action/package_list", CKANPackageListHandler).Methods("GET")
+	r.HandleFunc("/api/3/action/package_show", CKANPackageShowHandler).Methods("GET")
+	r.HandleFunc("/api/3/action/package_search", CKANPackageSearchHandler).Methods("GET")
+	r.HandleFunc("/api/sdmx/data/{code}", SDMXDataHandler).Methods("GET")
+	r.HandleFunc("/api/rss/datasets.xml", RSSDatasetsHandler).Methods("GET")
+
+	// ── OGC API - Features (GIS interoperability) ─────────────────────
+	r.HandleFunc("/api/ogc/collections", OGCCollectionsHandler).Methods("GET")
+	r.HandleFunc("/api/ogc/collections/{id}", OGCCollectionHandler).Methods("GET")
+	r.HandleFunc("/api/ogc/collections/{id}/items", OGCCollectionItemsHandler).Methods("GET")
+
 	// ── Admin / CMS (authenticated) ──────────────────────────────────
 	api := r.PathPrefix("/api/v1").Subrouter()
 	api.Use(CORSMiddleware)

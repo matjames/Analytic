@@ -140,6 +140,14 @@ func getServiceConfigs() []ServiceConfig {
 			Search:  "/api/knowledge/search",
 			Timeout: 3 * time.Second,
 		},
+		{
+			// StatFederation cross-hub federated search. The endpoint returns a
+			// {"results":[...]} envelope (see FederatedSearchHub).
+			Name:    "federation",
+			BaseURL: getEnv("STATFEDERATION_API_URL", "http://localhost:8105"),
+			Search:  "/api/v1/diplomacy/search",
+			Timeout: 3 * time.Second,
+		},
 	}
 }
 
@@ -225,7 +233,21 @@ func searchService(svc ServiceConfig, query string, limit int) []SearchResult {
 	// Try to parse as array of results
 	var rawResults []map[string]interface{}
 	if err := json.Unmarshal(body, &rawResults); err != nil {
-		return nil
+		// Fall back to a wrapped envelope: {"results":[...]} or {"data":[...]}.
+		var wrapped struct {
+			Results []map[string]interface{} `json:"results"`
+			Data    []map[string]interface{} `json:"data"`
+		}
+		if werr := json.Unmarshal(body, &wrapped); werr != nil {
+			return nil
+		}
+		rawResults = wrapped.Results
+		if len(rawResults) == 0 {
+			rawResults = wrapped.Data
+		}
+		if len(rawResults) == 0 {
+			return nil
+		}
 	}
 
 	results := make([]SearchResult, 0, len(rawResults))
@@ -235,8 +257,12 @@ func searchService(svc ServiceConfig, query string, limit int) []SearchResult {
 		}
 		if v, ok := raw["type"].(string); ok {
 			result.Type = v
+		} else if v, ok := raw["resource_type"].(string); ok {
+			result.Type = v
 		}
 		if v, ok := raw["id"].(string); ok {
+			result.ID = v
+		} else if v, ok := raw["remote_resource_id"].(string); ok {
 			result.ID = v
 		}
 		if v, ok := raw["title"].(string); ok {
@@ -248,11 +274,19 @@ func searchService(svc ServiceConfig, query string, limit int) []SearchResult {
 			result.Description = v
 		} else if v, ok := raw["desc"].(string); ok {
 			result.Description = v
+		} else if v, ok := raw["abstract"].(string); ok {
+			result.Description = v
 		}
 		if v, ok := raw["meta"].(string); ok {
 			result.Meta = v
+		} else if v, ok := raw["node_name"].(string); ok {
+			result.Meta = "Node: " + v
 		}
-		result.URL = buildResultURL(svc.Name, result.Type, result.ID)
+		if v, ok := raw["direct_access_url"].(string); ok {
+			result.URL = v
+		} else {
+			result.URL = buildResultURL(svc.Name, result.Type, result.ID)
+		}
 		result.Score = calculateScore(result, query)
 		results = append(results, result)
 	}

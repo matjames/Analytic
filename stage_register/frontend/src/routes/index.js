@@ -9,6 +9,8 @@ import PublicFacilityDetail from "../pages/public/PublicFacilityDetail";
 import SopsManuals from "../pages/public/SopsManuals";
 import ApiDocs from "../pages/public/ApiDocs";
 import Register from "../pages/auth/Register";
+import AcceptInvitation from "../pages/auth/AcceptInvitation";
+import VerifyEmail from "../pages/auth/VerifyEmail";
 import { getRoleRoute } from "../utils/roleRoutes";
 import { getValidToken } from "../utils/auth";
 
@@ -42,6 +44,8 @@ export default function App() {
       <Route exact path="/sops" component={SopsManuals} />
       <Route exact path="/api-docs" component={ApiDocs} />
       <Route exact path="/register" component={Register} />
+      <Route exact path="/accept-invitation" component={AcceptInvitation} />
+      <Route exact path="/verify-email" component={VerifyEmail} />
       <Route
         path="/login"
         render={() => (isAuthenticated ? <Redirect to={defaultRoute} /> : <Login />)}

@@ -2,7 +2,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 ARG VITE_GOVERNANCE_API_URL=http://localhost:8093
 ENV VITE_GOVERNANCE_API_URL=$VITE_GOVERNANCE_API_URL

@@ -1,6 +1,11 @@
 :root {
-  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Outfit', 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  --statgate-primary: #165c92;
+  --statgate-primary-light: #1a7ab5;
+  --statgate-primary-dark: #0f3f5f;
 
   --bg-primary: #060b13;
   --bg-secondary: #0a111e;

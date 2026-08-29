@@ -8,9 +8,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --primary: #0f172a;
-      --primary-light: #1e293b;
-      --primary-dark: #020617;
+      --primary: #165c92;
+      --primary-light: #1e7fc4;
+      --primary-dark: #0d3d5f;
       --accent: #2563eb;
       --accent-light: #3b82f6;
       --accent-dark: #1d4ed8;
@@ -37,10 +37,10 @@
 
     /* Header */
     .header {
-      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-light) 100%);
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--primary-light) 100%);
       color: white; padding: 0 24px;
       display: flex; justify-content: space-between; align-items: center;
-      height: 64px; box-shadow: var(--shadow);
+      height: 64px; box-shadow: 0 2px 10px rgba(15, 63, 95, 0.25);
       position: sticky; top: 0; z-index: 100;
     }
     .header h1 { font-family: var(--font-title); font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
@@ -166,11 +166,28 @@
 <body>
 
   <div class="header">
-    <h1>⚙️ StatCollect Operations Centre <span>— Production Readiness Console</span></h1>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="logo.png" alt="StatGate" style="width:32px;height:32px;border-radius:6px" onerror="this.style.display='none'" />
+      <h1 style="font-size:18px">⚙️ StatCollect Operations Centre <span style="font-size:12px;opacity:0.8">— Production Console</span></h1>
+    </div>
     <div class="header-nav">
-      <a href="/ai/">🧠 StatCollect AI</a>
       <a href="index.html">📊 Dashboard</a>
-      <a href="templates.html">📐 Template Builder</a>
+      <a href="templates.html">📐 Form Builder</a>
+      <a href="operations.html" style="background:rgba(255,255,255,0.22);color:#fff;font-weight:700">⚙️ Operations</a>
+      <a href="survey-dashboard.html">📈 Survey Intel</a>
+      <a href="/ai/">🧠 AI Intelligence</a>
+      <a href="../field/agent.html">📱 Field Agent</a>
+      <button onclick="toggle383Launcher()" title="StatGate 3x3 App Launcher" style="
+        background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 8px; padding: 7px 10px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; transition: all 0.2s; margin-left: 6px;
+      " onmouseenter="this.style.background='rgba(255,255,255,0.22)'" onmouseleave="this.style.background='rgba(255,255,255,0.12)'">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2.5px;width:16px;height:16px">
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+          <div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div><div style="background:white;border-radius:1px"></div>
+        </div>
+      </button>
     </div>
   </div>
 
@@ -1847,6 +1864,35 @@
         }
       } catch(e) {
         showToast('Quality metrics failure: ' + e.message, 'error');
+      }
+    function toggle383Launcher() {
+      let m = document.getElementById('launcher383Modal');
+      if (!m) {
+        const div = document.createElement('div');
+        div.id = 'launcher383Modal';
+        div.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        div.onclick = (e) => { if(e.target===div) div.remove(); };
+        div.innerHTML = `
+          <div style="background:white;border-radius:16px;padding:24px;max-width:560px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,0.25);border:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <h3 style="font-family:var(--font-title);font-size:17px">StatGate Enterprise Services</h3>
+              <button class="btn btn-outline btn-sm" onclick="document.getElementById('launcher383Modal').remove()">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+              <a href="http://localhost:5000" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">📊</div><div style="font-size:12px;font-weight:700;margin-top:4px">Analytics Hub</div></a>
+              <a href="index.html" style="text-decoration:none;color:var(--accent);padding:14px;border:2px solid var(--accent);border-radius:10px;text-align:center;background:#eff6ff"><div style="font-size:24px">📥</div><div style="font-size:12px;font-weight:700;margin-top:4px">StatCollect</div></a>
+              <a href="http://localhost:3007" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">🗂️</div><div style="font-size:12px;font-weight:700;margin-top:4px">Entity Registry</div></a>
+              <a href="http://localhost:3005" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">🎫</div><div style="font-size:12px;font-weight:700;margin-top:4px">Helpdesk</div></a>
+              <a href="http://localhost:3009" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">💬</div><div style="font-size:12px;font-weight:700;margin-top:4px">StatChat</div></a>
+              <a href="http://localhost:3010" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">📁</div><div style="font-size:12px;font-weight:700;margin-top:4px">PMS Projects</div></a>
+              <a href="http://localhost:3011" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">🔬</div><div style="font-size:12px;font-weight:700;margin-top:4px">RMS Research</div></a>
+              <a href="http://localhost:8000" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">🌍</div><div style="font-size:12px;font-weight:700;margin-top:4px">StatSpatial GIS</div></a>
+              <a href="http://localhost:3012" target="_blank" style="text-decoration:none;color:var(--text);padding:14px;border:1px solid var(--border);border-radius:10px;text-align:center;background:#f8fafc"><div style="font-size:24px">⚖️</div><div style="font-size:12px;font-weight:700;margin-top:4px">Governance</div></a>
+            </div>
+          </div>`;
+        document.body.appendChild(div);
+      } else {
+        m.remove();
       }
     }
 

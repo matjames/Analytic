@@ -292,7 +292,9 @@ func jwtAuthMiddleware() gin.HandlerFunc {
 		// events without forging an end-user JWT.
 		if internalAPIKey != "" && hmac.Equal([]byte(c.GetHeader("X-Internal-API-Key")), []byte(internalAPIKey)) {
 			tenantID := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
-			if tenantID == "" { tenantID = "default" }
+			if tenantID == "" {
+				tenantID = "default"
+			}
 			c.Set("user_id", "integration-fabric")
 			c.Set("tenant_id", tenantID)
 			c.Set("org_id", "")
@@ -355,6 +357,7 @@ func jwtAuthMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 // ─── Tenant Isolation Middleware ──────────────────────────────────
 // Validates that the X-Tenant-ID header (if provided) matches the JWT's
 // tenant_id claim, preventing cross-tenant data access via header injection.
@@ -387,6 +390,36 @@ func tenantIsolationMiddleware() gin.HandlerFunc {
 				c.Request.Header.Set("X-User-Role", s)
 			}
 		}
+		c.Next()
+	}
+}
+
+// workspaceContextMiddleware validates the optional selected workspace against
+// the verified user and tenant. Services may adopt workspace_id incrementally,
+// but an explicitly selected workspace is never allowed to cross membership.
+func workspaceContextMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		workspaceID := strings.TrimSpace(c.GetHeader("X-Workspace-ID"))
+		if workspaceID == "" {
+			c.Next()
+			return
+		}
+		if dbPool == nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace persistence unavailable"})
+			return
+		}
+		var status string
+		err := dbPool.QueryRow(`
+			SELECT m.status FROM platform_workspace_members m
+			JOIN platform_workspaces w ON w.id = m.workspace_id
+			WHERE m.workspace_id=$1 AND m.user_id=$2 AND w.tenant_id=$3 AND w.status='active'`,
+			workspaceID, getContextUserID(c), getContextTenantID(c)).Scan(&status)
+		if err != nil || status != "active" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "workspace_access_denied", "message": "user is not an active member of this workspace"})
+			return
+		}
+		c.Set("workspace_id", workspaceID)
+		c.Request.Header.Set("X-Workspace-ID", workspaceID)
 		c.Next()
 	}
 }

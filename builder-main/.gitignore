@@ -1,0 +1,166 @@
+### Go template
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+generated_sql.log
+report_server
+
+# Temporary/generated files
+.cache/
+configs/Programs/EMS/docs/
+configs/Programs/ACP/docs/
+localhost.session.sql
+extract_pdf_text.py
+extracted_ems_exec_summary.txt
+tem-quarter-to-months.ps1
+temp-quarter-to-month.ps1
+
+# Local test scripts - not for version control
+start.sh
+/scripts/fill_digitisation_analytics_docx.py
+/scripts/stress-test.sh
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# env file
+.env
+.env.save
+server/.env
+
+# Log files
+*.log
+*.log.gz
+
+# IDE - JetBrains (GoLand, IntelliJ IDEA)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vite / Vitest build and test output
+.vite/
+
+# IDE - VSCode
+.vscode/
+*.code-workspace
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build output
+/bin/
+/dist/
+/build/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+# The Report Server
+/report_server
+report_server
+/report-server
+report-server
+
+#others
+/CLAUDE.md
+claude.md
+/THE_ORGANISM.md
+/THE_PHILOSOPHY.md
+/embryology.md
+
+# Generated SQL Log
+generated_sql.log
+
+# Node.js (frontend tests)
+node_modules/
+package-lock.json
+.Rhistory
+
+# Playwright test artifacts
+public/playwright-report/
+public/test-results/
+server/configs/
+
+# Sample CSVs and generator (large prod exports, local-only)
+database/sample/
+database/generate_cht_from_samples.py
+odk/
+mv_nutrition_mass_screening_tool_*.csv
+mflupload.csv
+orgunits_uploads.csv
+users_upload*.csv
+
+# Persisted metrics data
+data/
+!configs/Data/
+
+# Claude Code local settings
+.claude/
+
+# Python/uv tooling (not part of this Go project)
+pyproject.toml
+uv.lock
+
+# Request utilities (support scripts)
+request_utils*
+
+# Project scripts under scripts/ are tracked; bytecode is not
+scripts/__pycache__/
+
+# Presentation artifacts
+Ask_Module_Presentation.pptx
+generate_ppt.py
+
+# One-off analytical reports (DOCX, working notes)
+analytics/
+
+# Filled analytical exports (copy for visibility; see reports/README.txt)
+reports/*.docx
+reports/*.json
+!reports/digitisation_analytics_snapshot.json
+
+# Local malaria documentation working folder
+configs/Programs/Malaria/docs/
+
+# Local deaths documentation working folder
+configs/Deaths/docs/
+
+# Local surveillance documentation working folder
+configs/Surveillance/docs/
+
+# Local EPI Support Supervision documentation working folder
+configs/Programs/EPI-Support-Supervision/docs/
+
+# Local scripts and docs — not for version control
+local_scripts_docs/
+.aider*

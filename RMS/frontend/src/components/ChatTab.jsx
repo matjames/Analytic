@@ -4,6 +4,8 @@ export default function ChatTab({ messages, researchId, onRefresh }) {
   const [newMessage, setNewMessage] = useState('');
   const [channel, setChannel] = useState('general');
   const messagesEndRef = useRef(null);
+  const statChatURL = import.meta.env.VITE_STATCHAT_UI_URL || 'http://localhost:3009';
+  const discussionURL = `${statChatURL}/?objectRef=${encodeURIComponent(`obj:rms:research:${researchId}`)}`;
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -23,11 +25,14 @@ export default function ChatTab({ messages, researchId, onRefresh }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+        <div>
         <h3>Research Collaboration Chat</h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
           Team discussions, announcements, and coordination
         </p>
+        </div>
+        <a href={discussionURL} target="_blank" rel="noopener noreferrer" className="btn btn-primary">Open Full StatChat</a>
       </div>
 
       <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

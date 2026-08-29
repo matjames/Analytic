@@ -355,6 +355,128 @@
   line-height: 1.5;
 }
 
+.communityLayout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.communityList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.communityItem {
+  border: 1px solid rgba(107, 162, 195, 0.16);
+  border-radius: 12px;
+  padding: 14px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.communityItemActive {
+  border-color: #165c92;
+  background: rgba(22, 92, 146, 0.08);
+}
+
+.communityName {
+  display: block;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.communityMeta {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.62;
+}
+
+.communityDetail {
+  min-width: 0;
+}
+
+.communityHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.communityInput,
+.communityTextArea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(107, 162, 195, 0.24);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.communityTextArea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.communityReplyRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.communityInviteRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: min(100%, 360px);
+}
+
+.communityMembers {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.communityMemberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(107, 162, 195, 0.12);
+}
+
+.communityMemberActions,
+.communityTopicActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linkButton {
+  border: none;
+  background: transparent;
+  color: #165c92;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 0;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 760px) {
   .collabScroll {
     padding: 16px 12px;
@@ -366,5 +488,17 @@
 
   .jobCard {
     flex-direction: column;
+  }
+
+  .communityLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .communityHeaderRow,
+  .communityReplyRow,
+  .communityInviteRow,
+  .communityMemberRow {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

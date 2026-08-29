@@ -8,18 +8,20 @@ import (
 )
 
 type EventRecord struct {
-	ID        string                 `json:"id"`
-	TenantID  string                 `json:"tenant_id"`
-	Source    string                 `json:"source"`
-	Payload   map[string]interface{} `json:"payload"`
-	Timestamp time.Time              `json:"timestamp"`
-	Value     float64                `json:"value"`
+	ID          string                 `json:"id"`
+	TenantID    string                 `json:"tenant_id"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
+	Source      string                 `json:"source"`
+	Payload     map[string]interface{} `json:"payload"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Value       float64                `json:"value"`
 }
 
 type AnomalyAlert struct {
 	ID          string    `json:"id"`
 	EventID     string    `json:"event_id"`
 	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
 	MetricName  string    `json:"metric_name"`
 	Dataset     string    `json:"dataset"`
 	Value       float64   `json:"value"`
@@ -34,17 +36,19 @@ type AnomalyAlert struct {
 }
 
 type StorageEngine struct {
-	mu            sync.RWMutex
-	records       []EventRecord
-	tenantRecords map[string][]EventRecord
-	anomalies     []AnomalyAlert
+	mu               sync.RWMutex
+	records          []EventRecord
+	tenantRecords    map[string][]EventRecord
+	workspaceRecords map[string][]EventRecord
+	anomalies        []AnomalyAlert
 }
 
 func NewStorageEngine() *StorageEngine {
 	se := &StorageEngine{
-		records:       make([]EventRecord, 0),
-		tenantRecords: make(map[string][]EventRecord),
-		anomalies:     make([]AnomalyAlert, 0),
+		records:          make([]EventRecord, 0),
+		tenantRecords:    make(map[string][]EventRecord),
+		workspaceRecords: make(map[string][]EventRecord),
+		anomalies:        make([]AnomalyAlert, 0),
 	}
 	se.seedDemoData()
 	return se
@@ -58,12 +62,13 @@ func (se *StorageEngine) seedDemoData() {
 		for i := 0; i < 50; i++ {
 			val := 100.0 + float64(i%10) + float64(i*2%5)
 			rec := EventRecord{
-				ID:        fmt.Sprintf("rec-%s-%d", t, i),
-				TenantID:  t,
-				Source:    "webhook_sensor",
-				Payload:   map[string]interface{}{"temperature": val, "status": "active"},
-				Timestamp: now.Add(-time.Duration(50-i) * time.Second),
-				Value:     val,
+				ID:          fmt.Sprintf("rec-%s-%d", t, i),
+				TenantID:    t,
+				WorkspaceID: "workspace-demo",
+				Source:      "webhook_sensor",
+				Payload:     map[string]interface{}{"temperature": val, "status": "active"},
+				Timestamp:   now.Add(-time.Duration(50-i) * time.Second),
+				Value:       val,
 			}
 			se.Ingest(rec)
 		}
@@ -80,10 +85,9 @@ func (se *StorageEngine) Ingest(rec EventRecord) AnomalyAlert {
 
 	se.records = append(se.records, rec)
 	se.tenantRecords[rec.TenantID] = append(se.tenantRecords[rec.TenantID], rec)
-
-	// Anomaly detection (+/- 3 sigma thresholding)
+	se.workspaceRecords[scopeKey(rec.TenantID, rec.WorkspaceID)] = append(se.workspaceRecords[scopeKey(rec.TenantID, rec.WorkspaceID)], rec)
 	var alert AnomalyAlert
-	tenantList := se.tenantRecords[rec.TenantID]
+	tenantList := se.workspaceRecords[scopeKey(rec.TenantID, rec.WorkspaceID)]
 	if len(tenantList) >= 10 {
 		var sum float64
 		for _, r := range tenantList {
@@ -108,6 +112,7 @@ func (se *StorageEngine) Ingest(rec EventRecord) AnomalyAlert {
 					ID:          fmt.Sprintf("alert_%d", rec.Timestamp.UnixNano()),
 					EventID:     rec.ID,
 					TenantID:    rec.TenantID,
+					WorkspaceID: rec.WorkspaceID,
 					MetricName:  rec.Source,
 					Dataset:     "live_telemetry_stream",
 					Value:       rec.Value,
@@ -128,35 +133,54 @@ func (se *StorageEngine) Ingest(rec EventRecord) AnomalyAlert {
 	return alert
 }
 
-func (se *StorageEngine) QueryTenantData(tenantID string, limit int) []EventRecord {
+// RecordEvent appends a domain event to the lakehouse ledger without triggering
+// telemetry anomaly detection. It is used for observability events such as
+// institutional condition changes.
+func (se *StorageEngine) RecordEvent(rec EventRecord) {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+
+	if rec.Timestamp.IsZero() {
+		rec.Timestamp = time.Now()
+	}
+	if rec.ID == "" {
+		rec.ID = fmt.Sprintf("evt-%d", rec.Timestamp.UnixNano())
+	}
+
+	se.records = append(se.records, rec)
+	se.tenantRecords[rec.TenantID] = append(se.tenantRecords[rec.TenantID], rec)
+	se.workspaceRecords[scopeKey(rec.TenantID, rec.WorkspaceID)] = append(se.workspaceRecords[scopeKey(rec.TenantID, rec.WorkspaceID)], rec)
+}
+
+func (se *StorageEngine) QueryTenantData(tenantID, workspaceID string, limit int) []EventRecord {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 
-	records := se.tenantRecords[tenantID]
+	records := se.recordsForScope(tenantID, workspaceID)
 	if limit > 0 && len(records) > limit {
 		return records[len(records)-limit:]
 	}
 	return records
 }
 
-func (se *StorageEngine) GetAnomalies(tenantID string) []AnomalyAlert {
+func (se *StorageEngine) GetAnomalies(tenantID, workspaceID string) []AnomalyAlert {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 
 	var result []AnomalyAlert
 	for _, a := range se.anomalies {
-		if tenantID == "" || a.TenantID == tenantID {
+		if (tenantID == "" || a.TenantID == tenantID) && (workspaceID == "" || a.WorkspaceID == workspaceID) {
 			result = append(result, a)
 		}
 	}
 	return result
 }
 
-func (se *StorageEngine) GetStats(tenantID string) map[string]interface{} {
+func (se *StorageEngine) GetStats(tenantID, workspaceID string) map[string]interface{} {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 
-	recs := se.tenantRecords[tenantID]
+	recs := se.recordsForScope(tenantID, workspaceID)
 	count := len(recs)
 	var totalVal float64
 	for _, r := range recs {
@@ -170,9 +194,21 @@ func (se *StorageEngine) GetStats(tenantID string) map[string]interface{} {
 
 	return map[string]interface{}{
 		"tenant_id":        tenantID,
+		"workspace_id":     workspaceID,
 		"total_records":    count,
 		"avg_value":        avg,
-		"anomalies_count":  len(se.GetAnomalies(tenantID)),
+		"anomalies_count":  len(se.GetAnomalies(tenantID, workspaceID)),
 		"last_ingested_at": time.Now().Format(time.RFC3339),
 	}
+}
+
+func scopeKey(tenantID, workspaceID string) string {
+	return tenantID + "\x00" + workspaceID
+}
+
+func (se *StorageEngine) recordsForScope(tenantID, workspaceID string) []EventRecord {
+	if workspaceID != "" {
+		return se.workspaceRecords[scopeKey(tenantID, workspaceID)]
+	}
+	return se.tenantRecords[tenantID]
 }

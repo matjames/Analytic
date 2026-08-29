@@ -52,6 +52,7 @@ def _ensure_table(conn):
                 target_id     VARCHAR(255) NOT NULL,
                 relationship  VARCHAR(64)  NOT NULL DEFAULT 'related',
                 tenant_id     VARCHAR(64)  NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id  VARCHAR(128),
                 created_by    VARCHAR(128),
                 created_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (source_type, source_id, target_type, target_id, relationship)
@@ -60,11 +61,13 @@ def _ensure_table(conn):
         cur.execute("CREATE INDEX IF NOT EXISTS idx_object_links_source ON object_links(source_type, source_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_object_links_target ON object_links(target_type, target_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_object_links_tenant ON object_links(tenant_id)")
+        cur.execute("ALTER TABLE object_links ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_object_links_workspace ON object_links(tenant_id, workspace_id)")
     conn.commit()
 
 
 def create_link(source_type, source_id, target_type, target_id,
-                relationship='related', tenant_id='tenant-alpha', created_by=None):
+                relationship='related', tenant_id='tenant-alpha', created_by=None, workspace_id=None):
     """
     Create a link between two platform objects.
     Returns True on success, False if the link already exists or DB unavailable.
@@ -83,10 +86,10 @@ def create_link(source_type, source_id, target_type, target_id,
         _ensure_table(conn)
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO object_links (source_type, source_id, target_type, target_id, relationship, tenant_id, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO object_links (source_type, source_id, target_type, target_id, relationship, tenant_id, workspace_id, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_type, source_id, target_type, target_id, relationship) DO NOTHING
-            """, (source_type, source_id, target_type, target_id, relationship, tenant_id, created_by))
+            """, (source_type, source_id, target_type, target_id, relationship, tenant_id, workspace_id, created_by))
         conn.commit()
         return True
     except Exception as exc:
@@ -96,7 +99,7 @@ def create_link(source_type, source_id, target_type, target_id,
         conn.close()
 
 
-def get_links(object_type, object_id, tenant_id='tenant-alpha'):
+def get_links(object_type, object_id, tenant_id='tenant-alpha', workspace_id=None):
     """
     Return all links where the given object is either the source or target.
     Returns a list of dicts with the connected object and relationship.
@@ -112,9 +115,10 @@ def get_links(object_type, object_id, tenant_id='tenant-alpha'):
                 SELECT source_type, source_id, target_type, target_id, relationship, created_at
                 FROM object_links
                 WHERE tenant_id = %s
+                  AND (%s IS NULL OR workspace_id = %s)
                   AND ((source_type = %s AND source_id = %s) OR (target_type = %s AND target_id = %s))
                 ORDER BY created_at DESC
-            """, (tenant_id, object_type, object_id, object_type, object_id))
+            """, (tenant_id, workspace_id, workspace_id, object_type, object_id, object_type, object_id))
             rows = cur.fetchall()
         return [dict(r) for r in rows]
     except Exception as exc:

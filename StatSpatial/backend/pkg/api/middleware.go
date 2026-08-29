@@ -14,18 +14,20 @@ import (
 type userContextKey string
 
 const (
-	UserCtxKey   userContextKey = "statgate_user"
-	TenantCtxKey userContextKey = "statgate_tenant"
+	UserCtxKey      userContextKey = "statgate_user"
+	TenantCtxKey    userContextKey = "statgate_tenant"
+	WorkspaceCtxKey userContextKey = "statgate_workspace"
 )
 
 // UserContext is retained for backward compatibility with existing handlers.
 // The authoritative identity object is statgate-lib/auth.UserContext, stored
 // under auth.ContextKeyUser for consumers across the platform.
 type UserContext struct {
-	UserID   string `json:"user_id"`
-	Email    string `json:"email"`
-	TenantID string `json:"tenant_id"`
-	Role     string `json:"role"`
+	UserID      string `json:"user_id"`
+	Email       string `json:"email"`
+	TenantID    string `json:"tenant_id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Role        string `json:"role"`
 }
 
 // validator returns the shared statgate-lib Auth Validator enforcing
@@ -56,7 +58,7 @@ func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", allowed)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Tenant-ID, X-Request-ID, X-Correlation-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Tenant-ID, X-Workspace-ID, X-Request-ID, X-Correlation-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {
@@ -131,6 +133,19 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"cross_tenant_violation","message":"Header tenant mismatch with token"}`, http.StatusForbidden)
 			return
 		}
+		workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+		if workspaceID != "" {
+			if len(workspaceID) > 128 {
+				http.Error(w, "{\"error\":\"invalid_workspace\",\"message\":\"Workspace ID is too long\"}", http.StatusBadRequest)
+				return
+			}
+			for i, ch := range workspaceID {
+				if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9' && i > 0) || ch == '_') {
+					http.Error(w, "{\"error\":\"invalid_workspace\",\"message\":\"Workspace ID has invalid format\"}", http.StatusBadRequest)
+					return
+				}
+			}
+		}
 
 		// Propagate enterprise identity into the request context.
 		ctx := r.Context()
@@ -141,13 +156,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// Backward-compatible aliases for existing handlers.
 		legacy := &UserContext{
-			UserID:   uCtx.UserID,
-			Email:    uCtx.Email,
-			TenantID: uCtx.TenantID,
-			Role:     uCtx.Role,
+			UserID:      uCtx.UserID,
+			Email:       uCtx.Email,
+			TenantID:    uCtx.TenantID,
+			WorkspaceID: workspaceID,
+			Role:        uCtx.Role,
 		}
 		ctx = context.WithValue(ctx, UserCtxKey, legacy)
 		ctx = context.WithValue(ctx, TenantCtxKey, uCtx.TenantID)
+		ctx = context.WithValue(ctx, WorkspaceCtxKey, workspaceID)
+		ctx = context.WithValue(ctx, "workspace_id", workspaceID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

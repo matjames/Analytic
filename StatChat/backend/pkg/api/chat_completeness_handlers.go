@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -13,28 +14,35 @@ import (
 // ── Global Search ──
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if query == "" {
-		result, err := store.GlobalSearch(query, requestUserID(r))
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to run search")
-			return
-		}
-		writeJSON(w, result)
+	filters, filtersActive, err := parseMessageSearchFilters(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	result, err := store.GlobalSearch(query, requestUserID(r))
+	query := filters.Query
+	result, err := store.GlobalSearch(query, requestUserID(r), requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to run search")
 		return
 	}
-	if users, directoryErr := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization"))); directoryErr == nil {
-		needle := strings.ToLower(query)
-		result.Users = result.Users[:0]
-		for _, user := range users {
-			if strings.Contains(strings.ToLower(user.Name), needle) || strings.Contains(strings.ToLower(user.Email), needle) {
-				result.Users = append(result.Users, user)
+	if filters.ConversationID != "" && !requireConversationAccess(w, r, filters.ConversationID) {
+		return
+	}
+	if query != "" || filtersActive {
+		result.Messages, err = store.SearchMessages(requestUserID(r), requestTenantID(r), filters)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to search messages")
+			return
+		}
+	}
+	if query != "" {
+		if users, directoryErr := registryDirectory(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")), requestTenantID(r)); directoryErr == nil {
+			needle := strings.ToLower(query)
+			result.Users = result.Users[:0]
+			for _, user := range users {
+				if strings.Contains(strings.ToLower(user.Name), needle) || strings.Contains(strings.ToLower(user.Email), needle) {
+					result.Users = append(result.Users, user)
+				}
 			}
 		}
 	}
@@ -48,6 +56,9 @@ func toggleFavouriteHandler(w http.ResponseWriter, r *http.Request) {
 	conversationID := vars["id"]
 	if conversationID == "" {
 		writeError(w, http.StatusBadRequest, "conversation id is required")
+		return
+	}
+	if !requireConversationAccess(w, r, conversationID) {
 		return
 	}
 
@@ -64,6 +75,9 @@ func favouriteStatusHandler(w http.ResponseWriter, r *http.Request) {
 	conversationID := vars["id"]
 	if conversationID == "" {
 		writeError(w, http.StatusBadRequest, "conversation id is required")
+		return
+	}
+	if !requireConversationAccess(w, r, conversationID) {
 		return
 	}
 
@@ -97,6 +111,9 @@ func muteConversationHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "conversation id is required")
 		return
 	}
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
 
 	var req muteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -105,6 +122,7 @@ func muteConversationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := store.SetMuteConversation(requestUserID(r), conversationID, req.Muted); err != nil {
+		log.Printf("failed to update mute state for %s: %v", requestUserID(r), err)
 		writeError(w, http.StatusInternalServerError, "failed to update mute state")
 		return
 	}
@@ -116,6 +134,9 @@ func unmuteConversationHandler(w http.ResponseWriter, r *http.Request) {
 	conversationID := vars["id"]
 	if conversationID == "" {
 		writeError(w, http.StatusBadRequest, "conversation id is required")
+		return
+	}
+	if !requireConversationAccess(w, r, conversationID) {
 		return
 	}
 
@@ -142,6 +163,9 @@ func clearConversationHandler(w http.ResponseWriter, r *http.Request) {
 	conversationID := vars["id"]
 	if conversationID == "" {
 		writeError(w, http.StatusBadRequest, "conversation id is required")
+		return
+	}
+	if !requireConversationAccess(w, r, conversationID) {
 		return
 	}
 

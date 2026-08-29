@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StatGate Report Builder - Digital Reporting Requirements</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/requirements-form.css">
+</head>
+<body class="requirements-page">
+    <header class="header" role="banner">
+        <div class="header-left">
+            <a href="index.html" class="header-brand">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo" loading="lazy">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <a href="requirements" class="btn btn-secondary btn-sm" title="View submitted requirements">View Documents</a>
+            <a href="index.html" class="btn btn-secondary btn-sm" title="Back to app">Back to app</a>
+        </div>
+    </header>
+
+    <main class="requirements-shell">
+        <section class="requirements-hero">
+            <p class="eyebrow">Digital Reporting Requirements Collection Document</p>
+            <h1>Report Requirements Specification Form</h1>
+            <p class="hero-copy">Capture report needs from business, program, and analytics teams in one structured submission.</p>
+            <div id="submit-status" class="submit-status hidden" role="status" aria-live="polite"></div>
+        </section>
+
+        <form id="requirements-form" class="requirements-form" novalidate>
+            <section class="section-card">
+                <h2>Document Control</h2>
+                <div class="grid cols-3">
+                    <label>Report Name *<input name="reportName" required></label>
+                    <label>Report ID<input name="reportId"></label>
+                    <label>Program Area<input name="programArea"></label>
+                    <label>Requesting Department<input name="requestingDepartment"></label>
+                    <label>Business Owner<input name="businessOwner"></label>
+                    <label>Data Analyst<input name="dataAnalyst"></label>
+                    <label>Report Developer<input name="reportDeveloper"></label>
+                    <label>Date Requested<input type="date" name="dateRequested"></label>
+                    <label>Version<input name="version" placeholder="e.g. v1.0"></label>
+                    <label>Status
+                        <select name="status">
+                            <option value="Draft">Draft</option>
+                            <option value="In Review">In Review</option>
+                            <option value="Approved">Approved</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>1. Report Overview</h2>
+                <div class="grid cols-2">
+                    <label>Report Title<input name="overviewTitle"></label>
+                    <label>Target Audience<input name="targetAudience"></label>
+                    <label>Reporting Frequency
+                        <select name="reportingFrequency">
+                            <option value="Daily">Daily</option>
+                            <option value="Weekly">Weekly</option>
+                            <option value="Monthly" selected>Monthly</option>
+                            <option value="Quarterly">Quarterly</option>
+                            <option value="Annually">Annually</option>
+                            <option value="On Demand">On Demand</option>
+                        </select>
+                    </label>
+                    <label>Reporting Period<input name="reportingPeriod" placeholder="e.g. FY2026 Q1"></label>
+                </div>
+                <label>Business Objective *<textarea name="businessObjective" required rows="4"></textarea></label>
+            </section>
+
+            <section class="section-card">
+                <h2>2. Report Access Requirements</h2>
+                <div class="grid cols-3">
+                    <label>User Roles<textarea name="userRoles" rows="3" placeholder="Separate with commas"></textarea></label>
+                    <label>Permissions<textarea name="permissions" rows="3" placeholder="View, Export, Drilldown, etc"></textarea></label>
+                    <label>Authentication Requirements<textarea name="authenticationRequirements" rows="3"></textarea></label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>3. Data Requirements</h2>
+                <div class="grid cols-2">
+                    <label>Data Sources<textarea name="dataSources" rows="4"></textarea></label>
+                    <label>Data Quality Requirements<textarea name="dataQualityRequirements" rows="4"></textarea></label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>4. Report Filters</h2>
+                <p class="section-help">Select the filters that must be configured in the report YAML. These are validated against the YAML <code>filters:</code> field.</p>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" name="filters" value="year"> Year</label>
+                    <label><input type="checkbox" name="filters" value="month"> Month</label>
+                    <label><input type="checkbox" name="filters" value="quarter"> Quarter</label>
+                    <label><input type="checkbox" name="filters" value="week"> Week</label>
+                    <label><input type="checkbox" name="filters" value="district"> District</label>
+                    <label><input type="checkbox" name="filters" value="region"> Region</label>
+                    <label><input type="checkbox" name="filters" value="facility"> Facility</label>
+                </div>
+                <label>Other Filters<textarea name="otherFilters" rows="3" placeholder="Any additional filter requirements not listed above"></textarea></label>
+            </section>
+
+            <section class="section-card">
+                <h2>5. Visual Indicator Requirements</h2>
+                <p class="section-help">Define each visual (bar, table, bar-line, etc), describe it, then attach one or more indicators. Use Add Indicator when more than two are needed.</p>
+                <div id="visual-spec-list" class="visual-spec-list"></div>
+                <div class="visual-spec-add-row">
+                    <button type="button" id="add-visual-spec" class="btn btn-secondary btn-sm">Add Visual</button>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>6. Report Structure</h2>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" name="reportStructure" value="Executive Summary"> Executive Summary</label>
+                    <label><input type="checkbox" name="reportStructure" value="Trend Analysis"> Trend Analysis</label>
+                    <label><input type="checkbox" name="reportStructure" value="Geographic Analysis"> Geographic Analysis</label>
+                    <label><input type="checkbox" name="reportStructure" value="Detailed Tables"> Detailed Tables</label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>7. Visualization Requirements</h2>
+                <label>Additional Visualization Notes<textarea name="visualizationRequirements" rows="4" placeholder="Any layout, color, interaction, or storytelling notes not covered above"></textarea></label>
+            </section>
+
+            <section class="section-card">
+                <h2>8. Geospatial Requirements</h2>
+                <div class="grid cols-3">
+                    <label>Maps<textarea name="maps" rows="3"></textarea></label>
+                    <label>Geographic Levels<textarea name="geographicLevels" rows="3"></textarea></label>
+                    <label>Metrics Displayed<textarea name="metricsDisplayed" rows="3"></textarea></label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>9. Export Requirements</h2>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" name="exportFormats" value="PDF"> PDF</label>
+                    <label><input type="checkbox" name="exportFormats" value="Excel"> Excel</label>
+                    <label><input type="checkbox" name="exportFormats" value="CSV"> CSV</label>
+                    <label><input type="checkbox" name="exportFormats" value="Word"> Word</label>
+                    <label><input type="checkbox" name="exportFormats" value="PowerPoint"> PowerPoint</label>
+                    <label><input type="checkbox" name="exportFormats" value="Print Support"> Print Support</label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>10. Navigation Requirements</h2>
+                <div class="grid cols-2">
+                    <label>Sections<textarea name="navigationSections" rows="3"></textarea></label>
+                    <label>Navigation Labels<textarea name="navigationLabels" rows="3"></textarea></label>
+                </div>
+                <label>Bookmarks<textarea name="bookmarks" rows="3"></textarea></label>
+            </section>
+
+            <section class="section-card">
+                <h2>11. Business Rules</h2>
+                <label>Validation and Reporting Rules<textarea name="businessRules" rows="4"></textarea></label>
+            </section>
+
+            <section class="section-card">
+                <h2>12. Performance Requirements</h2>
+                <div class="grid cols-3">
+                    <label>Load Time Target (seconds)<input type="number" name="loadTimeSeconds" min="1"></label>
+                    <label>Export Time Target (seconds)<input type="number" name="exportTimeSeconds" min="1"></label>
+                    <label>Expected Concurrent Users<input type="number" name="expectedUsers" min="1"></label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>13. Validation Requirements</h2>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" name="validationRequirements" value="Indicator Verification"> Indicator Verification</label>
+                    <label><input type="checkbox" name="validationRequirements" value="Source Verification"> Source Verification</label>
+                    <label><input type="checkbox" name="validationRequirements" value="Formula Verification"> Formula Verification</label>
+                    <label><input type="checkbox" name="validationRequirements" value="Trend Validation"> Trend Validation</label>
+                    <label><input type="checkbox" name="validationRequirements" value="Stakeholder Signoff"> Stakeholder Signoff</label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>14. Acceptance Criteria</h2>
+                <div class="checkbox-grid">
+                    <label><input type="checkbox" name="acceptanceCriteria" value="Approval"> Approval</label>
+                    <label><input type="checkbox" name="acceptanceCriteria" value="Validation"> Validation</label>
+                    <label><input type="checkbox" name="acceptanceCriteria" value="UAT"> UAT</label>
+                    <label><input type="checkbox" name="acceptanceCriteria" value="Signoff"> Signoff</label>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <h2>15. Approvals</h2>
+                <div class="grid cols-3">
+                    <label>Prepared By<input name="preparedBy"></label>
+                    <label>Reviewed By<input name="reviewedBy"></label>
+                    <label>Approved By<input name="approvedBy"></label>
+                    <label>Prepared Date<input type="date" name="preparedDate"></label>
+                    <label>Reviewed Date<input type="date" name="reviewedDate"></label>
+                    <label>Approved Date<input type="date" name="approvedDate"></label>
+                </div>
+            </section>
+
+            <div class="form-actions">
+                <button type="button" id="save-draft" class="btn btn-secondary">Save Draft Locally</button>
+                <button type="submit" id="submit-form" class="btn btn-primary">Submit Requirements</button>
+            </div>
+        </form>
+    </main>
+
+    <template id="visual-spec-template">
+        <article class="visual-spec-item">
+            <div class="indicator-title-row">
+                <h3 class="visual-spec-number">Component</h3>
+                <button type="button" class="btn btn-ghost btn-sm remove-visual-spec">Remove Visual</button>
+            </div>
+            <div class="grid cols-2 visual-spec-header-grid">
+                <label>Visual Type
+                    <select class="visual-type">
+                        <option value="Infobox">Infobox</option>
+                        <option value="Bar">Bar</option>
+                        <option value="Line">Line</option>
+                        <option value="Bar-Line">Bar-Line</option>
+                        <option value="Table">Table</option>
+                        <option value="Pie">Pie</option>
+                        <option value="Map">Map</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <label>Visual Title<input class="visual-title" placeholder="e.g. HIV Positivity Trend by District"></label>
+            </div>
+            <label>Visual Description<textarea class="visual-description" rows="3" placeholder="Describe what this visual should show and why"></textarea></label>
+            <div class="visual-indicator-section">
+                <div class="section-heading-row indicator-subheading-row">
+                    <h4>Indicators</h4>
+                    <button type="button" class="btn btn-secondary btn-sm add-visual-indicator">Add Indicator</button>
+                </div>
+                <div class="visual-indicator-list"></div>
+            </div>
+        </article>
+    </template>
+
+    <template id="visual-indicator-template">
+        <div class="visual-indicator-row">
+            <div class="visual-indicator-main">
+                <label>Indicator label<input class="visual-indicator-label" placeholder="e.g. Total tested HIV +"></label>
+                <div class="visual-indicator-type-row">
+                    <label><input type="radio" class="visual-indicator-mode" name="__mode" value="direct" checked> Direct</label>
+                    <label><input type="radio" class="visual-indicator-mode" name="__mode" value="calculated"> Calculated</label>
+                </div>
+                <div class="visual-indicator-selection visual-selector-block"></div>
+                <div class="visual-indicator-calculation hidden">
+                    <label>Function
+                        <select class="visual-indicator-function">
+                            <option value="sum">Sum</option>
+                            <option value="count">Count</option>
+                            <option value="average">Average</option>
+                            <option value="difference">Difference</option>
+                            <option value="rate">Rate</option>
+                            <option value="percentage">Percentage</option>
+                            <option value="formula">Formula</option>
+                        </select>
+                    </label>
+                    <div class="visual-numerator-selector visual-selector-block"></div>
+                    <div class="visual-denominator-selector visual-selector-block"></div>
+                </div>
+                <div class="visual-indicator-results hidden"></div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm remove-visual-indicator">Remove</button>
+        </div>
+    </template>
+
+    <template id="visual-indicator-search-result-template">
+        <button type="button" class="visual-indicator-result-item"></button>
+    </template>
+
+    <script type="module" src="js/requirements-form.js"></script>
+</body>
+</html>

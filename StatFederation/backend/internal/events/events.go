@@ -14,23 +14,29 @@ import (
 
 // Federation specific event types
 const (
-	EventNodeRegistered       = "federation.node.registered"
-	EventNodeHeartbeat        = "federation.node.heartbeat"
-	EventDSAApproved          = "federation.dsa.approved"
-	EventDSARevoked           = "federation.dsa.revoked"
-	EventQueryDispatched      = "federation.query.dispatched"
-	EventQueryCompleted       = "federation.query.completed"
-	EventDiplomacyReportSent  = "diplomacy.report.transmitted"
-	EventComplianceViolation  = "diplomacy.compliance.violation"
+	EventNodeRegistered          = "federation.node.registered"
+	EventNodeHeartbeat           = "federation.node.heartbeat"
+	EventDSAApproved             = "federation.dsa.approved"
+	EventDSARevoked              = "federation.dsa.revoked"
+	EventQueryDispatched         = "federation.query.dispatched"
+	EventQueryCompleted          = "federation.query.completed"
+	EventDiplomacyReportSent     = "diplomacy.report.transmitted"
+	EventComplianceViolation     = "diplomacy.compliance.violation"
+
+	// Push Protocol events
+	EventIndicatorPushed         = "federation.indicator.pushed"
+	EventIndicatorIngestReceived = "federation.indicator.ingest.received"
+	EventNodeProbeFailed         = "federation.node.probe.failed"
 )
 
 // EventWorker coordinates event broadcasting, consumption, and DLQ handling
 type EventWorker struct {
-	bus     *events.EventBus
-	store   store.Store
-	nodeID  string
-	stopCh  chan struct{}
-	wg      sync.WaitGroup
+	bus      *events.EventBus
+	store    store.Store
+	nodeID   string
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
+	pushAuto *AutoPushConsumer // optional auto-push consumer (Task 1.4)
 }
 
 // NewEventWorker creates the event worker
@@ -41,6 +47,14 @@ func NewEventWorker(bus *events.EventBus, s store.Store, nodeID string) *EventWo
 		nodeID: nodeID,
 		stopCh: make(chan struct{}),
 	}
+}
+
+// WithAutoPushConsumer attaches the auto-push consumer responsible for
+// translating Analytics "indicator.computed" / "federation.indicator.push.requested"
+// events into outbound indicator pushes (Task 1.4).
+func (ew *EventWorker) WithAutoPushConsumer(a *AutoPushConsumer) *EventWorker {
+	ew.pushAuto = a
+	return ew
 }
 
 // PublishFederationEvent publishes standard EnterpriseEvent
@@ -106,6 +120,16 @@ func (ew *EventWorker) processIncomingEvent(ctx context.Context, evt events.Ente
 
 	case EventComplianceViolation:
 		log.Printf("[EventWorker:ALERT] Transboundary compliance violation recorded for object %s!", evt.ObjectID)
+
+	case EventIndicatorComputed, EventIndicatorPushRequested:
+		// Delegate Analytics indicator events to the auto-push consumer (Task 1.4).
+		if ew.pushAuto != nil {
+			if ew.pushAuto.HandleEnterpriseEvent(ctx, evt) {
+				log.Printf("[EventWorker] Delegated %s to AutoPushConsumer", evt.EventType)
+			}
+		} else {
+			log.Printf("[EventWorker] No AutoPushConsumer attached; ignoring %s event", evt.EventType)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -98,13 +99,19 @@ func main() {
 		if DB == nil || DB.Ping() != nil {
 			dbStatus = "disconnected"
 		}
+		redisAvailable := false
+		if eventBus != nil {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
+			redisAvailable = eventBus.RedisAvailable(ctx)
+			cancel()
+		}
 		c.JSON(200, gin.H{
 			"status":   "healthy",
 			"service":  "statgate-governance",
 			"version":  version,
 			"database": dbStatus,
 			"uptime_s": int(time.Since(startTime).Seconds()),
-			"redis":    redisClient != nil,
+			"redis":    redisAvailable,
 		})
 	})
 
@@ -138,7 +145,7 @@ func main() {
 
 	RegisterRoutes(r)
 
-	port := getEnv("STATGOVERNANCE_PORT", "8093")
+	port := getEnv("PORT", getEnv("STATGOVERNANCE_PORT", "8093"))
 	log.Printf("Starting StatGate StatGovernance v%s Backend Server on :%s...", version, port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Server failed to start: %v", err)

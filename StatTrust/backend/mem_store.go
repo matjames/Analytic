@@ -9,20 +9,20 @@ import (
 )
 
 type MemStore struct {
-	mu              sync.RWMutex
-	incidents       map[string]SecurityIncident
-	siemEvents      []SIEMEvent
-	consents        map[string]PrivacyConsent
-	bcmChecks       []BCMBackupVerification
-	credentials     map[string]VerifiableCredential
-	signatures      map[string]DigitalSignature
-	ledger          []AuditLedgerBlock
-	provenance      map[string]ArtifactProvenance
-	trustEntries    map[string]TrustRegistryEntry
-	interApps       map[string]InterAppStatus
-	encryptionKeys  map[string]EncryptionKey
-	pkiCerts        map[string]PKICertificate
-	timestamps      map[string]TimestampRecord
+	mu             sync.RWMutex
+	incidents      map[string]SecurityIncident
+	siemEvents     []SIEMEvent
+	consents       map[string]PrivacyConsent
+	bcmChecks      []BCMBackupVerification
+	credentials    map[string]VerifiableCredential
+	signatures     map[string]DigitalSignature
+	ledger         []AuditLedgerBlock
+	provenance     map[string]ArtifactProvenance
+	trustEntries   map[string]TrustRegistryEntry
+	interApps      map[string]InterAppStatus
+	encryptionKeys map[string]EncryptionKey
+	pkiCerts       map[string]PKICertificate
+	timestamps     map[string]TimestampRecord
 }
 
 var globalStore *MemStore
@@ -205,8 +205,8 @@ func (s *MemStore) seedInitialData() {
 		AffectedAsset:  "/api/spatial/layers/boundary/confidential",
 		AssignedTo:     "SecOps Team Alpha",
 		Details: map[string]interface{}{
-			"query_count": 840,
-			"time_window": "60s",
+			"query_count":  840,
+			"time_window":  "60s",
 			"action_taken": "Dynamic rate limit enforced via Zero Trust Gateway",
 		},
 		RemediationLog: []string{
@@ -373,20 +373,33 @@ func (s *MemStore) GetHealthSummary() SecurityHealthSummary {
 }
 
 func (s *MemStore) ListIncidents() []SecurityIncident {
+	return s.ListIncidentsScoped("", "")
+}
+
+func (s *MemStore) ListIncidentsScoped(tenantID, workspaceID string) []SecurityIncident {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]SecurityIncident, 0, len(s.incidents))
 	for _, v := range s.incidents {
+		if !matchesScope(v.TenantID, v.WorkspaceID, tenantID, workspaceID) {
+			continue
+		}
 		res = append(res, v)
 	}
 	return res
 }
 
 func (s *MemStore) AddIncident(inc SecurityIncident) SecurityIncident {
+	return s.AddIncidentScoped(inc, inc.TenantID, inc.WorkspaceID)
+}
+
+func (s *MemStore) AddIncidentScoped(inc SecurityIncident, tenantID, workspaceID string) SecurityIncident {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	inc.TenantID = tenantID
+	inc.WorkspaceID = workspaceID
 	if inc.ID == "" {
-		inc.ID = fmt.Sprintf("INC-%d", time.Now().Unix())
+		inc.ID = fmt.Sprintf("INC-%d-%d", time.Now().UnixNano(), len(s.incidents)+1)
 	}
 	if inc.CreatedAt.IsZero() {
 		inc.CreatedAt = time.Now().UTC()
@@ -396,10 +409,17 @@ func (s *MemStore) AddIncident(inc SecurityIncident) SecurityIncident {
 }
 
 func (s *MemStore) UpdateIncidentStatus(id, status, note string) (*SecurityIncident, error) {
+	return s.UpdateIncidentStatusScoped(id, status, note, "", "")
+}
+
+func (s *MemStore) UpdateIncidentStatusScoped(id, status, note, tenantID, workspaceID string) (*SecurityIncident, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inc, exists := s.incidents[id]
 	if !exists {
+		return nil, fmt.Errorf("incident not found: %s", id)
+	}
+	if !matchesScope(inc.TenantID, inc.WorkspaceID, tenantID, workspaceID) {
 		return nil, fmt.Errorf("incident not found: %s", id)
 	}
 	inc.Status = status
@@ -415,36 +435,57 @@ func (s *MemStore) UpdateIncidentStatus(id, status, note string) (*SecurityIncid
 }
 
 func (s *MemStore) ListLedger() []AuditLedgerBlock {
+	return s.ListLedgerScoped("", "")
+}
+
+func (s *MemStore) ListLedgerScoped(tenantID, workspaceID string) []AuditLedgerBlock {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.ledger
+	res := make([]AuditLedgerBlock, 0, len(s.ledger))
+	for _, block := range s.ledger {
+		if matchesScope(block.TenantID, block.WorkspaceID, tenantID, workspaceID) {
+			res = append(res, block)
+		}
+	}
+	return res
 }
 
 func (s *MemStore) AppendLedger(eventType, sourceApp, actorID string, payload map[string]interface{}) AuditLedgerBlock {
+	return s.AppendLedgerScoped(eventType, sourceApp, actorID, payload, "", "")
+}
+
+func (s *MemStore) AppendLedgerScoped(eventType, sourceApp, actorID string, payload map[string]interface{}, tenantID, workspaceID string) AuditLedgerBlock {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	prevHash := "0000000000000000000000000000000000000000000000000000000000000000"
-	index := int64(len(s.ledger) + 1)
-	if len(s.ledger) > 0 {
-		prevHash = s.ledger[len(s.ledger)-1].RecordHash
+	index := int64(1)
+	for i := len(s.ledger) - 1; i >= 0; i-- {
+		if matchesScope(s.ledger[i].TenantID, s.ledger[i].WorkspaceID, tenantID, workspaceID) {
+			index = s.ledger[i].Index + 1
+			prevHash = s.ledger[i].RecordHash
+			break
+		}
 	}
 
 	recHash := calculateRecordHash(index, prevHash, eventType, sourceApp, payload)
 	block := AuditLedgerBlock{
-		Index:      index,
-		PrevHash:   prevHash,
-		RecordHash: recHash,
-		MerkleRoot: recHash,
-		EventType:  eventType,
-		SourceApp:  sourceApp,
-		ActorID:    actorID,
-		Payload:    payload,
-		Timestamp:  time.Now().UTC(),
-		Nonce:      time.Now().UnixNano() % 10000,
+		Index:       index,
+		TenantID:    tenantID,
+		WorkspaceID: workspaceID,
+		PrevHash:    prevHash,
+		RecordHash:  recHash,
+		MerkleRoot:  recHash,
+		EventType:   eventType,
+		SourceApp:   sourceApp,
+		ActorID:     actorID,
+		Payload:     payload,
+		Timestamp:   time.Now().UTC(),
+		Nonce:       time.Now().UnixNano() % 10000,
 	}
 
 	s.ledger = append(s.ledger, block)
+	go persistLedgerBlock(block)
 	return block
 }
 
@@ -473,34 +514,85 @@ func (s *MemStore) IssueCredential(vc VerifiableCredential) VerifiableCredential
 }
 
 func (s *MemStore) ListProvenance() []ArtifactProvenance {
+	return s.ListProvenanceScoped("", "")
+}
+
+func (s *MemStore) ListProvenanceScoped(tenantID, workspaceID string) []ArtifactProvenance {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]ArtifactProvenance, 0, len(s.provenance))
 	for _, v := range s.provenance {
+		if !matchesScope(v.TenantID, v.WorkspaceID, tenantID, workspaceID) {
+			continue
+		}
 		res = append(res, v)
 	}
 	return res
 }
 
 func (s *MemStore) GetProvenance(artifactID string) (*ArtifactProvenance, bool) {
+	return s.GetProvenanceScoped(artifactID, "", "")
+}
+
+func (s *MemStore) GetProvenanceScoped(artifactID, tenantID, workspaceID string) (*ArtifactProvenance, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	p, ok := s.provenance[artifactID]
-	return &p, ok
+
+	if tenantID != "" || workspaceID != "" {
+		if p, ok := s.provenance[provenanceKey(tenantID, workspaceID, artifactID)]; ok {
+			return &p, true
+		}
+	}
+
+	if p, ok := s.provenance[artifactID]; ok && matchesScope(p.TenantID, p.WorkspaceID, tenantID, workspaceID) {
+		return &p, true
+	}
+
+	for _, p := range s.provenance {
+		if p.ArtifactID == artifactID && matchesScope(p.TenantID, p.WorkspaceID, tenantID, workspaceID) {
+			return &p, true
+		}
+	}
+	return nil, false
 }
 
 func (s *MemStore) RegisterProvenance(p ArtifactProvenance) ArtifactProvenance {
+	return s.RegisterProvenanceScoped(p, p.TenantID, p.WorkspaceID)
+}
+
+func (s *MemStore) RegisterProvenanceScoped(p ArtifactProvenance, tenantID, workspaceID string) ArtifactProvenance {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	p.TenantID = tenantID
+	p.WorkspaceID = workspaceID
 	if p.ID == "" {
-		p.ID = fmt.Sprintf("prov_%d", time.Now().Unix())
+		p.ID = fmt.Sprintf("prov_%d_%d", time.Now().UnixNano(), len(s.provenance)+1)
 	}
 	if p.TSATimestamp.IsZero() {
 		p.TSATimestamp = time.Now().UTC()
 	}
 	p.IntegrityState = "VERIFIED"
-	s.provenance[p.ArtifactID] = p
+	s.provenance[provenanceKey(tenantID, workspaceID, p.ArtifactID)] = p
+	go persistProvenance(p)
 	return p
+}
+
+func provenanceKey(tenantID, workspaceID, artifactID string) string {
+	if tenantID == "" && workspaceID == "" {
+		return artifactID
+	}
+	return tenantID + "\x1f" + workspaceID + "\x1f" + artifactID
+}
+
+func matchesScope(recordTenant, recordWorkspace, tenantID, workspaceID string) bool {
+	if tenantID != "" && recordTenant != tenantID {
+		// Preserve the seeded, pre-workspace tenant-alpha records for the
+		// legacy default scope while keeping explicit workspace scopes isolated.
+		if !(recordTenant == "" && tenantID == "tenant-alpha" && workspaceID == "") {
+			return false
+		}
+	}
+	return workspaceID == "" || recordWorkspace == workspaceID
 }
 
 func (s *MemStore) ListInterApps() []InterAppStatus {
@@ -703,5 +795,3 @@ func (s *MemStore) UpsertTrustEntry(entry TrustRegistryEntry) TrustRegistryEntry
 	s.trustEntries[entry.DID] = entry
 	return entry
 }
-
-

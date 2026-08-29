@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+: "${STATCOLLECT_API_KEY:?STATCOLLECT_API_KEY must be set}"
 ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$ROOT/.."
 
@@ -45,31 +46,31 @@ echo "--- 3. Submit sample ---"
 cat > /tmp/sample.xml <<'XML'
 <data><instanceID>test-inst-1</instanceID><value>42</value></data>
 XML
-curl -s -X POST -H "X-API-Key: changeme" -H "X-Instance-ID: test-inst-1" -F "xml_submission_file=@/tmp/sample.xml" http://localhost:8080/submission | grep -q "ok" && echo "PASS: submission accepted" || echo "FAIL: submission"
+curl -s -X POST -H "X-API-Key: ${STATCOLLECT_API_KEY}" -H "X-Instance-ID: test-inst-1" -F "xml_submission_file=@/tmp/sample.xml" http://localhost:8080/submission | grep -q "ok" && echo "PASS: submission accepted" || echo "FAIL: submission"
 
 # 4. List submissions (with tenant/status)
 echo "--- 4. List submissions ---"
-curl -s -H "X-API-Key: changeme" "http://localhost:8080/admin/submissions?per_page=10&page=1" | jq '.items[0] | {instance_id, tenant_id, status}' && echo "PASS: submissions list" || echo "FAIL: submissions list"
+curl -s -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/submissions?per_page=10&page=1" | jq '.items[0] | {instance_id, tenant_id, status}' && echo "PASS: submissions list" || echo "FAIL: submissions list"
 
 # 5. Get submission detail
 echo "--- 5. Get submission detail ---"
-curl -s -H "X-API-Key: changeme" "http://localhost:8080/admin/submission?instance_id=test-inst-1" | jq '.summary | {instance_id, form_id, status}' && echo "PASS: submission detail" || echo "FAIL: submission detail"
+curl -s -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/submission?instance_id=test-inst-1" | jq '.summary | {instance_id, form_id, status}' && echo "PASS: submission detail" || echo "FAIL: submission detail"
 
 # 6. Validate submission (workflow)
 echo "--- 6. Validate submission ---"
-curl -s -X POST -H "X-API-Key: changeme" "http://localhost:8080/admin/submission/validate?instance_id=test-inst-1&status=approved&notes=Integration+test" | jq '.status' && echo "PASS: validation workflow" || echo "FAIL: validation"
+curl -s -X POST -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/submission/validate?instance_id=test-inst-1&status=approved&notes=Integration+test" | jq '.status' && echo "PASS: validation workflow" || echo "FAIL: validation"
 
 # 7. Check event log
 echo "--- 7. Event log ---"
-curl -s -H "X-API-Key: changeme" "http://localhost:8080/admin/events?object_type=submission&object_id=test-inst-1" | jq '.events[0] | {event_type, source}' && echo "PASS: event log" || echo "FAIL: event log"
+curl -s -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/events?object_type=submission&object_id=test-inst-1" | jq '.events[0] | {event_type, source}' && echo "PASS: event log" || echo "FAIL: event log"
 
 # 8. Object links
 echo "--- 8. Object links ---"
-curl -s -H "X-API-Key: changeme" "http://localhost:8080/admin/objects/links?object_type=submission&object_id=test-inst-1" | jq '.count' && echo "PASS: object links" || echo "FAIL: object links"
+curl -s -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/objects/links?object_type=submission&object_id=test-inst-1" | jq '.count' && echo "PASS: object links" || echo "FAIL: object links"
 
 # 9. StatChat discussion link
 echo "--- 9. StatChat discussion ---"
-curl -s -H "X-API-Key: changeme" "http://localhost:8080/admin/submission/discussion?instance_id=test-inst-1" | jq '.conversation_id' 2>/dev/null && echo "PASS: discussion link" || echo "SKIP: discussion (StatChat may not be running)"
+curl -s -H "X-API-Key: ${STATCOLLECT_API_KEY}" "http://localhost:8080/admin/submission/discussion?instance_id=test-inst-1" | jq '.conversation_id' 2>/dev/null && echo "PASS: discussion link" || echo "SKIP: discussion (StatChat may not be running)"
 
 echo ""
 echo "=== Integration tests complete ==="

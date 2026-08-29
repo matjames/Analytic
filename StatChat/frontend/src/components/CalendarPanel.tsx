@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { User, CallSession, CallRecording } from '../types';
+import type { User, CallSession, CallRecording, CalendarEvent } from '../types';
 import type { CalendarSubView } from '../App';
 import {
   fetchMeetings,
@@ -8,6 +8,10 @@ import {
   fetchMeetingCallSession,
   fetchCallRecordings,
   createCallSession,
+  fetchCalendarEvents,
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
   type Meeting,
   type MeetingRoom,
   type MeetingRecording,
@@ -36,6 +40,11 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
   const [sessionRecordings, setSessionRecordings] = useState<CallRecording[]>([]);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventStart, setEventStart] = useState('');
+  const [eventEnd, setEventEnd] = useState('');
+  const [calendarError, setCalendarError] = useState<string | null>(null);
   const isDark = theme === 'dark';
   const bg = isDark ? '#0a2b45' : '#ffffff';
   const textColor = isDark ? '#e8eef4' : '#1a1a1a';
@@ -77,7 +86,46 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
     fetchMeetings().then(setMeetings).catch(() => {});
     fetchMeetingRooms().then(setRooms).catch(() => {});
     fetchMeetingRecordings().then(setRecordings).catch(() => {});
+    fetchCalendarEvents().then(setEvents).catch(() => {});
   }, []);
+
+  const handleCreateEvent = async () => {
+    if (!eventTitle.trim() || !eventStart || !eventEnd) return;
+    setCalendarError(null);
+    try {
+      const created = await createCalendarEvent({
+        title: eventTitle.trim(), startAt: new Date(eventStart).toISOString(), endAt: new Date(eventEnd).toISOString(),
+        allDay: false, attendeeIds: user?.id ? [user.id] : [],
+      });
+      setEvents((previous) => [...previous, created].sort((a, b) => a.startAt.localeCompare(b.startAt)));
+      setEventTitle(''); setEventStart(''); setEventEnd('');
+    } catch (reason) { setCalendarError(reason instanceof Error ? reason.message : 'Failed to create event'); }
+  };
+
+  const handleDeleteEvent = async (event: CalendarEvent) => {
+    try { await deleteCalendarEvent(event.id); setEvents((previous) => previous.filter((item) => item.id !== event.id)); }
+    catch (reason) { setCalendarError(reason instanceof Error ? reason.message : 'Failed to delete event'); }
+  };
+
+  const handleEditEvent = async (event: CalendarEvent) => {
+    const title = window.prompt('Event title', event.title)?.trim();
+    if (!title) return;
+    try {
+      const updated = await updateCalendarEvent(event.id, {
+        title,
+        description: event.description,
+        location: event.location,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        allDay: event.allDay,
+        conversationId: event.conversationId,
+        attendeeIds: event.attendeeIds,
+      });
+      setEvents((previous) => previous.map((item) => item.id === updated.id ? updated : item));
+    } catch (reason) {
+      setCalendarError(reason instanceof Error ? reason.message : 'Failed to update event');
+    }
+  };
 
   useEffect(() => {
     if (session && joined && session.id) {
@@ -195,8 +243,22 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
   const renderSchedule = () => (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 className={styles.sectionHeader} style={{ margin: 0 }}>Upcoming Meetings</h2>
+        <h2 className={styles.sectionHeader} style={{ margin: 0 }}>Calendar</h2>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: 8, marginBottom: 16 }}>
+        <input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Event title" />
+        <input type="datetime-local" value={eventStart} onChange={(e) => setEventStart(e.target.value)} aria-label="Event start" />
+        <input type="datetime-local" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} aria-label="Event end" />
+        <button type="button" className={styles.joinBtn} onClick={handleCreateEvent}>Create event</button>
+      </div>
+      {calendarError && <p role="alert" style={{ color: '#dc2626' }}>{calendarError}</p>}
+      {events.map((event) => (
+        <div key={event.id} className={styles.meetingCard} style={{ background: bg, borderColor }}>
+          <div style={{ flex: 1 }}><div className={styles.meetingTitle}>{event.title}</div><div className={styles.meetingMeta}><span>{new Date(event.startAt).toLocaleString()}</span><span>to {new Date(event.endAt).toLocaleString()}</span>{event.location && <span>{event.location}</span>}</div></div>
+          {event.createdBy === user?.id && <div style={{ display: 'flex', gap: 8 }}><button type="button" className={styles.scheduleBtn} onClick={() => handleEditEvent(event)}>Edit</button><button type="button" className={styles.scheduleBtn} onClick={() => handleDeleteEvent(event)}>Delete</button></div>}
+        </div>
+      ))}
+      <h3 className={styles.sectionHeader}>Upcoming Meetings</h3>
       <p className={styles.subheader}>Native StatChat meetings — no external accounts needed</p>
       {meetings.map((meeting) => (
         <div key={meeting.id} className={styles.meetingCard} style={{ background: bg, borderColor }}>
@@ -334,6 +396,7 @@ export default function CalendarPanel({ user, theme, isMobile, activeCalendarVie
           micMuted={micMuted}
           cameraOff={cameraOff}
           connecting={connecting}
+          currentUserId={user?.id}
           currentUserName={user?.name}
           onToggleMute={toggleMute}
           onToggleCamera={toggleCamera}

@@ -10,5 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/knowledge-portal ./cmd/server
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/knowledge-portal /knowledge-portal
-EXPOSE 8097
+# Public Open Data Portal UI (no-build HTML/JS) mounted onto the binary.
+COPY knowledge-portal/frontend /frontend
+ENV KNOWLEDGE_FRONTEND_DIR=/frontend
+EXPOSE 8099
 ENTRYPOINT ["/knowledge-portal"]

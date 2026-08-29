@@ -65,6 +65,7 @@ tmp/
 *.sqlite3
 *.db
 .gocache/
+.gomodcache/
 *.exe
 **/uploads/
 phaseV_complete.txt
@@ -120,3 +121,13 @@ enterprise/_kt.txt
 !**/requirements.txt
 !**/proguard-rules.txt
 !**/robots.txt
+
+*_original.json
+*.bak
+data/compose-config.txt
+data/dashboards/
+vite.config.js.timestamp-*.mjs
+# Session/runtime artifacts (2026-08-29)
+.emu/
+.gemini/
+compose-up.err

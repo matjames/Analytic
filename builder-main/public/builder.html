@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>StatGate Report Builder - Report Builder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/builder.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header-left">
+            <a href="index.html" class="header-brand">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo" loading="lazy">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <!-- Open Report Dropdown -->
+            <div class="header-dropdown" id="open-report-dropdown">
+                <button class="btn-header-action" id="btn-open-report">
+                    Open
+                    <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="header-dropdown-menu hidden" id="open-report-menu">
+                    <button class="dropdown-item" data-action="import">
+                        <div class="dropdown-item-content">
+                            <span class="dropdown-item-label">Import YAML</span>
+                            <span class="dropdown-item-desc">Paste YAML to load</span>
+                        </div>
+                    </button>
+                    <button class="dropdown-item" data-action="edit">
+                        <div class="dropdown-item-content">
+                            <span class="dropdown-item-label">Edit Existing</span>
+                            <span class="dropdown-item-desc">Load from server</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+            <button class="btn-header-action" id="btn-new-report" title="Start new report">
+                New
+            </button>
+        </div>
+    </header>
+
+    <!-- Top Navigation Tabs - Linear Workflow -->
+    <nav class="builder-nav">
+        <div class="builder-tabs">
+            <button class="builder-tab active" data-tab="metadata">
+                <span class="tab-number">1</span>
+                <span class="tab-label">Metadata</span>
+                <span class="tab-badge" id="badge-metadata"></span>
+            </button>
+            <button class="builder-tab" data-tab="sections">
+                <span class="tab-number">2</span>
+                <span class="tab-label">Sections</span>
+                <span class="tab-badge" id="badge-sections"></span>
+            </button>
+            <button class="builder-tab" data-tab="preview">
+                <span class="tab-number">3</span>
+                <span class="tab-label">Preview</span>
+            </button>
+            <button class="builder-tab" data-tab="publish">
+                <span class="tab-number">4</span>
+                <span class="tab-label">Publish</span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="builder-container panel-collapsed">
+        <!-- Main Content Area -->
+        <main class="builder-main">
+            <!-- Tab 1: Import YAML -->
+            <section class="tab-content" id="tab-import">
+                <h2>Import YAML</h2>
+                <p class="tab-description">Paste an existing report YAML to load it into the builder for editing.</p>
+
+                <div class="form-group">
+                    <label for="import-yaml">YAML Content</label>
+                    <textarea id="import-yaml" class="yaml-import" placeholder="Paste your YAML report configuration here..."></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn-primary" id="btn-import-yaml">Load YAML</button>
+                </div>
+            </section>
+
+            <!-- Tab 2: Edit Existing -->
+            <section class="tab-content hidden" id="tab-edit">
+                <h2>Edit Existing Report</h2>
+                <p class="tab-description">Select a report from the server to load and edit.</p>
+
+                <div class="report-picker-search">
+                    <input type="text" id="report-picker-search" class="form-input" placeholder="Search reports...">
+                </div>
+                <div class="report-picker-list" id="report-picker-list">
+                    <div class="loading-spinner"></div>
+                    <p>Loading reports...</p>
+                </div>
+            </section>
+
+            <!-- Tab 3: Metadata (Report Info) -->
+            <section class="tab-content hidden" id="tab-metadata">
+                <h2>Report Information</h2>
+
+                <div class="form-group">
+                    <label for="report-id">Report Name * <span class="help-tooltip" data-tooltip="Unique identifier for this report. Use lowercase with hyphens.">?</span></label>
+                    <input type="text" id="report-id" class="form-input" placeholder="e.g., malaria-monthly-report" required>
+                    <small class="hint">Format: alphanumeric, hyphens, underscores only.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="report-title">Title * <span class="help-tooltip" data-tooltip="The display title shown in the report header and sidebar navigation.">?</span></label>
+                    <input type="text" id="report-title" class="form-input" placeholder="Report title" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="report-keywords">Keywords <span class="help-tooltip" data-tooltip="Comma-separated keywords to help users discover this report in search. Click suggestions below or type your own.">?</span></label>
+                    <input type="text" id="report-keywords" class="form-input" placeholder="e.g., malaria, infectious disease, NMCD, outbreak">
+                    <div class="keywords-suggestions" id="keywords-suggestions">
+                        <span class="suggestion-label">Suggested:</span>
+                        <div class="suggestion-chips" id="suggestion-chips"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="report-author">Author <span class="help-tooltip" data-tooltip="Name of the report author for audit trail purposes. Not displayed in the report.">?</span></label>
+                    <input type="text" id="report-author" class="form-input" placeholder="e.g., John Doe">
+                    <small class="hint">For audit trail only - not displayed in the report.</small>
+                </div>
+
+                <!-- Collapsible Time Filters Section -->
+                <div class="form-group">
+                    <div class="collapsible-header" id="time-filters-header" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <label style="cursor: pointer; margin: 0;">Time Filters <span class="help-tooltip" data-tooltip="Select which time-based filters users can apply to this report.">?</span></label>
+                        <span class="collapse-icon">▶</span>
+                    </div>
+                    <div class="collapsible-content" id="time-filters-content" style="display: none; margin-top: 10px; padding-left: 20px;">
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="year" id="filter-year">
+                                Year
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="month" id="filter-month">
+                                Month
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="week" id="filter-week">
+                                Week
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="quarter" id="filter-quarter">
+                                Quarter
+                            </label>
+                        </div>
+
+                        <!-- Time Column Configuration -->
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--color-border);">
+                            <h5 style="margin-bottom: 10px; font-size: 0.9em;">Time Column Configuration</h5>
+                            <small class="hint" style="display: block; margin-bottom: 10px;">Map filter types to database columns for extracting year, month, week values</small>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="time-column-year" style="font-size: 0.85em;">Year Column</label>
+                                <input type="text" id="time-column-year" class="form-input" placeholder="e.g., period_date" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="time-column-month" style="font-size: 0.85em;">Month Column</label>
+                                <input type="text" id="time-column-month" class="form-input" placeholder="e.g., period_date" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="time-column-week" style="font-size: 0.85em;">Week Column</label>
+                                <input type="text" id="time-column-week" class="form-input" placeholder="e.g., tperiod" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="time-column-quarter" style="font-size: 0.85em;">Quarter Column</label>
+                                <input type="text" id="time-column-quarter" class="form-input" placeholder="e.g., quarter" style="font-size: 0.9em;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collapsible Location Filters Section -->
+                <div class="form-group">
+                    <div class="collapsible-header" id="location-filters-header" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <label style="cursor: pointer; margin: 0;">Location Filters <span class="help-tooltip" data-tooltip="Select which location-based filters users can apply. Region and Facility are mutually exclusive (can only use one at a time).">?</span></label>
+                        <span class="collapse-icon">▶</span>
+                    </div>
+                    <div class="collapsible-content" id="location-filters-content" style="display: none; margin-top: 10px; padding-left: 20px;">
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="district" id="filter-district">
+                                District
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="region" id="filter-region">
+                                Region (multi-select)
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="filters" value="facility" id="filter-facility">
+                                Facility
+                            </label>
+                            <div id="facility-type-options" style="display: none; padding-left: 24px; margin-top: 4px; margin-bottom: 4px;">
+                                <label style="font-size: 0.85em; margin-right: 16px; cursor: pointer;">
+                                    <input type="radio" name="facility-type" value="facility" id="facility-type-multi" checked>
+                                    Multi-select (typeahead)
+                                </label>
+                                <label style="font-size: 0.85em; cursor: pointer;">
+                                    <input type="radio" name="facility-type" value="facility_select" id="facility-type-single">
+                                    Single-select dropdown
+                                </label>
+                            </div>
+                        </div>
+                        <small class="hint" style="display: block; margin-top: 8px; color: var(--color-text-muted);">Note: Region and Facility filters are mutually exclusive in the report viewer.</small>
+
+                        <!-- Location Column Configuration -->
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--color-border);">
+                            <h5 style="margin-bottom: 10px; font-size: 0.9em;">Location Column Configuration</h5>
+                            <small class="hint" style="display: block; margin-bottom: 10px;">Customize column names if they differ from defaults</small>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="location-column-district" style="font-size: 0.85em;">District Column</label>
+                                <input type="text" id="location-column-district" class="form-input" placeholder="district" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="location-column-region" style="font-size: 0.85em;">Region Column</label>
+                                <input type="text" id="location-column-region" class="form-input" placeholder="region" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="location-column-facility" style="font-size: 0.85em;">Facility Column</label>
+                                <input type="text" id="location-column-facility" class="form-input" placeholder="facility" style="font-size: 0.9em;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collapsible Custom Filters Section -->
+                <div class="form-group">
+                    <div class="collapsible-header" id="custom-filters-header" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <label style="cursor: pointer; margin: 0;">Custom Column Filters <span class="help-tooltip" data-tooltip="Define custom filters based on any column in your database. Users can filter report data by these values.">?</span></label>
+                        <span class="collapse-icon">▶</span>
+                    </div>
+                    <div class="collapsible-content" id="custom-filters-content" style="display: none; margin-top: 10px; padding-left: 20px;">
+                        <small class="hint" style="display: block; margin-bottom: 15px;">Add custom dropdown filters based on distinct column values (max 20 values per filter).</small>
+
+                        <!-- Custom Filters List -->
+                        <div id="custom-filters-list" style="margin-bottom: 15px;">
+                            <!-- Custom filter entries will be added here dynamically -->
+                        </div>
+
+                        <!-- Add Custom Filter Form -->
+                        <div id="add-custom-filter-form" style="padding: 15px; background: var(--color-hover); border-radius: 8px; border: 1px dashed var(--color-border);">
+                            <h5 style="margin-bottom: 12px; font-size: 0.9em;">Add New Custom Filter</h5>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="custom-filter-schema" style="font-size: 0.85em;">Schema</label>
+                                <select id="custom-filter-schema" class="form-input" style="font-size: 0.9em;">
+                                    <option value="">Select schema...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="custom-filter-table" style="font-size: 0.85em;">Table</label>
+                                <select id="custom-filter-table" class="form-input" style="font-size: 0.9em;" disabled>
+                                    <option value="">Select table...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="custom-filter-column" style="font-size: 0.85em;">Column</label>
+                                <select id="custom-filter-column" class="form-input" style="font-size: 0.9em;" disabled>
+                                    <option value="">Select column...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="custom-filter-label" style="font-size: 0.85em;">Display Label</label>
+                                <input type="text" id="custom-filter-label" class="form-input" placeholder="e.g., Age Group" style="font-size: 0.9em;">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label for="custom-filter-type" style="font-size: 0.85em;">Filter Type</label>
+                                <select id="custom-filter-type" class="form-input" style="font-size: 0.9em;">
+                                    <option value="select">Single Select</option>
+                                    <option value="multiselect">Multi-Select</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="custom-filter-default-group" style="margin-bottom: 15px;">
+                                <label for="custom-filter-default" style="font-size: 0.85em;">Default Value</label>
+                                <select id="custom-filter-default" class="form-input" style="font-size: 0.9em;" disabled>
+                                    <option value="">Select a column first...</option>
+                                </select>
+                                <small class="hint" style="display: block; margin-top: 4px;">Leave blank to use the first available value.</small>
+                            </div>
+
+                            <div class="form-group" id="custom-filter-no-default-group" style="margin-bottom: 15px;">
+                                <label style="font-size: 0.85em; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" id="custom-filter-no-default">
+                                    Start blank (no pre-selected value)
+                                </label>
+                                <small class="hint" style="display: block; margin-top: 4px;">When checked, the filter shows "None" on load instead of auto-selecting the first option.</small>
+                            </div>
+
+                            <div class="form-group" id="custom-filter-hide-none-group" style="margin-bottom: 15px;">
+                                <label style="font-size: 0.85em; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                    <input type="checkbox" id="custom-filter-hide-none">
+                                    Hide "None" option
+                                </label>
+                                <small class="hint" style="display: block; margin-top: 4px;">When checked, the blank "None" option is removed from the dropdown — a value must always be selected.</small>
+                            </div>
+
+                            <button type="button" id="btn-add-custom-filter" class="btn-small btn-primary" style="width: 100%;">+ Add Filter</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab 4: Sections & Components -->
+            <section class="tab-content hidden" id="tab-sections">
+                <h2>Report Sections & Components</h2>
+                <div id="sections-container"></div>
+                <div id="components-container"></div>
+            </section>
+
+            <!-- Tab 5: Report Preview -->
+            <section class="tab-content hidden" id="tab-preview">
+                <div class="preview-tab-header">
+                    <h2>Report Preview</h2>
+                    <button class="btn-primary" id="btn-refresh-preview">
+                        Refresh Preview
+                    </button>
+                </div>
+
+                <div class="preview-filters-bar" id="preview-filters-bar">
+                    <!-- Dynamic filter dropdowns rendered by JS -->
+                </div>
+
+                <div class="preview-empty-state hidden" id="preview-empty-state">
+                    <div class="empty-icon">No Components</div>
+                    <h3>Nothing to Preview</h3>
+                    <p>Add sections and components to see your report here.</p>
+                    <button class="btn-secondary" id="btn-goto-sections">Go to Sections Tab</button>
+                </div>
+
+                <div class="preview-loading hidden" id="preview-loading">
+                    <div class="loading-spinner"></div>
+                    <p id="preview-loading-status">Loading preview...</p>
+                    <ul class="preview-loading-steps" id="preview-loading-steps"></ul>
+                </div>
+
+                <div class="preview-render-area hidden" id="preview-render-area">
+                    <!-- Rendered report appears here -->
+                </div>
+            </section>
+
+            <!-- Tab 6: Publish -->
+            <section class="tab-content hidden" id="tab-publish">
+                <h2>Publish Report</h2>
+                <p class="tab-description">Validate your report, then publish to the server.</p>
+
+                <div class="publish-form">
+                    <div class="form-group">
+                        <label for="publish-category">Category *</label>
+                        <select id="publish-category" class="form-input" required>
+                            <option value="">Select category...</option>
+                        </select>
+                        <small class="hint">The top-level folder where the report will be saved</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="publish-subcategory">Subcategory (optional)</label>
+                        <select id="publish-subcategory" class="form-input">
+                            <option value="">None</option>
+                        </select>
+                        <small class="hint">Optional subfolder within the category</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="publish-filename">Filename *</label>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="text" id="publish-filename" class="form-input" placeholder="my-report" required style="flex: 1;">
+                            <span>.yaml</span>
+                        </div>
+                        <small class="hint">Use lowercase with hyphens (e.g., malaria-monthly)</small>
+                    </div>
+
+                    <div id="publish-field-error" class="publish-error hidden"></div>
+
+                    <div class="form-actions" style="margin-top: 20px;">
+                        <button class="btn-primary" id="btn-validate-publish">Validate</button>
+                    </div>
+                </div>
+
+                <div id="publish-validation-results" class="hidden"></div>
+
+                <div id="publish-actions" class="publish-actions hidden">
+                    <div id="publish-overwrite-section" class="publish-warning hidden">
+                        <strong>Warning:</strong> A file with this name already exists. Check the box below to overwrite it.
+                        <label class="checkbox-label" style="margin-top: 10px;">
+                            <input type="checkbox" id="publish-overwrite">
+                            Overwrite existing file
+                        </label>
+                    </div>
+
+                    <div class="form-actions" style="margin-top: 15px;">
+                        <button class="btn-primary" id="btn-confirm-publish">Publish Report</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Right Panel - YAML Preview (Collapsible, starts collapsed) -->
+        <aside class="builder-preview collapsed" id="yaml-panel">
+            <div class="panel-toggle" id="panel-toggle" title="Show YAML Preview">
+                <span class="toggle-icon">◀</span>
+            </div>
+            <div class="panel-content">
+                <div class="preview-header">
+                    <h3>YAML Preview</h3>
+                    <div class="preview-controls">
+                        <button class="btn-small" id="btn-copy-preview" title="Copy YAML">Copy</button>
+                        <button class="btn-small btn-primary" id="btn-generate-yaml" title="Generate final YAML">Generate</button>
+                        <span id="copy-feedback" class="copy-feedback"></span>
+                    </div>
+                </div>
+                <pre class="preview-content" id="preview-content"># Click "Generate" to see YAML
+# or "Save Component" after editing</pre>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modal for Component Form -->
+    <div class="modal hidden" id="component-modal">
+        <div class="modal-content modal-component">
+            <div class="component-modal-layout">
+
+                <!-- Left panel: type picker -->
+                <div class="component-modal-left">
+                    <div class="component-modal-left-header">
+                        <span>Component Type</span>
+                    </div>
+                    <div id="component-type-panel" class="component-type-panel-scroll"></div>
+                </div>
+
+                <!-- Right panel: configuration form -->
+                <div class="component-modal-right">
+                    <div class="component-modal-right-header">
+                        <h3 id="modal-title">Add Component</h3>
+                        <button class="modal-close" id="btn-close-component-modal" aria-label="Close">×</button>
+                    </div>
+                    <div id="component-form-container" class="modal-form-scroll"></div>
+                    <div class="modal-actions">
+                        <a href="#" class="action-link action-cancel" id="btn-close-component-modal-2">Cancel</a>
+                        <a href="#" class="action-link action-save" id="btn-save-component">Save Component</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for YAML Output -->
+    <div class="modal hidden" id="yaml-modal">
+        <div class="modal-content modal-large">
+            <button class="modal-close" id="btn-close-yaml-modal">×</button>
+            <h3>Generated YAML</h3>
+            <div class="hint" style="background: #f0f7ff; padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #3b82f6;">
+                <strong>Tip:</strong> You can copy this YAML or use the Publish tab to save directly to the server.
+            </div>
+            <textarea id="yaml-output" class="yaml-output" readonly></textarea>
+            <div class="modal-buttons">
+                <button class="btn-primary" id="btn-copy-yaml">Copy to Clipboard</button>
+                <button class="btn-secondary" id="btn-download-yaml">Download as File</button>
+                <span id="yaml-copy-feedback" class="copy-feedback"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Query Preview -->
+    <div class="modal hidden" id="preview-modal">
+        <div class="modal-content modal-large">
+            <button class="modal-close" id="btn-close-preview-modal">×</button>
+            <h3>Query Preview</h3>
+            <div id="preview-result-container"></div>
+        </div>
+    </div>
+
+    <!-- Chart.js and Leaflet for preview rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Component rendering functions -->
+    <script src="js/apiCache.js"></script>
+    <script src="js/telemetry.js"></script>
+    <script src="js/components.js"></script>
+
+    <!-- Main builder module -->
+    <script type="module" src="js/builder/main.js"></script>
+</body>
+</html>

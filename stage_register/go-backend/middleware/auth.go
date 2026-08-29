@@ -23,6 +23,7 @@ func InternalServiceRequired() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid internal service credential"})
 			return
 		}
+		c.Set("internal_service", true)
 		c.Next()
 	}
 }

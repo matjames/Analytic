@@ -1,8 +1,10 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"statchat/pkg/model"
 	"statchat/pkg/store"
@@ -15,8 +17,12 @@ import (
 func upvoteKnowledgeIdeaHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	ideaID := vars["id"]
-	votes, err := store.UpvoteKnowledgeIdea(ideaID)
+	votes, err := store.UpvoteKnowledgeIdea(ideaID, requestTenantID(r), requestUserID(r))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "idea not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to upvote idea")
 		return
 	}
@@ -26,8 +32,12 @@ func upvoteKnowledgeIdeaHandler(w http.ResponseWriter, r *http.Request) {
 func followKnowledgeExpertHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	expertID := vars["id"]
-	followers, err := store.FollowKnowledgeExpert(expertID)
+	followers, err := store.FollowKnowledgeExpert(expertID, requestTenantID(r), requestUserID(r))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "expert not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to follow expert")
 		return
 	}
@@ -37,8 +47,12 @@ func followKnowledgeExpertHandler(w http.ResponseWriter, r *http.Request) {
 func sharePostHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	postID := vars["id"]
-	shares, err := store.SharePost(postID)
+	shares, err := store.SharePost(postID, requestTenantID(r))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "post not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to share post")
 		return
 	}
@@ -65,15 +79,20 @@ func addReactionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "emoji is required")
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = requestUserID(r)
+	message, accessible := requireMessageAccess(w, r, messageID)
+	if !accessible {
+		return
 	}
+	req.UserID = requestUserID(r)
 
 	reaction, err := store.AddReaction(messageID, req.UserID, req.Emoji)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to add reaction")
 		return
 	}
+	store.BroadcastEnvelope(message.TenantID, message.ConversationID, "message.reaction.added", map[string]interface{}{
+		"conversationId": message.ConversationID, "messageId": messageID, "reaction": reaction,
+	})
 	writeJSON(w, reaction)
 }
 
@@ -90,14 +109,19 @@ func removeReactionHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "emoji is required")
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = requestUserID(r)
+	message, accessible := requireMessageAccess(w, r, messageID)
+	if !accessible {
+		return
 	}
+	req.UserID = requestUserID(r)
 
 	if err := store.RemoveReaction(messageID, req.UserID, req.Emoji); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to remove reaction")
 		return
 	}
+	store.BroadcastEnvelope(message.TenantID, message.ConversationID, "message.reaction.removed", map[string]interface{}{
+		"conversationId": message.ConversationID, "messageId": messageID, "userId": req.UserID, "emoji": req.Emoji,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -107,19 +131,12 @@ func togglePostLikeHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	postID := vars["id"]
 
-	var req struct {
-		UserID string `json:"userId"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request payload")
-		return
-	}
-	if req.UserID == "" {
-		req.UserID = requestUserID(r)
-	}
-
-	liked, err := store.TogglePostLike(postID, req.UserID)
+	liked, err := store.TogglePostLike(postID, requestUserID(r), requestTenantID(r))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "post not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to toggle post like")
 		return
 	}
@@ -130,7 +147,7 @@ func postCommentsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	postID := vars["id"]
 
-	comments, err := store.GetPostComments(postID)
+	comments, err := store.GetPostComments(postID, requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load comments")
 		return
@@ -143,10 +160,7 @@ func addPostCommentHandler(w http.ResponseWriter, r *http.Request) {
 	postID := vars["id"]
 
 	var req struct {
-		Author string `json:"author"`
-		Role   string `json:"role"`
-		Org    string `json:"org"`
-		Text   string `json:"text"`
+		Text string `json:"text"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
@@ -156,18 +170,30 @@ func addPostCommentHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
-	if req.Author == "" {
-		req.Author = "StatChat User"
+	currentUser, err := requestCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authenticated user is required")
+		return
+	}
+	role := ""
+	if len(currentUser.Roles) > 0 {
+		role = currentUser.Roles[0]
 	}
 
 	comment, err := store.AddPostComment(model.PostComment{
-		PostID: postID,
-		Author: req.Author,
-		Role:   req.Role,
-		Org:    req.Org,
-		Text:   req.Text,
+		TenantID: requestTenantID(r),
+		AuthorID: currentUser.ID,
+		PostID:   postID,
+		Author:   currentUser.Name,
+		Role:     role,
+		Org:      currentUser.OrganizationID,
+		Text:     req.Text,
 	})
 	if err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "post not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to add comment")
 		return
 	}
@@ -187,14 +213,19 @@ func markMessageReadHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.UserID == "" {
-		req.UserID = requestUserID(r)
+	message, accessible := requireMessageAccess(w, r, messageID)
+	if !accessible {
+		return
 	}
+	req.UserID = requestUserID(r)
 
 	if err := store.MarkMessageRead(messageID, req.UserID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to mark message as read")
 		return
 	}
+	store.BroadcastEnvelope(message.TenantID, message.ConversationID, "message.read", map[string]interface{}{
+		"conversationId": message.ConversationID, "messageId": messageID, "userId": req.UserID,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -208,6 +239,9 @@ type pinMessageRequest struct {
 func pinnedMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conversationID := vars["id"]
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
 
 	pins, err := store.GetPinnedMessages(conversationID)
 	if err != nil {
@@ -220,6 +254,9 @@ func pinnedMessagesHandler(w http.ResponseWriter, r *http.Request) {
 func pinMessageHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conversationID := vars["id"]
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
 
 	var req pinMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -230,9 +267,15 @@ func pinMessageHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "messageId is required")
 		return
 	}
-	if req.PinnedBy == "" {
-		req.PinnedBy = requestUserID(r)
+	message, accessible := requireMessageAccess(w, r, req.MessageID)
+	if !accessible {
+		return
 	}
+	if message.ConversationID != conversationID {
+		writeError(w, http.StatusBadRequest, "message does not belong to this conversation")
+		return
+	}
+	req.PinnedBy = requestUserID(r)
 
 	pin, err := store.PinMessage(conversationID, req.MessageID, req.PinnedBy)
 	if err != nil {
@@ -245,6 +288,9 @@ func pinMessageHandler(w http.ResponseWriter, r *http.Request) {
 func unpinMessageHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conversationID := vars["id"]
+	if !requireConversationAccess(w, r, conversationID) {
+		return
+	}
 
 	var req struct {
 		MessageID string `json:"messageId"`
@@ -269,14 +315,10 @@ func unpinMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 func tasksHandler(w http.ResponseWriter, r *http.Request) {
 	conversationID := r.URL.Query().Get("conversationId")
-	var tasks []model.Task
-	var err error
-
-	if conversationID != "" {
-		tasks, err = store.GetTasksByConversation(conversationID)
-	} else {
-		tasks, err = store.GetTasks()
+	if conversationID != "" && !requireConversationAccess(w, r, conversationID) {
+		return
 	}
+	tasks, err := store.GetTasksForUser(requestTenantID(r), requestUserID(r), conversationID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load tasks")
 		return
@@ -290,13 +332,14 @@ func createTaskHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.Title == "" {
-		writeError(w, http.StatusBadRequest, "title is required")
+	if !validateTaskInput(w, &req, false) {
 		return
 	}
-	if req.CreatedBy == "" {
-		req.CreatedBy = requestUserID(r)
+	if req.ConversationID != "" && !requireConversationAccess(w, r, req.ConversationID) {
+		return
 	}
+	req.CreatedBy = requestUserID(r)
+	req.TenantID = requestTenantID(r)
 
 	task, err := store.CreateTask(req)
 	if err != nil {
@@ -317,17 +360,65 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.Status == "" {
-		writeError(w, http.StatusBadRequest, "status is required")
+	if !isTaskStatus(req.Status) {
+		writeError(w, http.StatusBadRequest, "status must be todo, in_progress, blocked, or done")
 		return
 	}
 
-	task, err := store.UpdateTaskStatus(taskID, req.Status)
+	task, err := store.GetTaskForUser(taskID, requestTenantID(r), requestUserID(r))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+	task.Status = req.Status
+	task, err = store.UpdateTask(task)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update task status")
 		return
 	}
 	writeJSON(w, task)
+}
+
+func validateTaskInput(w http.ResponseWriter, task *model.Task, requireStatus bool) bool {
+	task.Title = strings.TrimSpace(task.Title)
+	if task.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return false
+	}
+	if task.Priority == "" {
+		task.Priority = "medium"
+	}
+	if !isTaskPriority(task.Priority) {
+		writeError(w, http.StatusBadRequest, "priority must be low, medium, high, or urgent")
+		return false
+	}
+	if requireStatus && !isTaskStatus(task.Status) {
+		writeError(w, http.StatusBadRequest, "status must be todo, in_progress, blocked, or done")
+		return false
+	}
+	if task.Status != "" && !isTaskStatus(task.Status) {
+		writeError(w, http.StatusBadRequest, "status must be todo, in_progress, blocked, or done")
+		return false
+	}
+	return true
+}
+
+func isTaskStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "todo", "in_progress", "blocked", "done":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTaskPriority(priority string) bool {
+	switch strings.ToLower(strings.TrimSpace(priority)) {
+	case "low", "medium", "high", "urgent":
+		return true
+	default:
+		return false
+	}
 }
 
 // ── Notifications ──
@@ -345,8 +436,8 @@ func markNotificationReadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	notificationID := vars["id"]
 
-	if err := store.MarkNotificationRead(notificationID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to mark notification as read")
+	if err := store.MarkNotificationRead(notificationID, requestUserID(r)); err != nil {
+		writeError(w, http.StatusNotFound, "notification not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

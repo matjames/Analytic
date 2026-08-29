@@ -68,8 +68,8 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
   const handleFollow = async (expertId: string) => {
     try {
       const result = await followKnowledgeExpert(expertId);
-      setExperts((prev) => prev.map((e) => e.id === expertId ? { ...e, followers: result.followers } : e));
-      setActionNote('✅ Following');
+      setExperts((prev) => prev.map((e) => e.id === expertId ? { ...e, followers: result.followers, following: true } : e));
+      setActionNote('Following');
     } catch {
       setActionNote('⚠️ Could not follow');
     }
@@ -78,8 +78,8 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
   const handleUpvote = async (ideaId: string) => {
     try {
       const result = await upvoteKnowledgeIdea(ideaId);
-      setIdeas((prev) => prev.map((i) => i.id === ideaId ? { ...i, votes: result.votes } : i));
-      setActionNote('▲ Upvoted');
+      setIdeas((prev) => prev.map((i) => i.id === ideaId ? { ...i, votes: result.votes, upvoted: true } : i));
+      setActionNote('Upvoted');
     } catch {
       setActionNote('⚠️ Could not upvote');
     }
@@ -92,16 +92,14 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
     try {
       const post = await createKnowledgePost({
         title,
-        author: user?.name ?? 'StatChat User',
         category: newPostCategory,
         content,
-        createdBy: user?.id ?? 'user-001',
       });
       setAllPosts((prev) => [post, ...prev]);
       setShowCreatePost(false);
       setNewPostTitle('');
       setNewPostContent('');
-      setActionNote('✅ Knowledge post created');
+      setActionNote('Knowledge post created');
     } catch {
       setActionNote('⚠️ Could not create post');
     }
@@ -222,7 +220,7 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
                 <span>📄 {expert.articles}</span>
                 <span>⭐ {expert.rating}</span>
               </div>
-              <button type="button" className={styles.followBtn} onClick={() => handleFollow(expert.id)}>Follow</button>
+                <button type="button" className={styles.followBtn} onClick={() => handleFollow(expert.id)} disabled={expert.following}>{expert.following ? 'Following' : 'Follow'}</button>
             </div>
           ))}
         </div>
@@ -286,7 +284,7 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
                   </span>
                 </div>
                 <p className={styles.ideaDescription}>{idea.description}</p>
-                <button type="button" className={styles.voteBtn} onClick={() => handleUpvote(idea.id)}>▲ Upvote</button>
+                <button type="button" className={styles.voteBtn} onClick={() => handleUpvote(idea.id)} disabled={idea.upvoted}>{idea.upvoted ? 'Upvoted' : '▲ Upvote'}</button>
               </div>
             </div>
           ))}
@@ -333,10 +331,7 @@ export default function KnowledgePanel({ user, theme, isMobile }: Props) {
               <span>❤️ {selectedArticle.likes}</span>
               <span>👁 {selectedArticle.views.toLocaleString()}</span>
             </div>
-            <p style={{ lineHeight: 1.6, fontSize: 15 }}>{selectedArticle.excerpt}</p>
-            <div style={{ marginTop: 16, padding: 12, background: isDark ? '#0f3f5f' : '#f0f7fb', borderRadius: 8, fontSize: 13, opacity: 0.7 }}>
-              📖 This is a preview excerpt. Full article content will be available in the next phase.
-            </div>
+            <p style={{ lineHeight: 1.7, fontSize: 15, whiteSpace: 'pre-wrap' }}>{selectedArticle.content || selectedArticle.excerpt}</p>
           </div>
         </div>
       )}

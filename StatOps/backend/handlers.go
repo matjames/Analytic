@@ -117,7 +117,8 @@ func ListStatusPageHandler(c *gin.Context) {
 func ListPipelinesHandler(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	tid, _ := tenantID.(string)
-	pipes := globalStore.ListPipelines(tid)
+	workspaceID, _ := c.Get("workspace_id")
+	pipes := globalStore.ListPipelines(tid, workspaceID.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"count":     len(pipes),
 		"pipelines": pipes,
@@ -135,6 +136,8 @@ func TriggerPipelineHandler(c *gin.Context) {
 	if req.TenantID == "" {
 		req.TenantID, _ = tid.(string)
 	}
+	workspace, _ := c.Get("workspace_id")
+	req.WorkspaceID, _ = workspace.(string)
 
 	created := globalStore.TriggerPipeline(req)
 
@@ -150,7 +153,8 @@ func TriggerPipelineHandler(c *gin.Context) {
 func ListDeploymentsHandler(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	tid, _ := tenantID.(string)
-	deps := globalStore.ListDeployments(tid)
+	workspaceID, _ := c.Get("workspace_id")
+	deps := globalStore.ListDeployments(tid, workspaceID.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"count":       len(deps),
 		"deployments": deps,
@@ -168,6 +172,8 @@ func CreateDeploymentHandler(c *gin.Context) {
 	if req.TenantID == "" {
 		req.TenantID, _ = tid.(string)
 	}
+	workspace, _ := c.Get("workspace_id")
+	req.WorkspaceID, _ = workspace.(string)
 
 	created := globalStore.CreateDeployment(req)
 
@@ -238,7 +244,7 @@ func ListCostsHandler(c *gin.Context) {
 func ListReadinessHandler(c *gin.Context) {
 	checks := globalStore.ListReadinessChecks()
 	c.JSON(http.StatusOK, gin.H{
-		"count":             len(checks),
+		"count":            len(checks),
 		"readiness_checks": checks,
 	})
 }

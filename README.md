@@ -119,7 +119,7 @@ Prerequisites: Go 1.25+, Python 3.12+ with `venv`/`pip`, PostgreSQL with the con
    python app.py
    ```
 
-4. Open <http://localhost:5000>. Check the Go core at <http://localhost:8080/health>.
+4. Open <http://localhost:5000>. Check the Go core at <http://localhost:8080/health> when running it directly, or <http://localhost:8082/health> when running through the root Docker Compose stack.
 
 > The checked-in `frontend/Lib` and `frontend/Scripts` directories are not a portable Python environment. Create a fresh virtual environment for each machine or deployment.
 
@@ -133,7 +133,7 @@ Prerequisites: Go 1.25+, Python 3.12+ with `venv`/`pip`, PostgreSQL with the con
 | `/executive` | Executive command centre |
 | `/semantic` | Semantic indicator registry |
 | `/abac` | ABAC policy matrix |
-| `/health`, `/ready`, `/metrics` | Health, readiness, and Prometheus metrics |
+| `/health`, `/ready`, `/metrics/prometheus` | Health, readiness, and Prometheus metrics |
 | `/api/*` | Dataset, proxy, dashboard, agent, schema-health, project/report/research, and registry APIs |
 
 ## Configuration and security

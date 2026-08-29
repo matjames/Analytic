@@ -203,16 +203,24 @@ func migrateDB() error {
 	}
 
 	// Add new columns to existing tables if they don't exist
-	DB.Exec(`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS department VARCHAR(255)`)
-	DB.Exec(`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS phone VARCHAR(50)`)
-	DB.Exec(`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS location VARCHAR(255)`)
-	DB.Exec(`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS since DATE`)
-	DB.Exec(`ALTER TABLE pms.tasks ADD COLUMN IF NOT EXISTS is_milestone BOOLEAN DEFAULT FALSE`)
-	DB.Exec(`ALTER TABLE pms.tasks ADD COLUMN IF NOT EXISTS is_deliverable BOOLEAN DEFAULT FALSE`)
-	DB.Exec(`ALTER TABLE pms.risks ADD COLUMN IF NOT EXISTS due_date DATE`)
-	DB.Exec(`ALTER TABLE pms.documents ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Draft'`)
-	DB.Exec(`ALTER TABLE pms.meetings ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`)
-	DB.Exec(`ALTER TABLE pms.meetings ADD COLUMN IF NOT EXISTS decisions TEXT[]`)
+	for _, statement := range []string{
+		`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS department VARCHAR(255)`,
+		`ALTER TABLE pms.projects ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_projects_workspace ON pms.projects(workspace_id)`,
+		`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS phone VARCHAR(50)`,
+		`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS location VARCHAR(255)`,
+		`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS since DATE`,
+		`ALTER TABLE pms.tasks ADD COLUMN IF NOT EXISTS is_milestone BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE pms.tasks ADD COLUMN IF NOT EXISTS is_deliverable BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE pms.risks ADD COLUMN IF NOT EXISTS due_date DATE`,
+		`ALTER TABLE pms.documents ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Draft'`,
+		`ALTER TABLE pms.meetings ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`,
+		`ALTER TABLE pms.meetings ADD COLUMN IF NOT EXISTS decisions TEXT[]`,
+	} {
+		if _, err := DB.Exec(statement); err != nil {
+			return fmt.Errorf("apply additive PMS migration: %w", err)
+		}
+	}
 
 	// Tasks table
 	_, err = DB.Exec(`

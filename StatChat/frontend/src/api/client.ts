@@ -1,6 +1,14 @@
-import { Conversation, Message, User, UserSettings, PinnedMessage, Task, Notification, Presence, MessageReaction, CallSession, CallParticipant, CallRecording, SearchResult, Favourite } from '../types';
+import { Conversation, Message, User, UserSettings, PinnedMessage, Task, Notification, Presence, MessageReaction, CallSession, CallParticipant, CallRecording, CallQualitySample, SearchResult, Favourite, Channel, CalendarEvent, Poll, ScheduledMessage, MediaCatalogItem, MessageSearchFilters, RetentionPolicy, LegalHold, ComplianceAuditEvent } from '../types';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
+const REGISTRY_API = (import.meta.env.VITE_REGISTRY_API_URL ?? 'http://localhost:9090/api').replace(/\/$/, '');
+
+export interface OrganisationBranding {
+  display_name: string;
+  logo_url: string;
+  primary_color: string;
+  secondary_color: string;
+}
 
 function getStoredToken(): string {
   if (typeof window === 'undefined') {
@@ -14,6 +22,10 @@ async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = getStoredToken();
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+  const workspaceID = typeof window !== 'undefined' ? window.localStorage.getItem('workspace_id')?.trim() ?? '' : '';
+  if (workspaceID) {
+    headers.set('X-Workspace-ID', workspaceID);
   }
   if (!headers.has('Content-Type') && init.body && typeof init.body === 'string') {
     headers.set('Content-Type', 'application/json');
@@ -31,11 +43,19 @@ export const WS_URL = import.meta.env.VITE_WS_URL ?? (() => {
 })();
 
 export function getWebSocketURL(): string {
-  const token = getStoredToken();
-  if (!token || typeof window === 'undefined') return WS_URL;
+  if (typeof window === 'undefined') return WS_URL;
   const url = new URL(WS_URL, window.location.origin);
-  url.searchParams.set('access_token', token);
+  if (url.protocol === 'http:') url.protocol = 'ws:';
+  if (url.protocol === 'https:') url.protocol = 'wss:';
   return url.toString();
+}
+
+// Browser WebSocket clients cannot attach an Authorization header. Carry the
+// Registry JWT in the negotiated subprotocol instead, which keeps credentials
+// out of URLs, browser history, reverse-proxy logs, and monitoring traces.
+export function getWebSocketProtocols(): string[] {
+  const token = getStoredToken();
+  return token ? [`Bearer.${token}`] : [];
 }
 
 // A launcher may hand a Registry-issued token to StatChat once. Remove it from
@@ -57,6 +77,14 @@ export async function fetchCurrentUser(): Promise<User> {
   const response = await apiFetch(`${BASE_URL}/users/me`);
   if (!response.ok) {
     throw new Error(`Failed to fetch current user: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchOrganisationBranding(): Promise<OrganisationBranding> {
+  const response = await apiFetch(`${REGISTRY_API}/organisation/branding`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch organisation branding: ${response.status}`);
   }
   return response.json();
 }
@@ -85,6 +113,8 @@ export async function sendChatMessage(payload: {
   tenantId?: string;
   parentMessageId?: string;
   threadRootId?: string;
+  mentionUserIds?: string[];
+  mentionAll?: boolean;
 }): Promise<Message> {
   const response = await apiFetch(`${BASE_URL}/v1/chat/messages`, {
     method: 'POST',
@@ -218,6 +248,57 @@ export interface Connection {
   connectedRole: string;
   connectedOrg: string;
   connectedAt?: string;
+}
+
+export interface Community {
+  id: string;
+  name: string;
+  description: string;
+  visibility: 'public' | 'private';
+  createdBy: string;
+  createdAt: string;
+  memberCount: number;
+  topicCount: number;
+  joined: boolean;
+  role?: string;
+  canPost: boolean;
+  latestPostAt?: string;
+}
+
+export interface CommunityMember {
+  communityId: string;
+  userId: string;
+  name: string;
+  role: 'owner' | 'member';
+  userRole?: string;
+  org?: string;
+  joinedAt: string;
+}
+
+export interface CommunityTopic {
+  id: string;
+  communityId: string;
+  title: string;
+  body: string;
+  authorId: string;
+  author: string;
+  role?: string;
+  org?: string;
+  createdAt: string;
+  updatedAt?: string;
+  replyCount: number;
+}
+
+export interface CommunityReply {
+  id: string;
+  communityId: string;
+  topicId: string;
+  authorId: string;
+  author: string;
+  role?: string;
+  org?: string;
+  body: string;
+  createdAt: string;
 }
 
 export interface Opportunity {
@@ -355,6 +436,105 @@ export async function removeConnection(targetUserId: string): Promise<void> {
   if (!response.ok) throw new Error(`Failed to remove connection: ${response.status}`);
 }
 
+export async function fetchCommunities(): Promise<Community[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities`);
+  if (!response.ok) throw new Error(`Failed to fetch communities: ${response.status}`);
+  return response.json();
+}
+
+export async function createCommunity(payload: { name: string; description: string; visibility: 'public' | 'private' }): Promise<Community> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create community: ${response.status}`);
+  return response.json();
+}
+
+export async function joinCommunity(communityId: string): Promise<Community> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/join`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to join community: ${response.status}`);
+  return response.json();
+}
+
+export async function leaveCommunity(communityId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/leave`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to leave community: ${response.status}`);
+}
+
+export async function fetchCommunityMembers(communityId: string): Promise<CommunityMember[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/members`);
+  if (!response.ok) throw new Error(`Failed to fetch community members: ${response.status}`);
+  return response.json();
+}
+
+export async function addCommunityMember(communityId: string, userId: string): Promise<CommunityMember> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) throw new Error(`Failed to add community member: ${response.status}`);
+  return response.json();
+}
+
+export async function removeCommunityMember(communityId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to remove community member: ${response.status}`);
+}
+
+export async function transferCommunityOwner(communityId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/owner`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) throw new Error(`Failed to transfer community ownership: ${response.status}`);
+}
+
+export async function fetchCommunityTopics(communityId: string): Promise<CommunityTopic[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics`);
+  if (!response.ok) throw new Error(`Failed to fetch community topics: ${response.status}`);
+  return response.json();
+}
+
+export async function createCommunityTopic(communityId: string, payload: { title: string; body: string }): Promise<CommunityTopic> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create community topic: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteCommunityTopic(communityId: string, topicId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics/${encodeURIComponent(topicId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete community topic: ${response.status}`);
+}
+
+export async function fetchCommunityReplies(communityId: string, topicId: string): Promise<CommunityReply[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics/${encodeURIComponent(topicId)}/replies`);
+  if (!response.ok) throw new Error(`Failed to fetch community replies: ${response.status}`);
+  return response.json();
+}
+
+export async function createCommunityReply(communityId: string, topicId: string, body: string): Promise<CommunityReply> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics/${encodeURIComponent(topicId)}/replies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) throw new Error(`Failed to create community reply: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteCommunityReply(communityId: string, topicId: string, replyId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/communities/${encodeURIComponent(communityId)}/topics/${encodeURIComponent(topicId)}/replies/${encodeURIComponent(replyId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete community reply: ${response.status}`);
+}
+
 export async function fetchOpportunities(): Promise<Opportunity[]> {
   const response = await apiFetch(`${BASE_URL}/collaboration/opportunities`);
   if (!response.ok) throw new Error(`Failed to fetch opportunities: ${response.status}`);
@@ -429,6 +609,7 @@ export async function createWellnessPost(post: Omit<WellnessPost, 'id' | 'create
 
 export interface KnowledgeExpert {
   id: string;
+  tenantId?: string;
   name: string;
   role: string;
   org: string;
@@ -437,15 +618,18 @@ export interface KnowledgeExpert {
   articles: number;
   rating: number;
   avatar: string;
+  following?: boolean;
 }
 
 export interface KnowledgeArticle {
   id: string;
+  tenantId?: string;
   title: string;
   author: string;
   category: string;
   readTime: string;
   excerpt: string;
+  content?: string;
   likes: number;
   views: number;
   published: string;
@@ -453,18 +637,25 @@ export interface KnowledgeArticle {
 
 export interface KnowledgeIdea {
   id: string;
+  tenantId?: string;
   title: string;
   author: string;
+  authorId?: string;
   category: string;
   description: string;
   votes: number;
   status: string;
+  upvoted?: boolean;
 }
 
 export interface KnowledgePost {
   id: string;
+  tenantId?: string;
   title: string;
   author: string;
+  authorId?: string;
+  role?: string;
+  org?: string;
   category: string;
   content: string;
   createdBy: string;
@@ -495,7 +686,7 @@ export async function fetchKnowledgePosts(): Promise<KnowledgePost[]> {
   return response.json();
 }
 
-export async function createKnowledgePost(post: Omit<KnowledgePost, 'id' | 'createdAt'>): Promise<KnowledgePost> {
+export async function createKnowledgePost(post: Pick<KnowledgePost, 'title' | 'category' | 'content'>): Promise<KnowledgePost> {
   const response = await apiFetch(`${BASE_URL}/knowledge/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -522,6 +713,68 @@ export async function deleteChatMessage(messageId: string): Promise<void> {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error(`Failed to delete message: ${response.status}`);
+}
+
+export async function forwardChatMessage(messageId: string, targetConversationId: string): Promise<Message> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${encodeURIComponent(messageId)}/forward`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetConversationId }),
+  });
+  if (!response.ok) throw new Error(`Failed to forward message: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchScheduledMessages(conversationId?: string): Promise<ScheduledMessage[]> {
+  const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
+  const response = await apiFetch(`${BASE_URL}/v1/chat/scheduled${query}`);
+  if (!response.ok) throw new Error(`Failed to load scheduled messages: ${response.status}`);
+  return response.json();
+}
+
+export async function scheduleChatMessage(conversationId: string, text: string, scheduledFor: string): Promise<ScheduledMessage> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/scheduled`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, text, scheduledFor }),
+  });
+  if (!response.ok) throw new Error(`Failed to schedule message: ${response.status}`);
+  return response.json();
+}
+
+export async function cancelScheduledMessage(id: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/scheduled/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to cancel scheduled message: ${response.status}`);
+}
+
+export async function searchChatMedia(search = '', kind?: 'gif' | 'sticker'): Promise<MediaCatalogItem[]> {
+  const params = new URLSearchParams();
+  if (search.trim()) params.set('q', search.trim());
+  if (kind) params.set('kind', kind);
+  const query = params.size ? `?${params.toString()}` : '';
+  const response = await apiFetch(`${BASE_URL}/v1/chat/media${query}`);
+  if (!response.ok) throw new Error(`Failed to search media: ${response.status}`);
+  return response.json();
+}
+
+export async function sendChatMedia(conversationId: string, mediaId: string): Promise<Message> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/media/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, mediaId }),
+  });
+  if (!response.ok) throw new Error(`Failed to send media: ${response.status}`);
+  return response.json();
+}
+
+export async function sendChatLocation(conversationId: string, location: { latitude: number; longitude: number; accuracyMeters?: number; label?: string }): Promise<Message> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, ...location }),
+  });
+  if (!response.ok) throw new Error(`Failed to share location: ${response.status}`);
+  return response.json();
 }
 
 // ── Message Reactions ──
@@ -612,6 +865,161 @@ export async function updateTaskStatus(taskId: string, status: string): Promise<
   return response.json();
 }
 
+export async function fetchObjectConversation(objectRef: string): Promise<Conversation> {
+  const query = new URLSearchParams({ objectRef });
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/object?${query}`);
+  if (!response.ok) throw new Error(`Failed to fetch object conversation: ${response.status}`);
+  return response.json();
+}
+
+export async function ensureObjectConversation(input: { objectRef: string; name: string; memberIds?: string[]; metadata?: Record<string, unknown> }): Promise<Conversation> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/object`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(`Failed to create object conversation: ${response.status}`);
+  return response.json();
+}
+
+export interface ConversationMembership {
+  memberIds: string[];
+  ownerId: string;
+  canManage: boolean;
+}
+
+export async function fetchConversationMembers(conversationId: string): Promise<ConversationMembership> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${encodeURIComponent(conversationId)}/members`);
+  if (!response.ok) throw new Error(`Failed to fetch conversation members: ${response.status}`);
+  return response.json();
+}
+
+export async function addConversationMember(conversationId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${encodeURIComponent(conversationId)}/members`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) throw new Error(`Failed to add conversation member: ${response.status}`);
+}
+
+export async function removeConversationMember(conversationId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to remove conversation member: ${response.status}`);
+}
+
+export async function fetchPolls(): Promise<Poll[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/polls`);
+  if (!response.ok) throw new Error(`Failed to fetch polls: ${response.status}`);
+  return response.json();
+}
+
+export async function createPoll(question: string, options: string[]): Promise<Poll> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/polls`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, options: options.map((label) => ({ label })) }),
+  });
+  if (!response.ok) throw new Error(`Failed to create poll: ${response.status}`);
+  return response.json();
+}
+
+export async function votePoll(pollId: string, optionId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/polls/${encodeURIComponent(pollId)}/vote`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ optionId }),
+  });
+  if (!response.ok) throw new Error(`Failed to vote in poll: ${response.status}`);
+}
+
+export async function requestChatAssistant(conversationId: string, mode: 'summary' | 'actions' | 'draft'): Promise<string> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/assistant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, mode }),
+  });
+  if (!response.ok) throw new Error(`Assistant request failed: ${response.status}`);
+  const result: { response: string } = await response.json();
+  return result.response;
+}
+
+export async function updateTask(taskId: string, task: Partial<Task>): Promise<Task> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task),
+  });
+  if (!response.ok) throw new Error(`Failed to update task: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete task: ${response.status}`);
+}
+
+export async function fetchChannels(): Promise<Channel[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels`);
+  if (!response.ok) throw new Error(`Failed to fetch channels: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchChannel(channelId: string): Promise<Channel> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels/${encodeURIComponent(channelId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch channel: ${response.status}`);
+  return response.json();
+}
+
+export async function createChannel(channel: Pick<Channel, 'name' | 'visibility'> & { description?: string }): Promise<Channel> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(channel),
+  });
+  if (!response.ok) throw new Error(`Failed to create channel: ${response.status}`);
+  return response.json();
+}
+
+export async function joinChannel(channelId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels/${encodeURIComponent(channelId)}/join`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to join channel: ${response.status}`);
+}
+
+export async function leaveChannel(channelId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels/${encodeURIComponent(channelId)}/leave`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to leave channel: ${response.status}`);
+}
+
+export async function archiveChannel(channelId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/channels/${encodeURIComponent(channelId)}/archive`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to archive channel: ${response.status}`);
+}
+
+export async function fetchCalendarEvents(from?: string, to?: string): Promise<CalendarEvent[]> {
+  const query = new URLSearchParams();
+  if (from) query.set('from', from);
+  if (to) query.set('to', to);
+  const response = await apiFetch(`${BASE_URL}/v1/chat/calendar${query.size ? `?${query}` : ''}`);
+  if (!response.ok) throw new Error(`Failed to fetch calendar events: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCalendarEvent(eventId: string): Promise<CalendarEvent> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/calendar/${encodeURIComponent(eventId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch calendar event: ${response.status}`);
+  return response.json();
+}
+
+export async function createCalendarEvent(event: Omit<CalendarEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>): Promise<CalendarEvent> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/calendar`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event),
+  });
+  if (!response.ok) throw new Error(`Failed to create calendar event: ${response.status}`);
+  return response.json();
+}
+
+export async function updateCalendarEvent(eventId: string, event: Partial<CalendarEvent>): Promise<CalendarEvent> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/calendar/${encodeURIComponent(eventId)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event),
+  });
+  if (!response.ok) throw new Error(`Failed to update calendar event: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/calendar/${encodeURIComponent(eventId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete calendar event: ${response.status}`);
+}
+
 // ── Notifications ──
 
 export async function fetchNotifications(): Promise<Notification[]> {
@@ -693,11 +1101,9 @@ export async function joinCallSession(sessionId: string, userId?: string, userNa
   return response.json();
 }
 
-export async function leaveCallSession(sessionId: string, userId: string): Promise<void> {
+export async function leaveCallSession(sessionId: string): Promise<void> {
   const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/leave`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
   });
   if (!response.ok) throw new Error(`Failed to leave call session: ${response.status}`);
 }
@@ -754,10 +1160,123 @@ export function getAuthToken(): string {
 
 // ── Global Search ──
 
-export async function searchAPI(query: string): Promise<SearchResult> {
-  const response = await apiFetch(`${BASE_URL}/v1/search?q=${encodeURIComponent(query)}`);
+function appendMessageSearchFilters(params: URLSearchParams, filters: MessageSearchFilters = {}) {
+  if (filters.conversationId) params.set('conversationId', filters.conversationId);
+  if (filters.sender?.trim()) params.set('sender', filters.sender.trim());
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  if (filters.hasAttachment !== undefined) params.set('hasAttachment', String(filters.hasAttachment));
+  if (filters.savedOnly !== undefined) params.set('savedOnly', String(filters.savedOnly));
+}
+
+export async function removeCallParticipant(sessionId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${encodeURIComponent(sessionId)}/participants/${encodeURIComponent(userId)}/remove`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to remove call participant: ${response.status}`);
+}
+
+export async function updateCallParticipantRole(sessionId: string, userId: string, role: 'moderator' | 'participant'): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${encodeURIComponent(sessionId)}/participants/${encodeURIComponent(userId)}/role`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  if (!response.ok) throw new Error(`Failed to update call participant role: ${response.status}`);
+}
+
+export async function reportCallQuality(sessionId: string, metrics: Pick<CallQualitySample, 'rttMs' | 'jitterMs' | 'packetLossPct' | 'bitrateKbps'>): Promise<CallQualitySample> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/quality`, { method: 'POST', body: JSON.stringify(metrics) });
+  if (!response.ok) throw new Error(`Failed to report call quality: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchCallQuality(sessionId: string, limit = 100): Promise<CallQualitySample[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/calls/${sessionId}/quality?limit=${limit}`);
+  if (!response.ok) throw new Error(`Failed to fetch call quality: ${response.status}`);
+  return response.json();
+}
+
+export async function searchAPI(query: string, filters: MessageSearchFilters = {}): Promise<SearchResult> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  appendMessageSearchFilters(params, filters);
+  const response = await apiFetch(`${BASE_URL}/v1/search?${params.toString()}`);
   if (!response.ok) throw new Error(`Failed to search: ${response.status}`);
   return response.json();
+}
+
+export async function saveChatMessage(messageId: string): Promise<{ messageId: string; savedAt: string }> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${encodeURIComponent(messageId)}/saved`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to save message: ${response.status}`);
+  return response.json();
+}
+
+export async function unsaveChatMessage(messageId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/messages/${encodeURIComponent(messageId)}/saved`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to remove saved message: ${response.status}`);
+}
+
+export async function fetchSavedMessages(filters: MessageSearchFilters = {}): Promise<Message[]> {
+  const params = new URLSearchParams();
+  appendMessageSearchFilters(params, filters);
+  const suffix = params.size ? `?${params.toString()}` : '';
+  const response = await apiFetch(`${BASE_URL}/v1/chat/saved${suffix}`);
+  if (!response.ok) throw new Error(`Failed to load saved messages: ${response.status}`);
+  return response.json();
+}
+
+// Compliance and authenticated exports
+
+export async function fetchRetentionPolicy(): Promise<RetentionPolicy> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/retention`);
+  if (!response.ok) throw new Error(`Failed to load retention policy: ${response.status}`);
+  return response.json();
+}
+
+export async function updateRetentionPolicy(retentionDays: number, enabled: boolean): Promise<RetentionPolicy> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/retention`, {
+    method: 'PUT',
+    body: JSON.stringify({ retentionDays, enabled }),
+  });
+  if (!response.ok) throw new Error(`Failed to update retention policy: ${response.status}`);
+  return response.json();
+}
+
+export async function enforceRetention(): Promise<{ deletedMessages: number }> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/retention/enforce`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to enforce retention policy: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchLegalHolds(): Promise<LegalHold[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/legal-holds`);
+  if (!response.ok) throw new Error(`Failed to load legal holds: ${response.status}`);
+  return response.json();
+}
+
+export async function createLegalHold(input: { name: string; reason: string; conversationId?: string }): Promise<LegalHold> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/legal-holds`, { method: 'POST', body: JSON.stringify(input) });
+  if (!response.ok) throw new Error(`Failed to create legal hold: ${response.status}`);
+  return response.json();
+}
+
+export async function releaseLegalHold(holdId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/legal-holds/${encodeURIComponent(holdId)}/release`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to release legal hold: ${response.status}`);
+}
+
+export async function fetchComplianceAudit(limit = 100): Promise<ComplianceAuditEvent[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/compliance/audit?limit=${limit}`);
+  if (!response.ok) throw new Error(`Failed to load compliance audit: ${response.status}`);
+  return response.json();
+}
+
+export async function exportConversation(conversationId: string, format: 'json' | 'csv', includeDeleted = false): Promise<{ blob: Blob; filename: string }> {
+  const params = new URLSearchParams({ format, includeDeleted: String(includeDeleted) });
+  const response = await apiFetch(`${BASE_URL}/v1/chat/conversations/${encodeURIComponent(conversationId)}/export?${params}`);
+  if (!response.ok) throw new Error(`Failed to export conversation: ${response.status}`);
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `statchat-${conversationId}.${format}`;
+  return { blob: await response.blob(), filename };
 }
 
 // ── Favourites ──

@@ -20,6 +20,7 @@ import (
 type Client struct {
 	conn         *websocket.Conn
 	conversation string
+	userID       string
 }
 
 var db *sql.DB
@@ -60,6 +61,12 @@ func Init(dsn string) error {
 	if err = ensureCollaborationSchema(ctx); err != nil {
 		return err
 	}
+	if err = ensureKnowledgeSchema(ctx); err != nil {
+		return err
+	}
+	if err = ensureCommunitiesSchema(ctx); err != nil {
+		return err
+	}
 	if err = ensureConferencingSchema(ctx); err != nil {
 		return err
 	}
@@ -67,6 +74,9 @@ func Init(dsn string) error {
 		return err
 	}
 	if err = seedDefaults(ctx); err != nil {
+		return err
+	}
+	if err = backfillConversationOwners(ctx); err != nil {
 		return err
 	}
 	if err = seedCollaborationDefaults(ctx); err != nil {
@@ -91,6 +101,13 @@ CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL
 );
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS channels_tenant_name_uidx ON channels (tenant_id, lower(name));
 
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
@@ -123,6 +140,8 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'acti
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_status TEXT NOT NULL DEFAULT 'sent';
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_sender TEXT;
 
 CREATE TABLE IF NOT EXISTS message_reactions (
   id TEXT PRIMARY KEY,
@@ -143,6 +162,75 @@ CREATE TABLE IF NOT EXISTS message_attachments (
   created_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS message_locations (
+  message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  latitude DOUBLE PRECISION NOT NULL CHECK (latitude >= -90 AND latitude <= 90),
+  longitude DOUBLE PRECISION NOT NULL CHECK (longitude >= -180 AND longitude <= 180),
+  accuracy_meters DOUBLE PRECISION CHECK (accuracy_meters IS NULL OR (accuracy_meters >= 0 AND accuracy_meters <= 100000)),
+  label TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS message_mentions (
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (message_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS saved_messages (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS saved_messages_user_created_idx ON saved_messages (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS retention_policies (
+  tenant_id TEXT PRIMARY KEY,
+  retention_days INT NOT NULL CHECK (retention_days BETWEEN 1 AND 3650),
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS legal_holds (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'released')),
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  released_by TEXT,
+  released_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS legal_holds_active_scope_idx ON legal_holds (tenant_id, conversation_id) WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS compliance_audit_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS compliance_audit_tenant_created_idx ON compliance_audit_events (tenant_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION prevent_compliance_audit_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'compliance audit events are immutable';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS compliance_audit_events_immutable ON compliance_audit_events;
+CREATE TRIGGER compliance_audit_events_immutable
+BEFORE UPDATE OR DELETE ON compliance_audit_events
+FOR EACH ROW EXECUTE FUNCTION prevent_compliance_audit_mutation();
+
 CREATE TABLE IF NOT EXISTS pinned_messages (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
@@ -157,6 +245,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS about TEXT;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS channel_id TEXT;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS member_ids JSONB;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS object_ref TEXT;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE UNIQUE INDEX IF NOT EXISTS conversations_tenant_object_ref_uidx
+  ON conversations (tenant_id, object_ref) WHERE object_ref IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS conversation_roles (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('owner', 'admin')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (conversation_id, user_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS conversation_single_owner_uidx
+  ON conversation_roles (conversation_id) WHERE role = 'owner';
 
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
@@ -215,6 +318,47 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ
 );
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'default',
+  title TEXT NOT NULL,
+  description TEXT,
+  location TEXT,
+  start_at TIMESTAMPTZ NOT NULL,
+  end_at TIMESTAMPTZ NOT NULL,
+  all_day BOOLEAN NOT NULL DEFAULT false,
+  conversation_id TEXT REFERENCES conversations(id),
+  attendee_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS calendar_events_tenant_start_idx ON calendar_events (tenant_id, start_at);
+
+CREATE TABLE IF NOT EXISTS polls (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  question TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS poll_options (
+  id TEXT PRIMARY KEY,
+  poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+  poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  option_id TEXT NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (poll_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS poll_votes_option_idx ON poll_votes (option_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
@@ -226,6 +370,21 @@ CREATE TABLE IF NOT EXISTS notifications (
   read BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id TEXT NOT NULL,
+  sender TEXT NOT NULL,
+  text TEXT NOT NULL,
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','cancelled')),
+  message_id TEXT REFERENCES messages(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_due ON scheduled_messages (scheduled_for) WHERE status = 'pending';
 
 CREATE TABLE IF NOT EXISTS user_presence (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
@@ -792,8 +951,8 @@ func resetSeedData(ctx context.Context) error {
 	return nil
 }
 
-func NewClient(conn *websocket.Conn, conversation string) *Client {
-	return &Client{conn: conn, conversation: conversation}
+func NewClient(conn *websocket.Conn, conversation string, userID string) *Client {
+	return &Client{conn: conn, conversation: conversation, userID: userID}
 }
 
 func (c *Client) SetConversation(conversation string) {
@@ -888,7 +1047,7 @@ func UpsertUserSettings(s model.UserSettings) error {
 INSERT INTO user_settings (
   user_id, theme, accent_color, font_size, enter_to_send, language, last_seen, profile_photo,
   read_receipts, typing_indicator, voice_notes, read_by_default, auto_download,
-notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
+  notif_messages, notif_groups, notif_mentions, notif_meetings, notif_collaboration, notif_files, notif_knowledge, notif_wellness, notif_sound, notif_preview, cross_service_alerts,
   download_images, download_videos, download_documents, wallpaper
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
 ON CONFLICT (user_id) DO UPDATE SET
@@ -914,7 +1073,15 @@ ON CONFLICT (user_id) DO UPDATE SET
 }
 
 func GetAllUsers() ([]model.User, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, name, email, organization_id, roles, avatar_url, about, presence FROM users ORDER BY name`)
+	return getUsers(`SELECT id, name, email, organization_id, roles, avatar_url, about, presence FROM users ORDER BY name`)
+}
+
+func GetUsersByOrganization(organizationID string) ([]model.User, error) {
+	return getUsers(`SELECT id, name, email, organization_id, roles, avatar_url, about, presence FROM users WHERE organization_id = $1 ORDER BY name`, organizationID)
+}
+
+func getUsers(query string, args ...any) ([]model.User, error) {
+	rows, err := db.QueryContext(context.Background(), query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -941,29 +1108,37 @@ func GetAllUsers() ([]model.User, error) {
 	return users, rows.Err()
 }
 
-func CreateGroupConversation(groupID string, name string, memberIDs []string) (model.Conversation, error) {
+func CreateGroupConversation(tenantID string, groupID string, name string, memberIDs []string, creatorID string) (model.Conversation, error) {
+	tenantID = normalizedTenantID(tenantID)
 	memberJSON, _ := json.Marshal(memberIDs)
-	convID := fmt.Sprintf("group-%s", groupID)
+	convID := fmt.Sprintf("group-%s-%s", tenantID, groupID)
 
 	var conv model.Conversation
 	var memberIDsJSON []byte
 	var channelID sql.NullString
 	var convType string
-	err := db.QueryRowContext(context.Background(), `SELECT id, name, type, channel_id, member_ids FROM conversations WHERE id = $1`, convID).Scan(&conv.ID, &conv.Name, &convType, &channelID, &memberIDsJSON)
+	err := db.QueryRowContext(context.Background(), `SELECT id, tenant_id, name, type, channel_id, member_ids FROM conversations WHERE id = $1`, convID).Scan(&conv.ID, &conv.TenantID, &conv.Name, &convType, &channelID, &memberIDsJSON)
 	if err == nil {
+		if roleErr := EnsureConversationOwner(conv.ID, creatorID); roleErr != nil {
+			return conv, roleErr
+		}
 		conv.Type = model.ConversationType(convType)
 		conv.ChannelID = channelID.String
 		json.Unmarshal(memberIDsJSON, &conv.MemberIDs)
 		return conv, nil
 	}
 
-	_, err = db.ExecContext(context.Background(), `INSERT INTO conversations (id, name, type, channel_id, member_ids) VALUES ($1, $2, $3, NULL, $4) ON CONFLICT DO NOTHING`, convID, name, model.ConversationTypeGroup, memberJSON)
+	_, err = db.ExecContext(context.Background(), `INSERT INTO conversations (id, tenant_id, name, type, channel_id, member_ids) VALUES ($1, $2, $3, $4, NULL, $5) ON CONFLICT DO NOTHING`, convID, tenantID, name, model.ConversationTypeGroup, memberJSON)
 	if err != nil {
+		return conv, err
+	}
+	if err := EnsureConversationOwner(convID, creatorID); err != nil {
 		return conv, err
 	}
 
 	conv = model.Conversation{
 		ID:        convID,
+		TenantID:  tenantID,
 		Name:      name,
 		Type:      model.ConversationTypeGroup,
 		MemberIDs: memberIDs,
@@ -971,8 +1146,13 @@ func CreateGroupConversation(groupID string, name string, memberIDs []string) (m
 	return conv, nil
 }
 
-func CreateDirectConversation(user1ID string, user2ID string, name string) (model.Conversation, error) {
-	convID := fmt.Sprintf("dm-%s-%s", user1ID, user2ID)
+func CreateDirectConversation(tenantID string, user1ID string, user2ID string, name string) (model.Conversation, error) {
+	tenantID = normalizedTenantID(tenantID)
+	participants := []string{user1ID, user2ID}
+	if participants[0] > participants[1] {
+		participants[0], participants[1] = participants[1], participants[0]
+	}
+	convID := fmt.Sprintf("dm-%s-%s-%s", tenantID, participants[0], participants[1])
 	memberIDs, _ := json.Marshal([]string{user1ID, user2ID})
 
 	// Try to find existing conversation first
@@ -980,7 +1160,7 @@ func CreateDirectConversation(user1ID string, user2ID string, name string) (mode
 	var memberIDsJSON []byte
 	var channelID sql.NullString
 	var convType string
-	err := db.QueryRowContext(context.Background(), `SELECT id, name, type, channel_id, member_ids FROM conversations WHERE id = $1`, convID).Scan(&conv.ID, &conv.Name, &convType, &channelID, &memberIDsJSON)
+	err := db.QueryRowContext(context.Background(), `SELECT id, tenant_id, name, type, channel_id, member_ids FROM conversations WHERE id = $1`, convID).Scan(&conv.ID, &conv.TenantID, &conv.Name, &convType, &channelID, &memberIDsJSON)
 	if err == nil {
 		conv.Type = model.ConversationType(convType)
 		conv.ChannelID = channelID.String
@@ -989,13 +1169,14 @@ func CreateDirectConversation(user1ID string, user2ID string, name string) (mode
 	}
 
 	// Create new one
-	_, err = db.ExecContext(context.Background(), `INSERT INTO conversations (id, name, type, channel_id, member_ids) VALUES ($1, $2, $3, NULL, $4) ON CONFLICT DO NOTHING`, convID, name, model.ConversationTypeDirect, memberIDs)
+	_, err = db.ExecContext(context.Background(), `INSERT INTO conversations (id, tenant_id, name, type, channel_id, member_ids) VALUES ($1, $2, $3, $4, NULL, $5) ON CONFLICT DO NOTHING`, convID, tenantID, name, model.ConversationTypeDirect, memberIDs)
 	if err != nil {
 		return conv, err
 	}
 
 	conv = model.Conversation{
 		ID:        convID,
+		TenantID:  tenantID,
 		Name:      name,
 		Type:      model.ConversationTypeDirect,
 		MemberIDs: []string{user1ID, user2ID},
@@ -1021,11 +1202,12 @@ func GetChannels() ([]model.Channel, error) {
 	return channels, rows.Err()
 }
 
-func GetConversations(userID string) ([]model.Conversation, error) {
+func GetConversations(userID string, tenantID string) ([]model.Conversation, error) {
+	tenantID = normalizedTenantID(tenantID)
 	rows, err := db.QueryContext(context.Background(), `
-SELECT id, name, type, channel_id, member_ids, COALESCE(category, ''), COALESCE(latest_preview, ''), latest_message_at, COALESCE(attachment_count, 0), COALESCE(unread_count, 0)
+SELECT id, tenant_id, COALESCE(object_ref, ''), name, type, channel_id, member_ids, COALESCE(category, ''), COALESCE(latest_preview, ''), latest_message_at, COALESCE(attachment_count, 0), COALESCE(unread_count, 0), metadata
 FROM (
-  SELECT c.id, c.name, c.type, c.channel_id, c.member_ids, c.category,
+  SELECT c.id, c.tenant_id, c.object_ref, c.name, c.type, c.channel_id, c.member_ids, c.category, c.metadata,
          m.text AS latest_preview,
          m.created_at AS latest_message_at,
          COALESCE(a.attachment_count, 0) AS attachment_count,
@@ -1034,6 +1216,7 @@ FROM (
            FROM messages unread_m
            WHERE unread_m.conversation_id = c.id
              AND unread_m.status != 'deleted'
+             AND unread_m.tenant_id = $2
              AND NOT EXISTS (
                SELECT 1 FROM read_receipts rr
                WHERE rr.message_id = unread_m.id AND rr.user_id = $1
@@ -1043,7 +1226,7 @@ FROM (
   LEFT JOIN LATERAL (
     SELECT id, text, created_at
     FROM messages
-    WHERE conversation_id = c.id AND status != 'deleted'
+    WHERE conversation_id = c.id AND status != 'deleted' AND tenant_id = $2
     ORDER BY created_at DESC
     LIMIT 1
   ) m ON true
@@ -1052,9 +1235,11 @@ FROM (
     FROM message_attachments a
     WHERE a.message_id = m.id
   ) a ON true
+  WHERE (c.tenant_id = $2 OR c.tenant_id = 'default')
+    AND (c.type = 'channel' OR c.member_ids::jsonb @> to_jsonb($1::text))
 ) q
 ORDER BY name
-`)
+`, userID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,7 +1256,8 @@ ORDER BY name
 		var latestMessageAt sql.NullTime
 		var attachmentCount int
 		var unreadCount int
-		if err := rows.Scan(&conversation.ID, &conversation.Name, &convType, &channelID, &memberIDsJSON, &category, &latestPreview, &latestMessageAt, &attachmentCount, &unreadCount); err != nil {
+		var metadataJSON []byte
+		if err := rows.Scan(&conversation.ID, &conversation.TenantID, &conversation.ObjectRef, &conversation.Name, &convType, &channelID, &memberIDsJSON, &category, &latestPreview, &latestMessageAt, &attachmentCount, &unreadCount, &metadataJSON); err != nil {
 			return nil, err
 		}
 		conversation.Type = model.ConversationType(convType)
@@ -1086,9 +1272,20 @@ ORDER BY name
 		if err := json.Unmarshal(memberIDsJSON, &conversation.MemberIDs); err != nil {
 			return nil, err
 		}
+		if err := json.Unmarshal(metadataJSON, &conversation.Metadata); err != nil {
+			return nil, err
+		}
 		conversations = append(conversations, conversation)
 	}
 	return conversations, rows.Err()
+}
+
+func normalizedTenantID(tenantID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return "default"
+	}
+	return tenantID
 }
 
 func GetMessages(conversationID string) ([]model.Message, error) {
@@ -1099,9 +1296,9 @@ func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, err
 	var rows *sql.Rows
 	var err error
 	if conversationID == "" {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE status != 'deleted' AND ($1 = '' OR tenant_id = $1) ORDER BY created_at`, tenantID)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status, COALESCE(forwarded_from_message_id, ''), COALESCE(forwarded_from_sender, '') FROM messages WHERE status != 'deleted' AND ($1 = '' OR tenant_id = $1) ORDER BY created_at`, tenantID)
 	} else {
-		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE conversation_id = $1 AND status != 'deleted' AND ($2 = '' OR tenant_id = $2) ORDER BY created_at`, conversationID, tenantID)
+		rows, err = db.QueryContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status, COALESCE(forwarded_from_message_id, ''), COALESCE(forwarded_from_sender, '') FROM messages WHERE conversation_id = $1 AND status != 'deleted' AND ($2 = '' OR tenant_id = $2) ORDER BY created_at`, conversationID, tenantID)
 	}
 	if err != nil {
 		return nil, err
@@ -1131,6 +1328,8 @@ func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, err
 			&msg.Status,
 			&msg.TenantID,
 			&msg.DeliveryStatus,
+			&msg.ForwardedFromMessageID,
+			&msg.ForwardedFromSender,
 		); err != nil {
 			return nil, err
 		}
@@ -1169,6 +1368,19 @@ func GetMessagesForTenant(conversationID, tenantID string) ([]model.Message, err
 			return nil, err
 		}
 		messages[i].ReadBy = readBy
+
+		location, err := GetMessageLocation(messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].Location = location
+
+		mentions, mentionAll, err := GetMessageMentions(messages[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		messages[i].MentionUserIDs = mentions
+		messages[i].MentionAll = mentionAll
 	}
 	return messages, rows.Err()
 }
@@ -1180,7 +1392,7 @@ func StoreMessage(message model.Message) error {
 	if message.Status == "" {
 		message.Status = "active"
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+	_, err := db.ExecContext(context.Background(), `INSERT INTO messages (id, conversation_id, channel_id, sender_id, sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status, forwarded_from_message_id, forwarded_from_sender) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		message.ID,
 		message.ConversationID,
 		message.ChannelID,
@@ -1195,6 +1407,8 @@ func StoreMessage(message model.Message) error {
 		message.Status,
 		message.TenantID,
 		message.DeliveryStatus,
+		nullString(message.ForwardedFromMessageID),
+		nullString(message.ForwardedFromSender),
 	)
 	return err
 }
@@ -1268,7 +1482,7 @@ func GetMessageByID(messageID string) (model.Message, error) {
 	var threadRootID sql.NullString
 	var status sql.NullString
 
-	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status FROM messages WHERE id = $1`, messageID).Scan(
+	err := db.QueryRowContext(context.Background(), `SELECT id, conversation_id, channel_id, COALESCE(sender_id, ''), sender, text, created_at, updated_at, deleted_at, parent_message_id, thread_root_id, status, tenant_id, delivery_status, COALESCE(forwarded_from_message_id, ''), COALESCE(forwarded_from_sender, '') FROM messages WHERE id = $1`, messageID).Scan(
 		&msg.ID,
 		&msg.ConversationID,
 		&channelID,
@@ -1283,6 +1497,8 @@ func GetMessageByID(messageID string) (model.Message, error) {
 		&status,
 		&msg.TenantID,
 		&msg.DeliveryStatus,
+		&msg.ForwardedFromMessageID,
+		&msg.ForwardedFromSender,
 	)
 	if err != nil {
 		return msg, err
@@ -1297,7 +1513,77 @@ func GetMessageByID(messageID string) (model.Message, error) {
 	msg.ParentMessageID = parentID.String
 	msg.ThreadRootID = threadRootID.String
 	msg.Status = status.String
+	location, err := GetMessageLocation(msg.ID)
+	if err != nil {
+		return msg, err
+	}
+	msg.Location = location
+	mentions, mentionAll, err := GetMessageMentions(msg.ID)
+	if err != nil {
+		return msg, err
+	}
+	msg.MentionUserIDs = mentions
+	msg.MentionAll = mentionAll
 	return msg, nil
+}
+
+func ForwardMessage(source model.Message, targetConversationID, senderID, senderName, tenantID string) (model.Message, error) {
+	forwarded := model.Message{
+		ID: uuid.NewString(), TenantID: normalizedTenantID(tenantID), ConversationID: targetConversationID,
+		SenderID: senderID, Sender: senderName, Text: source.Text, CreatedAt: time.Now().UTC(),
+		Status: "active", DeliveryStatus: "sent", ForwardedFromMessageID: source.ID, ForwardedFromSender: source.Sender,
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return model.Message{}, err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO messages (id, conversation_id, sender_id, sender, text, created_at, status, tenant_id, delivery_status, forwarded_from_message_id, forwarded_from_sender) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		forwarded.ID, forwarded.ConversationID, forwarded.SenderID, forwarded.Sender, forwarded.Text, forwarded.CreatedAt,
+		forwarded.Status, forwarded.TenantID, forwarded.DeliveryStatus, forwarded.ForwardedFromMessageID, forwarded.ForwardedFromSender)
+	if err != nil {
+		return model.Message{}, err
+	}
+	rows, err := tx.Query(`SELECT file_name, file_type, url, created_at FROM message_attachments WHERE message_id = $1 ORDER BY created_at`, source.ID)
+	if err != nil {
+		return model.Message{}, err
+	}
+	for rows.Next() {
+		var attachment model.MessageAttachment
+		if err := rows.Scan(&attachment.FileName, &attachment.FileType, &attachment.URL, &attachment.CreatedAt); err != nil {
+			rows.Close()
+			return model.Message{}, err
+		}
+		attachment.ID = uuid.NewString()
+		attachment.MessageID = forwarded.ID
+		attachment.MimeType = attachment.FileType
+		forwarded.Attachments = append(forwarded.Attachments, attachment)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return model.Message{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return model.Message{}, err
+	}
+	for _, attachment := range forwarded.Attachments {
+		if _, err := tx.Exec(`INSERT INTO message_attachments (id, message_id, file_name, file_type, url, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, attachment.ID, attachment.MessageID, attachment.FileName, attachment.FileType, attachment.URL, attachment.CreatedAt); err != nil {
+			return model.Message{}, err
+		}
+	}
+	if source.Location != nil {
+		location := *source.Location
+		location.MessageID = forwarded.ID
+		location.CreatedAt = forwarded.CreatedAt
+		if _, err := tx.Exec(`INSERT INTO message_locations (message_id, latitude, longitude, accuracy_meters, label, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, location.MessageID, location.Latitude, location.Longitude, nullFloat64(location.AccuracyMeters), location.Label, location.CreatedAt); err != nil {
+			return model.Message{}, err
+		}
+		forwarded.Location = &location
+	}
+	if err := tx.Commit(); err != nil {
+		return model.Message{}, err
+	}
+	return forwarded, nil
 }
 
 // CanModifyMessage permits the original sender or an organization moderator to
@@ -1359,6 +1645,21 @@ func BroadcastMessage(message model.Message) {
 			continue
 		}
 		if err := client.conn.WriteJSON(message); err != nil {
+			client.conn.Close()
+			delete(clients, client)
+		}
+	}
+}
+
+func BroadcastNotification(userID string, notification model.Notification) {
+	clientsMutex.Lock()
+	defer clientsMutex.Unlock()
+	for client := range clients {
+		if client.userID != userID {
+			continue
+		}
+		envelope := model.GatewayEnvelope{Event: "notification.created", Payload: notification}
+		if err := client.conn.WriteJSON(envelope); err != nil {
 			client.conn.Close()
 			delete(clients, client)
 		}

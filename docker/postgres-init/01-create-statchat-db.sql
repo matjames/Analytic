@@ -1,7 +1,7 @@
 -- Create all required databases for the StatGate platform
-CREATE DATABASE statchat;
-CREATE DATABASE kaggle;
-CREATE DATABASE statgate;
+SELECT 'CREATE DATABASE statchat' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statchat') \gexec
+SELECT 'CREATE DATABASE kaggle' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'kaggle') \gexec
+SELECT 'CREATE DATABASE statgate' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statgate') \gexec
 
 -- Passwords are injected from the container environment (fail-closed via
 -- docker-compose). Never hardcode credentials in init scripts.

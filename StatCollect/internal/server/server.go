@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -98,15 +100,15 @@ func Run() {
 
 	// serve admin static files (moved to frontend/admin)
 	fs := http.FileServer(http.Dir("./frontend/admin"))
-	http.Handle("/admin/", http.StripPrefix("/admin/", fs))
+	http.Handle("/admin/", corsMiddleware(http.StripPrefix("/admin/", fs)))
 
 	// serve field agent static files (moved to frontend/field)
 	ffs := http.FileServer(http.Dir("./frontend/field"))
-	http.Handle("/field/", http.StripPrefix("/field/", ffs))
+	http.Handle("/field/", corsMiddleware(http.StripPrefix("/field/", ffs)))
 
 	// serve StatCollect AI app (frontend/ai)
 	aifs := http.FileServer(http.Dir("./frontend/ai"))
-	http.Handle("/ai/", http.StripPrefix("/ai/", aifs))
+	http.Handle("/ai/", corsMiddleware(http.StripPrefix("/ai/", aifs)))
 
 	// register prometheus metrics
 	prometheus.MustRegister(submissionsReceived, submissionsDuplicate, submissionsFailed, submissionDuration, submissionsLinked)
@@ -119,6 +121,8 @@ func Run() {
 	// Admin API - Core
 	http.HandleFunc("/admin/submissions", adminListHandler)
 	http.HandleFunc("/admin/submission", adminGetHandler)
+	http.HandleFunc("/admin/submission/delete", adminDeleteSubmissionHandler)
+	http.HandleFunc("/admin/attachment", adminAttachmentHandler)
 	http.HandleFunc("/admin/keys", adminRotateKeysHandler)
 
 	// Admin API - StatGate Platform Integration
@@ -225,6 +229,34 @@ func Run() {
 	}
 }
 
+// corsMiddleware adds permissive CORS headers for cross-origin integration.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// corsHandler wraps a HandlerFunc with CORS headers.
+func corsHandler(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		fn(w, r)
+	}
+}
+
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
@@ -235,6 +267,10 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
+	// CORS headers for cross-origin field agent access
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Instance-ID")
 
 	// API key check (StatGate internal key or configured API key)
 	if !checkAPIKey(r) && !checkInternalKey(r) {
@@ -259,6 +295,7 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// find XML submission content
 	xmlData, formID, instanceID := extractXMLSubmission(r.MultipartForm)
+
 	// allow client to provide instance id in header for idempotency
 	if hdr := r.Header.Get("X-Instance-ID"); hdr != "" {
 		instanceID = hdr
@@ -267,6 +304,7 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 		// fallback to timestamp-based id
 		instanceID = fmt.Sprintf("inst-%d", time.Now().UnixNano())
 	}
+
 	// idempotency: if submission already exists, return 200
 	if exists, err := SubmissionExists(instanceID); err == nil && exists {
 		submissionsDuplicate.Inc()
@@ -275,7 +313,43 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// persist submission via configured store
+	// ── GPS ENFORCEMENT (MUST run before file saving) ──
+	// Every submission must carry GPS coordinates. We accept all common ODK
+	// field names: gps_coordinates, geopoint, location, coordinates, gps.
+	// We use proper XML parsing rather than fragile string matching.
+	var gpsLat, gpsLng float64
+	var gpsRaw string
+	hasGPS := false
+	if len(xmlData) > 0 {
+		hasGPS, gpsLat, gpsLng, gpsRaw = extractGPSFromXMLBytes(xmlData)
+		if !hasGPS {
+			submissionsFailed.Inc()
+			log.Printf("submission %s rejected: missing GPS coordinates", instanceID)
+			http.Error(w, "GPS coordinates are mandatory for all field submissions", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// ── CAPTURE SUBMITTING IDENTITY ──
+	// Priority: 1) Registry JWT, 2) X-Submitted-By header, 3) submitted_by form field
+	submittedBy := ""
+	var registryIdent interface{ GetUserID() string }
+	if ident := checkRegistryToken(r); ident != nil {
+		submittedBy = ident.UserID
+		_ = registryIdent
+	}
+	if submittedBy == "" {
+		if hdr := r.Header.Get("X-Submitted-By"); hdr != "" {
+			submittedBy = strings.TrimSpace(hdr)
+		}
+	}
+	if submittedBy == "" {
+		if fv := r.FormValue("submitted_by"); fv != "" {
+			submittedBy = strings.TrimSpace(fv)
+		}
+	}
+
+	// ── SAVE FILES ──
 	savedFiles := []string{}
 
 	if len(xmlData) > 0 {
@@ -290,8 +364,12 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 	hasVideoAttachment := false
 	for _, fhs := range r.MultipartForm.File {
 		for _, fh := range fhs {
+			// Skip the XML file itself (already saved above)
+			if isXMLFilename(fh.Filename) {
+				continue
+			}
 			// Track whether a field_video was uploaded
-			if strings.HasPrefix(fh.Filename, "field_video") || fh.Filename == "field_video" {
+			if strings.HasPrefix(strings.ToLower(fh.Filename), "field_video") {
 				hasVideoAttachment = true
 			}
 			key, err := store.SaveFile(instanceID, fh)
@@ -300,32 +378,17 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			savedFiles = append(savedFiles, key)
-			// record attachment in DB (size available in header)
+			// record attachment in DB
 			_ = SaveAttachmentToDB(instanceID, filepath.Base(key), key, fh.Size)
 		}
 	}
 
-	// ── GPS ENFORCEMENT ──
-	// Every submission MUST contain GPS coordinates in the XML.
-	// Reject the submission if gps_coordinates is missing or empty.
-	if len(xmlData) > 0 {
-		xmlStr := string(xmlData)
-		hasGPS := strings.Contains(xmlStr, "<gps_coordinates>") &&
-			!strings.Contains(xmlStr, "<gps_coordinates></gps_coordinates>")
-		if !hasGPS {
-			submissionsFailed.Inc()
-			log.Printf("submission %s rejected: missing GPS coordinates", instanceID)
-			http.Error(w, "GPS coordinates are mandatory for all field submissions", http.StatusBadRequest)
-			return
-		}
-	}
-
-	// ── VIDEO EVIDENCE QA FLAG ──
-	// Log a QA flag if no field_video was attached; submission is still accepted
-	// but flagged so supervisor can follow up.
+	// ── QA FLAGS ──
+	// Collect quality flags that will be persisted on the submission record.
+	qaFlags := []map[string]string{}
 	if !hasVideoAttachment {
 		log.Printf("qa_flag: submission %s is missing field video evidence", instanceID)
-		_ = LogEvent("submission.qa_flag", "statcollect", "submission", instanceID, map[string]string{
+		qaFlags = append(qaFlags, map[string]string{
 			"flag":   "MISSING_FIELD_VIDEO",
 			"detail": "No field_video attachment was submitted with this record",
 		})
@@ -342,20 +405,22 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 	// save meta to storage as well
 	_ = store.SaveSubmission(instanceID, "meta.json", metaB)
 
-	// capture submitting identity from Registry JWT if present
-	submittedBy := ""
-	if ident := checkRegistryToken(r); ident != nil {
-		submittedBy = ident.UserID
-		_ = LogEvent(EventSubmissionReceived, "statcollect", "submission", instanceID, map[string]interface{}{
-			"instance_id":  instanceID,
-			"form_id":      formID,
-			"submitted_by": ident.UserID,
-			"files":        savedFiles,
-		})
+	// Parse all question-and-answer response fields from the XML document
+	parsedXMLResponses := parseXMLFieldsToMap(xmlData)
+
+	// persist submission record in DB — includes GPS, submittedBy, QA flags, and all parsed response fields
+	dbMeta := map[string]interface{}{
+		"files":        savedFiles,
+		"gps_raw":      gpsRaw,
+		"gps_lat":      gpsLat,
+		"gps_lng":      gpsLng,
+		"submitted_by": submittedBy,
+	}
+	for k, v := range parsedXMLResponses {
+		dbMeta[k] = v
 	}
 
-	// persist submission record in DB (xml as text)
-	if err := SaveSubmissionToDB(instanceID, formID, map[string]interface{}{"files": savedFiles}, string(xmlData)); err != nil {
+	if err := SaveSubmissionFullToDB(instanceID, formID, dbMeta, string(xmlData), submittedBy, gpsLat, gpsLng, gpsRaw, qaFlags); err != nil {
 		submissionsFailed.Inc()
 		log.Printf("failed to save submission to db: %v", err)
 		http.Error(w, "failed to save submission", http.StatusInternalServerError)
@@ -364,21 +429,25 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 	submissionsReceived.Inc()
 
 	// ── StatGate Platform Integration ──
-	// 1. Publish submission.received event to the event bus
+	// 1. Log QA flag events
+	for _, flag := range qaFlags {
+		_ = LogEvent("submission.qa_flag", "statcollect", "submission", instanceID, flag)
+	}
+	// 2. Publish submission.received event to the event bus
 	PublishSubmissionReceived(instanceID, formID, savedFiles)
-	// 2. Log event for audit
+	// 3. Log event for audit
 	_ = LogEvent(EventSubmissionReceived, "statcollect", "submission", instanceID, map[string]interface{}{
 		"instance_id":  instanceID,
 		"form_id":      formID,
 		"files":        savedFiles,
 		"submitted_by": submittedBy,
 	})
-	// 3. Link submission to StatChat for discussion (communication backbone)
+	// 4. Link submission to StatChat for discussion (communication backbone)
 	if statChat != nil && statChat.IsEnabled() {
 		go LinkSubmission(instanceID, formID)
 		submissionsLinked.Inc()
 	}
-	// 4. Directive 22 — fire cross-module platform event bus
+	// 5. Directive 22 — fire cross-module platform event bus
 	tenantID := "default"
 	if cfg != nil && cfg.TenantID != "" {
 		tenantID = cfg.TenantID
@@ -423,11 +492,12 @@ func extractXMLSubmission(mf *multipart.Form) ([]byte, string, string) {
 	// check values first (some clients may post XML as a form value)
 	for k, vals := range mf.Value {
 		if k == "xml_submission_file" {
-			return []byte(vals[0]), "", instanceIDFromXML(vals[0])
+			data := []byte(vals[0])
+			return data, formIDFromXML(data), instanceIDFromXML(vals[0])
 		}
 	}
 
-	// check files
+	// check files — prefer the field named "xml_submission_file" first
 	for key, fhs := range mf.File {
 		for _, fh := range fhs {
 			if isXMLFilename(fh.Filename) || key == "xml_submission_file" {
@@ -449,36 +519,171 @@ func extractXMLSubmission(mf *multipart.Form) ([]byte, string, string) {
 }
 
 func isXMLFilename(name string) bool {
-	ext := filepath.Ext(name)
-	return ext == ".xml" || ext == ".XML"
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".xml"
 }
 
-var instanceRe = regexp.MustCompile(`<instanceID>([^<]+)</instanceID>`)
-var formIDRe = regexp.MustCompile(`<([a-zA-Z0-9_\-:]+)`)
+// instanceIDFromXML extracts the ODK instanceID from the XML submission.
+// It checks the <meta><instanceID> element (ODK standard) and falls back
+// to the <instanceID> element at any depth.
+var instanceRe = regexp.MustCompile(`(?i)<instanceID[^>]*>([^<]+)</instanceID>`)
+var instanceAttrRe = regexp.MustCompile(`(?i)instanceID=["']([^"']+)["']`)
 
 func instanceIDFromXML(s string) string {
-	m := instanceRe.FindStringSubmatch(s)
-	if len(m) >= 2 {
+	// ODK standard: <meta><instanceID>uuid:xxx</instanceID></meta>
+	if m := instanceRe.FindStringSubmatch(s); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
+	}
+	// Attribute form: instanceID="uuid:xxx"
+	if m := instanceAttrRe.FindStringSubmatch(s); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+// formIDFromXML extracts the form ID from an ODK XML submission.
+// ODK Collect sets the id attribute on the root data element:
+//
+//	<data id="my_form_id" version="2026010101">
+//
+func formIDFromXML(b []byte) string {
+	// Fast path: look for id="..." or id='...' on the root element
+	type xmlRoot struct {
+		XMLName xml.Name
+		ID      string `xml:"id,attr"`
+		FormID  string `xml:"formID,attr"`
+	}
+	var root xmlRoot
+	if err := xml.Unmarshal(b, &root); err == nil {
+		if root.ID != "" && root.ID != "?xml" {
+			return root.ID
+		}
+		if root.FormID != "" {
+			return root.FormID
+		}
+		// Fall back to the root element local name if it is meaningful
+		if name := root.XMLName.Local; name != "" && name != "data" && name != "root" {
+			return name
+		}
+	}
+	// Regex fallback: id="form_id" anywhere in the first 2 KB
+	preview := string(b)
+	if len(preview) > 2048 {
+		preview = preview[:2048]
+	}
+	if m := regexp.MustCompile(`(?i)\bid=["']([^"'\s]+)["']`).FindStringSubmatch(preview); len(m) >= 2 {
 		return m[1]
 	}
 	return ""
 }
 
-func formIDFromXML(b []byte) string {
-	// attempt to find root element name as a form id (simple heuristic)
-	m := formIDRe.FindSubmatch(b)
-	if len(m) >= 2 {
-		return string(m[1])
+// ── GPS Enforcement ──────────────────────────────────────────────────────────
+// ODK GPS field names we accept: gps_coordinates, geopoint, location,
+// coordinates, gps, GPS, GeoPoint. Latitude/longitude encoded as
+// "lat lon alt acc" (ODK standard) or "lat,lon" (simplified).
+
+var gpsFieldNames = []string{
+	"gps_coordinates", "geopoint", "gps", "location", "coordinates",
+	"start_geopoint", "end_geopoint", "geo", "gps_location", "point",
+	"latitude", "longitude",
+}
+
+// extractGPSFromXMLBytes parses the XML bytes looking for any non-empty GPS
+// field. Returns found=true, lat, lng, rawValue.
+func extractGPSFromXMLBytes(data []byte) (found bool, lat, lng float64, raw string) {
+	// Walk the XML token stream looking for known GPS element names.
+	decoder := xml.NewDecoder(strings.NewReader(string(data)))
+	var currentElement string
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			currentElement = strings.ToLower(t.Name.Local)
+			// Also check lat/lng attributes on any element
+			var la, lo string
+			for _, attr := range t.Attr {
+				switch strings.ToLower(attr.Name.Local) {
+				case "lat", "latitude":
+					la = attr.Value
+				case "lon", "lng", "longitude":
+					lo = attr.Value
+				}
+			}
+			if la != "" && lo != "" {
+				if latF, err := strconv.ParseFloat(la, 64); err == nil {
+					if lngF, err := strconv.ParseFloat(lo, 64); err == nil {
+						return true, latF, lngF, la + " " + lo
+					}
+				}
+			}
+		case xml.CharData:
+			value := strings.TrimSpace(string(t))
+			if value == "" {
+				continue
+			}
+			// Check if the current element is a known GPS field name
+			isGPSField := false
+			for _, name := range gpsFieldNames {
+				if currentElement == name {
+					isGPSField = true
+					break
+				}
+			}
+			if !isGPSField {
+				continue
+			}
+			// Try to parse "lat lon ..." or "lat,lon" coordinate string
+			parts := strings.FieldsFunc(value, func(c rune) bool {
+				return c == ' ' || c == ','
+			})
+			if len(parts) >= 2 {
+				if latF, err := strconv.ParseFloat(parts[0], 64); err == nil {
+					if lngF, err := strconv.ParseFloat(parts[1], 64); err == nil {
+						if latF >= -90 && latF <= 90 && lngF >= -180 && lngF <= 180 {
+							return true, latF, lngF, value
+						}
+					}
+				}
+			}
+			// Single-value latitude element — try to find a sibling longitude
+			if currentElement == "latitude" {
+				if latF, err := strconv.ParseFloat(value, 64); err == nil && latF >= -90 && latF <= 90 {
+					// We found a valid latitude value — mark as found (GPS present)
+					// The longitude sibling will set correct value when encountered.
+					return true, latF, 0, value
+				}
+			}
+		}
 	}
-	return ""
+	return false, 0, 0, ""
 }
 
 func apiKeyFromRequest(r *http.Request) string {
+	if k := r.Header.Get("X-Admin-Key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	if k := r.Header.Get("X-API-Key"); k != "" {
+		return strings.TrimSpace(k)
+	}
 	auth := r.Header.Get("Authorization")
 	if strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	} else if auth != "" {
+		return strings.TrimSpace(auth)
 	}
-	return r.Header.Get("X-API-Key")
+	if k := r.URL.Query().Get("admin_key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	if k := r.URL.Query().Get("api_key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	if k := r.URL.Query().Get("key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	return ""
 }
 
 func checkAPIKey(r *http.Request) bool {
@@ -490,6 +695,12 @@ func checkAPIKey(r *http.Request) bool {
 		return false
 	}
 	for _, valid := range cfg.APIKeys {
+		if valid != "" && key == valid {
+			return true
+		}
+	}
+	// Also allow any admin key to act as API key
+	for _, valid := range cfg.AdminKeys {
 		if valid != "" && key == valid {
 			return true
 		}
@@ -522,6 +733,10 @@ func checkAdminKey(r *http.Request) bool {
 		if valid != "" && key == valid {
 			return true
 		}
+	}
+	// Also allow Internal API Key for admin tasks
+	if cfg.InternalAPIKey != "" && key == cfg.InternalAPIKey {
+		return true
 	}
 	// Also allow Registry JWT for admin operations
 	if registry != nil && registry.IsEnabled() {
@@ -558,12 +773,19 @@ func adminListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	offset := (page - 1) * perPage
-	subs, err := ListSubmissions(perPage, offset)
+	formID := r.URL.Query().Get("form_id")
+	var subs []SubmissionSummary
+	var err error
+	if formID != "" {
+		subs, err = GetSubmissionsByFormID(formID, perPage)
+	} else {
+		subs, err = ListSubmissions(perPage, offset)
+	}
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	out := map[string]interface{}{"page": page, "per_page": perPage, "items": subs}
+	out := map[string]interface{}{"page": page, "per_page": perPage, "items": subs, "count": len(subs)}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(b)
@@ -580,7 +802,7 @@ func adminGetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance_id required", http.StatusBadRequest)
 		return
 	}
-	s, xml, err := GetSubmission(id)
+	s, xmlDoc, err := GetSubmission(id)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -589,15 +811,164 @@ func adminGetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "submission not found", http.StatusNotFound)
 		return
 	}
+
+	// Fetch attachments
+	attachments, _ := ListAttachments(id)
+	for i, att := range attachments {
+		fn, _ := att["filename"].(string)
+		attachments[i]["url"] = fmt.Sprintf("/admin/attachment?instance_id=%s&filename=%s", id, fn)
+	}
+
+	// Fetch validation / review history
+	validations, _ := ListValidations(id)
+
+	// Extract structured response fields
+	parsedResponses := parseXMLFieldsToMap([]byte(xmlDoc))
+	if len(parsedResponses) == 0 && s.Meta != nil {
+		parsedResponses = make(map[string]interface{})
+		for k, v := range s.Meta {
+			if k != "files" && k != "gps_raw" && k != "gps_lat" && k != "gps_lng" && k != "submitted_by" {
+				parsedResponses[k] = v
+			}
+		}
+	}
+
 	// include StatChat link if available
 	var discussion string
 	if convID, err := GetStatChatLink("submission", id); err == nil {
 		discussion = convID
 	}
-	out := map[string]interface{}{"summary": s, "xml": xml, "discussion": discussion}
+
+	out := map[string]interface{}{
+		"summary":          s,
+		"parsed_responses": parsedResponses,
+		"attachments":      attachments,
+		"validations":      validations,
+		"xml":              xmlDoc,
+		"discussion":       discussion,
+	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(b)
+}
+
+// adminAttachmentHandler streams or downloads a submission attachment file.
+// GET /admin/attachment?instance_id=...&filename=...
+func adminAttachmentHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminKey(r) && !checkAPIKey(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	instanceID := r.URL.Query().Get("instance_id")
+	filename := r.URL.Query().Get("filename")
+	if instanceID == "" || filename == "" {
+		http.Error(w, "instance_id and filename required", http.StatusBadRequest)
+		return
+	}
+
+	dataDir := cfg.DataDir
+	if dataDir == "" {
+		dataDir = "data"
+	}
+	filePath := filepath.Join(dataDir, filepath.Clean(instanceID), filepath.Clean(filename))
+
+	// Security: ensure the path stays inside dataDir
+	if !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(dataDir)) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		http.Error(w, "attachment file not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	// Content-Type detection
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".webm":
+		w.Header().Set("Content-Type", "video/webm")
+	case ".mp4":
+		w.Header().Set("Content-Type", "video/mp4")
+	case ".jpg", ".jpeg":
+		w.Header().Set("Content-Type", "image/jpeg")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+	case ".xml":
+		w.Header().Set("Content-Type", "application/xml")
+	case ".json":
+		w.Header().Set("Content-Type", "application/json")
+	default:
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filepath.Base(filename)))
+	io.Copy(w, file)
+}
+
+// adminDeleteSubmissionHandler deletes a submission by instance_id.
+// POST /admin/submission/delete?instance_id=...
+func adminDeleteSubmissionHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminKey(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	instanceID := r.URL.Query().Get("instance_id")
+	if instanceID == "" {
+		http.Error(w, "instance_id required", http.StatusBadRequest)
+		return
+	}
+	if err := DeleteSubmission(instanceID); err != nil {
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = LogEvent("submission.deleted", "statcollect", "submission", instanceID, map[string]string{
+		"instance_id": instanceID,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"deleted","instance_id":"` + instanceID + `"}`))
+}
+
+// parseXMLFieldsToMap recursively extracts all element values into a flat key-value map.
+func parseXMLFieldsToMap(data []byte) map[string]interface{} {
+	out := make(map[string]interface{})
+	if len(data) == 0 {
+		return out
+	}
+	decoder := xml.NewDecoder(strings.NewReader(string(data)))
+	var currentElement string
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			currentElement = t.Name.Local
+		case xml.CharData:
+			val := strings.TrimSpace(string(t))
+			if val == "" || currentElement == "" || currentElement == "data" || currentElement == "root" || currentElement == "meta" {
+				continue
+			}
+			// Attempt numeric parsing
+			if intVal, err := strconv.ParseInt(val, 10, 64); err == nil {
+				out[currentElement] = intVal
+			} else if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
+				out[currentElement] = floatVal
+			} else if val == "true" || val == "yes" {
+				out[currentElement] = true
+			} else if val == "false" || val == "no" {
+				out[currentElement] = false
+			} else {
+				out[currentElement] = val
+			}
+		}
+	}
+	return out
 }
 
 // admin rotate keys (persist to disk)

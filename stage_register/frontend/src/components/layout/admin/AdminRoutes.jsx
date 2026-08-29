@@ -13,6 +13,7 @@ import FacilityDetail from "../../../pages/admin/facility/FacilityDetail";
 import FacilityManager from "../../../pages/admin/direct-edits/FacilityManager";
 import UserManager from "../../../pages/admin/users/UserManager";
 import UserUpload from "../../../pages/admin/users/UserUpload";
+import InvitationManager from "../../../pages/admin/users/InvitationManager";
 import RequestManager from "../../../pages/admin/requests/RequestManager";
 import RequestDetailPage from "../../../pages/admin/requests/RequestDetailPage";
 import ReviewerDashboard from "../../../pages/admin/dashboard/ReviewerDashboard";
@@ -22,6 +23,9 @@ import DirectDeactivate from "../../../pages/admin/direct-edits/DirectDeactivate
 import Settings from "../../../pages/admin/settings";
 import DocumentManager from "../../../pages/admin/settings/DocumentManager";
 import FacilityUpload from "../../../pages/admin/settings/FacilityUpload";
+import PermissionManager from "../../../pages/admin/permissions/PermissionManager";
+import AuditLogViewer from "../../../pages/admin/audit/AuditLogViewer";
+import WorkspaceManager from "../../../pages/admin/workspaces/WorkspaceManager";
 
 // District initiator/review pages reused under /district/*
 import InitiatorRequests from "../../../pages/initiator/Requests";
@@ -75,6 +79,11 @@ export default function AdminRoutes({ user }) {
       <Route path="/requests/:id" component={RequestDetailPage} />
       <Route path="/requests" component={RequestManager} />
       <Route path="/users/upload" component={UserUpload} />
+      <Route path="/invitations" component={InvitationManager} />
+      <Route path="/roles" render={() => <PermissionManager mode="roles" />} />
+      <Route path="/permissions" render={() => <PermissionManager mode="policies" />} />
+      <Route path="/audit" component={AuditLogViewer} />
+      <Route path="/workspaces" component={WorkspaceManager} />
       <Route path="/users" component={UserManager} />
       <Route path="/settings" component={Settings} />
       <Redirect to={getRoleRoute(user?.role)} />

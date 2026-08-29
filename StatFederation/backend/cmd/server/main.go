@@ -80,12 +80,18 @@ func main() {
 	diplomacyGW := diplomacy.NewDiplomacyGateway(appStore)
 	compliance := diplomacy.NewComplianceEvaluator(appStore)
 	fedSearch := diplomacy.NewFederatedSearchHub(appStore)
-	eventWorker := fedevents.NewEventWorker(eventBus, appStore, cfg.NodeID)
+	fedSearch.SetSourceNodeID(cfg.NodeID)
+	pushProtocol := engine.NewPushProtocol(appStore)
+	pushProtocol.SetSigner(engine.NewStatTrustSigner(cfg.StatTrustURL, cfg.NodeID))
+	autoPush := fedevents.NewAutoPushConsumer(appStore, pushProtocol)
+	eventWorker := fedevents.NewEventWorker(eventBus, appStore, cfg.NodeID).WithAutoPushConsumer(autoPush)
 
-	// Start background event listener
+	// Start background event listener & periodic node health probe loop
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	defer cancelApp()
 	eventWorker.StartEventListener(appCtx)
+	fedEngine.StartProbeLoop(appCtx, "default")
+	autoPush.Start(appCtx)
 
 	// 5. JWT Authentication Validator
 	var authVal *auth.Validator
@@ -110,7 +116,7 @@ func main() {
 	// 7. API Handlers & Router Setup
 	handlers := api.NewHandlers(
 		appStore, fedEngine, queryRouter, harmonizer,
-		diplomacyGW, compliance, fedSearch, eventWorker,
+		diplomacyGW, compliance, fedSearch, eventWorker, pushProtocol,
 	)
 
 	router := api.SetupRouter(api.RouterConfig{

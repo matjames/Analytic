@@ -244,8 +244,17 @@
 </head>
 <body>
   <div class="header">
-    <h1>📱 StatCollect Field Agent</h1>
-    <a href="/admin/">Admin Portal</a>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="logo.png" alt="StatGate" style="width:32px;height:32px;border-radius:7px;box-shadow:0 0 0 2px rgba(255,255,255,0.25)" onerror="this.style.display='none'" />
+      <div>
+        <h1 style="font-size:17px;line-height:1.1">StatCollect Field Agent</h1>
+        <div style="font-size:10px;color:rgba(255,255,255,0.7);font-weight:500">Mobile Enumerator Workspace</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a href="../admin/index.html" style="color:white;text-decoration:none;font-size:12px;background:rgba(255,255,255,0.15);padding:6px 12px;border-radius:6px;font-weight:600">📊 Admin Dashboard</a>
+      <a href="../ai/index.html" style="color:white;text-decoration:none;font-size:12px;background:rgba(255,255,255,0.15);padding:6px 12px;border-radius:6px;font-weight:600">🧠 AI Intel</a>
+    </div>
   </div>
 
   <div class="status-bar">
@@ -256,19 +265,25 @@
 
   <div class="container">
 
-    <!-- Form selector & API key -->
+    <!-- Form selector & Agent configuration -->
     <div class="card">
-      <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
         <select id="templateSelect" onchange="onSelectForm()"
           style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border-color);font-size:14px">
           <option value="">-- Select Survey Form --</option>
         </select>
-        <button class="btn btn-outline" onclick="loadForms()">🔄</button>
+        <button class="btn btn-outline" onclick="loadForms()" title="Refresh Forms">🔄</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <input type="text" id="fieldEnumeratorId" placeholder="Enumerator Name / ID"
+          style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px" />
+        <input type="password" id="fieldApiKey" placeholder="API Key"
+          style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px" />
       </div>
       <div style="display:flex;gap:8px">
-        <input type="password" id="fieldApiKey" placeholder="API Key"
+        <input type="text" id="fieldServerUrl" placeholder="Server URL (e.g. http://localhost:8080)"
           style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:13px" />
-        <button class="btn btn-outline" onclick="saveKey()" style="padding:6px 12px;font-size:12px">Save Key</button>
+        <button class="btn btn-outline" onclick="saveAgentSettings()" style="padding:6px 12px;font-size:12px">Save Config</button>
       </div>
     </div>
 
@@ -354,16 +369,36 @@
     }
 
     /* ════════════════════════════════════════
-       UTILITY
+       UTILITY & SETTINGS
     ════════════════════════════════════════ */
+    function getServerUrl() {
+      const saved = localStorage.getItem('statcollect_server_url') || '';
+      return saved ? saved.replace(/\/+$/, '') : window.location.origin;
+    }
     function getApiKey() {
       return localStorage.getItem('statcollect_api_key') || document.getElementById('fieldApiKey').value.trim() || 'changeme';
     }
-    function saveKey() {
-      localStorage.setItem('statcollect_api_key', document.getElementById('fieldApiKey').value.trim());
-      showToast('Key saved');
+    function getEnumeratorId() {
+      return localStorage.getItem('statcollect_enumerator_id') || document.getElementById('fieldEnumeratorId').value.trim() || 'agent_mobile';
     }
+    function saveAgentSettings() {
+      const key = document.getElementById('fieldApiKey').value.trim();
+      const enumId = document.getElementById('fieldEnumeratorId').value.trim();
+      const srv = document.getElementById('fieldServerUrl').value.trim();
+      if (key) localStorage.setItem('statcollect_api_key', key);
+      if (enumId) localStorage.setItem('statcollect_enumerator_id', enumId);
+      if (srv) localStorage.setItem('statcollect_server_url', srv);
+      showToast('Settings saved successfully! ✔', 'success');
+      loadForms();
+    }
+    function saveKey() {
+      saveAgentSettings();
+    }
+
+    // Populate initial settings values
     document.getElementById('fieldApiKey').value = getApiKey();
+    document.getElementById('fieldEnumeratorId').value = getEnumeratorId();
+    document.getElementById('fieldServerUrl').value = localStorage.getItem('statcollect_server_url') || window.location.origin;
 
     function showToast(msg, type) {
       const t = document.getElementById('toast');
@@ -371,21 +406,6 @@
       t.className = 'toast show ' + (type || '');
       setTimeout(() => t.className = 'toast', 3500);
     }
-
-    function updateNetworkStatus() {
-      const net = document.getElementById('netStatus');
-      if (navigator.onLine) {
-        net.className = 'status-pill status-online';
-        net.textContent = '🟢 Online';
-        syncOfflineQueue();
-      } else {
-        net.className = 'status-pill status-offline';
-        net.textContent = '🔴 Offline Mode';
-      }
-    }
-    window.addEventListener('online', updateNetworkStatus);
-    window.addEventListener('offline', updateNetworkStatus);
-    updateNetworkStatus();
 
     /* ════════════════════════════════════════
        FORM LOADING
@@ -832,10 +852,11 @@
         new Blob([sub.xml], { type: 'application/xml' }), 'submission.xml');
       formData.append('field_video',
         videoBlob, `field_video_${sub.instanceID}.webm`);
+      formData.append('submitted_by', getEnumeratorId());
 
       if (!navigator.onLine) {
         // Store the XML payload for offline retry (video will be lost; enumerator must retake when online)
-        offlineQueue.push({ ...sub, videoOffline: true });
+        offlineQueue.push({ ...sub, submitted_by: getEnumeratorId(), videoOffline: true });
         localStorage.setItem('statcollect_offline_queue', JSON.stringify(offlineQueue));
         updateQueueDisplay();
         showToast('Saved to offline queue. Video will be re-captured on sync.', 'warning');
@@ -844,22 +865,27 @@
       }
 
       try {
-        const res = await fetch('/submission', {
+        const res = await fetch(getServerUrl() + '/submission', {
           method: 'POST',
-          headers: { 'X-API-Key': getApiKey(), 'X-Instance-ID': sub.instanceID },
+          headers: {
+            'X-API-Key': getApiKey(),
+            'X-Instance-ID': sub.instanceID,
+            'X-Submitted-By': getEnumeratorId()
+          },
           body: formData
         });
         if (res.ok) {
           showToast('Survey + video submitted successfully! ✔', 'success');
           resetForm();
         } else {
-          throw new Error('Server error: ' + res.status);
+          const errText = await res.text();
+          throw new Error(errText || ('Server error: ' + res.status));
         }
       } catch (e) {
-        offlineQueue.push({ ...sub, videoOffline: true });
+        offlineQueue.push({ ...sub, submitted_by: getEnumeratorId(), videoOffline: true });
         localStorage.setItem('statcollect_offline_queue', JSON.stringify(offlineQueue));
         updateQueueDisplay();
-        showToast('Connection failed — queued for sync', 'warning');
+        showToast('Connection issue: ' + e.message + ' — queued for sync', 'warning');
         resetForm();
       }
     }
@@ -894,10 +920,15 @@
         const formData = new FormData();
         formData.append('xml_submission_file',
           new Blob([item.xml], { type: 'application/xml' }), 'submission.xml');
+        formData.append('submitted_by', item.submitted_by || getEnumeratorId());
         try {
-          const res = await fetch('/submission', {
+          const res = await fetch(getServerUrl() + '/submission', {
             method: 'POST',
-            headers: { 'X-API-Key': getApiKey(), 'X-Instance-ID': item.instanceID },
+            headers: {
+              'X-API-Key': getApiKey(),
+              'X-Instance-ID': item.instanceID,
+              'X-Submitted-By': item.submitted_by || getEnumeratorId()
+            },
             body: formData
           });
           if (!res.ok && res.status !== 200) remaining.push(item);

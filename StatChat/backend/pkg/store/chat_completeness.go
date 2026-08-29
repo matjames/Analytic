@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ type SearchResult struct {
 	Channels      []model.Channel      `json:"channels"`
 }
 
-func GlobalSearch(query string, userID string) (SearchResult, error) {
+func GlobalSearch(query string, userID string, tenantID string) (SearchResult, error) {
 	result := SearchResult{
 		Users:         []model.User{},
 		Conversations: []model.Conversation{},
@@ -29,6 +30,7 @@ func GlobalSearch(query string, userID string) (SearchResult, error) {
 		Channels:      []model.Channel{},
 	}
 	query = strings.TrimSpace(query)
+	tenantID = normalizedTenantID(tenantID)
 	if query == "" {
 		return result, nil
 	}
@@ -38,7 +40,7 @@ func GlobalSearch(query string, userID string) (SearchResult, error) {
 	// Users
 	userRows, err := db.QueryContext(context.Background(), `
 SELECT id, name, email, organization_id, roles, avatar_url, about, presence
-FROM users WHERE name ILIKE $1 OR email ILIKE $1 OR organization_id ILIKE $1 ORDER BY name LIMIT 20`, like)
+FROM users WHERE organization_id = $2 AND (name ILIKE $1 OR email ILIKE $1) ORDER BY name LIMIT 20`, like, tenantID)
 	if err != nil {
 		return result, err
 	}
@@ -62,7 +64,7 @@ FROM users WHERE name ILIKE $1 OR email ILIKE $1 OR organization_id ILIKE $1 ORD
 
 	// Channels
 	channelRows, err := db.QueryContext(context.Background(), `
-SELECT id, name FROM channels WHERE name ILIKE $1 ORDER BY name LIMIT 20`, like)
+SELECT id, name FROM channels WHERE tenant_id = $2 AND name ILIKE $1 ORDER BY name LIMIT 20`, like, tenantID)
 	if err != nil {
 		return result, err
 	}
@@ -78,12 +80,14 @@ SELECT id, name FROM channels WHERE name ILIKE $1 ORDER BY name LIMIT 20`, like)
 
 	// Messages (only ones in conversations the user belongs to)
 	messageRows, err := db.QueryContext(context.Background(), `
-SELECT m.id, m.conversation_id, m.channel_id, COALESCE(m.sender_id, ''), m.sender, m.text, m.created_at, m.updated_at, m.deleted_at, m.parent_message_id, m.thread_root_id, m.status, m.tenant_id, m.delivery_status
+SELECT m.id, m.conversation_id, m.channel_id, COALESCE(m.sender_id, ''), m.sender, m.text, m.created_at, m.updated_at, m.deleted_at, m.parent_message_id, m.thread_root_id, m.status, m.tenant_id, m.delivery_status, COALESCE(m.forwarded_from_message_id, ''), COALESCE(m.forwarded_from_sender, '')
 FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 WHERE m.status != 'deleted' AND m.text ILIKE $1
+  AND m.tenant_id = $3
+  AND (c.tenant_id = $3 OR c.tenant_id = 'default')
   AND (c.member_ids::jsonb @> to_jsonb($2::text) OR c.type = 'channel')
-ORDER BY m.created_at DESC LIMIT 30`, like, userID)
+ORDER BY m.created_at DESC LIMIT 30`, like, userID, tenantID)
 	if err != nil {
 		return result, err
 	}
@@ -94,7 +98,7 @@ ORDER BY m.created_at DESC LIMIT 30`, like, userID)
 		var deletedAt sql.NullTime
 		var parentID sql.NullString
 		var threadRootID sql.NullString
-		if err := messageRows.Scan(&msg.ID, &msg.ConversationID, &channelID, &msg.SenderID, &msg.Sender, &msg.Text, &msg.CreatedAt, &updatedAt, &deletedAt, &parentID, &threadRootID, &msg.Status, &msg.TenantID, &msg.DeliveryStatus); err != nil {
+		if err := messageRows.Scan(&msg.ID, &msg.ConversationID, &channelID, &msg.SenderID, &msg.Sender, &msg.Text, &msg.CreatedAt, &updatedAt, &deletedAt, &parentID, &threadRootID, &msg.Status, &msg.TenantID, &msg.DeliveryStatus, &msg.ForwardedFromMessageID, &msg.ForwardedFromSender); err != nil {
 			messageRows.Close()
 			return result, err
 		}
@@ -115,8 +119,9 @@ ORDER BY m.created_at DESC LIMIT 30`, like, userID)
 	convRows, err := db.QueryContext(context.Background(), `
 SELECT id, name, type, channel_id, member_ids, COALESCE(category,'')
 FROM conversations WHERE name ILIKE $1
+  AND (tenant_id = $3 OR tenant_id = 'default')
   AND (member_ids::jsonb @> to_jsonb($2::text) OR type = 'channel')
-ORDER BY name LIMIT 20`, like, userID)
+ORDER BY name LIMIT 20`, like, userID, tenantID)
 	if err != nil {
 		return result, err
 	}
@@ -160,6 +165,7 @@ CREATE TABLE IF NOT EXISTS conversation_mutes (
   created_at TIMESTAMPTZ NOT NULL,
   UNIQUE (user_id, conversation_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS conversation_mutes_user_conversation_uidx ON conversation_mutes (user_id, conversation_id);
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS wallpaper TEXT;`)
 	return err
 }
@@ -242,6 +248,28 @@ func GetConversationMembers(conversationID string) ([]string, error) {
 	return ids, nil
 }
 
+// CanAccessConversation is the single authorization boundary for conversation
+// data. Public channels are readable by authenticated users; direct and group
+// conversations require explicit membership.
+func CanAccessConversation(conversationID string, userID string, tenantID string) (bool, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	userID = strings.TrimSpace(userID)
+	tenantID = normalizedTenantID(tenantID)
+	if conversationID == "" || userID == "" {
+		return false, nil
+	}
+	var allowed bool
+	err := db.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+  SELECT 1
+  FROM conversations
+  WHERE id = $1
+    AND (tenant_id = $3 OR tenant_id = 'default')
+    AND (type = 'channel' OR member_ids::jsonb @> to_jsonb($2::text))
+)`, conversationID, userID, tenantID).Scan(&allowed)
+	return allowed, err
+}
+
 // ── Clear Conversation Messages ──
 
 func ClearConversationMessages(conversationID string) error {
@@ -275,39 +303,98 @@ func BroadcastEnvelope(tenantID string, conversationID string, event string, pay
 
 // ── Notify conversation members about a new message ──
 
-func NotifyConversationMembers(conversationID string, senderUserID string, messageText string, link string) error {
+type messageNotificationPreferences struct {
+	messages bool
+	groups   bool
+	mentions bool
+	preview  bool
+}
+
+func getMessageNotificationPreferences(userID string) (messageNotificationPreferences, error) {
+	prefs := messageNotificationPreferences{messages: true, groups: true, mentions: true}
+	err := db.QueryRowContext(context.Background(), `SELECT notif_messages, notif_groups, notif_mentions, notif_preview FROM user_settings WHERE user_id = $1`, userID).Scan(&prefs.messages, &prefs.groups, &prefs.mentions, &prefs.preview)
+	if err == sql.ErrNoRows {
+		return prefs, nil
+	}
+	return prefs, err
+}
+
+func shouldRouteMessageNotification(prefs messageNotificationPreferences, conversationType string, muted, mentioned bool) bool {
+	if mentioned {
+		return prefs.mentions
+	}
+	if muted {
+		return false
+	}
+	if conversationType == string(model.ConversationTypeDirect) {
+		return prefs.messages
+	}
+	return prefs.groups
+}
+
+func NotifyConversationMembers(conversationID, senderUserID, senderName, messageText, link string, mentionUserIDs []string) error {
 	memberIDs, err := GetConversationMembers(conversationID)
 	if err != nil {
 		// If members can't be resolved, fall back to notifying nothing.
 		return nil
 	}
 	// Determine conversation name for the notification title.
-	var convName string
-	_ = db.QueryRowContext(context.Background(), `SELECT name FROM conversations WHERE id = $1`, conversationID).Scan(&convName)
+	var convName, conversationType string
+	_ = db.QueryRowContext(context.Background(), `SELECT name, type FROM conversations WHERE id = $1`, conversationID).Scan(&convName, &conversationType)
 	if convName == "" {
 		convName = conversationID
 	}
 
-	preview := messageText
-	if len(preview) > 120 {
-		preview = preview[:120] + "…"
+	previewRunes := []rune(messageText)
+	if len(previewRunes) > 120 {
+		previewRunes = append(previewRunes[:120], '…')
+	}
+	preview := string(previewRunes)
+	mentioned := make(map[string]bool, len(mentionUserIDs))
+	for _, userID := range mentionUserIDs {
+		mentioned[userID] = true
 	}
 
 	for _, memberID := range memberIDs {
 		if memberID == senderUserID {
 			continue
 		}
-		_, err := CreateNotification(model.Notification{
+		prefs, err := getMessageNotificationPreferences(memberID)
+		if err != nil {
+			log.Printf("notification preferences unavailable for %s: %v", memberID, err)
+			continue
+		}
+		muted, err := IsConversationMuted(memberID, conversationID)
+		if err != nil {
+			log.Printf("conversation mute unavailable for %s: %v", memberID, err)
+			continue
+		}
+		if !shouldRouteMessageNotification(prefs, conversationType, muted, mentioned[memberID]) {
+			continue
+		}
+		title := "New message in " + convName
+		notificationType := "message"
+		if mentioned[memberID] {
+			title = senderName + " mentioned you"
+			notificationType = "mention"
+		}
+		body := "Open StatChat to view the message."
+		if prefs.preview {
+			body = preview
+		}
+		notification, err := CreateNotification(model.Notification{
 			UserID: memberID,
-			Type:   "message",
-			Title:  "New message",
-			Body:   preview,
+			Type:   notificationType,
+			Title:  title,
+			Body:   body,
 			Link:   link,
 		})
 		if err != nil {
 			// Continue notifying other members even if one fails.
+			log.Printf("failed to create notification for %s: %v", memberID, err)
 			continue
 		}
+		BroadcastNotification(memberID, notification)
 	}
 	return nil
 }

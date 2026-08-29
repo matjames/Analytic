@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Start script for StatGate Report Builder
+# Ensures report_server is running and nginx is restarted
+
+set -e
+
+echo "==================================="
+echo "StatGate Report Builder Starter"
+echo "==================================="
+
+# Get project root
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_ROOT"
+
+echo "📁 Project root: $PROJECT_ROOT"
+
+# Step 1: Kill any existing report_server process and anything on the builder port
+echo ""
+echo "🛑 Stopping any existing report_server instances..."
+pkill -f report_server || true
+
+echo "🛑 Stopping any process on port 8110..."
+lsof -ti:8110 | xargs kill -9 2>/dev/null || true
+sleep 1
+
+# Step 2: Clean and rebuild the binary
+echo ""
+echo "🧹 Removing old binary..."
+rm -f report_server
+
+echo "🔨 Building report_server..."
+go build -o report_server ./server
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful"
+else
+    echo "❌ Build failed"
+    exit 1
+fi
+
+# Step 3: Start the service in background
+echo ""
+echo "🚀 Starting report_server..."
+nohup ./report_server > /tmp/report_server.log 2>&1 &
+SERVER_PID=$!
+echo "✅ Service started (PID: $SERVER_PID)"
+
+# Wait for service to start
+sleep 2
+
+# Step 4: Verify service is running
+echo ""
+echo "🔍 Verifying service..."
+if curl -s http://localhost:8110/ > /dev/null; then
+    echo "✅ Service is responding on localhost:8110"
+else
+    echo "❌ Service not responding"
+    cat /tmp/report_server.log
+    exit 1
+fi
+
+echo ""
+echo "==================================="
+echo "✅ Server started and verified!"
+echo "==================================="
+echo ""
+echo "📊 View logs: tail -f logs/report_server.log"
+echo "📝 API: curl http://localhost:8110/api/reports"
+echo "🧪 Builder UI: http://localhost:8110/builder.html"
+echo ""

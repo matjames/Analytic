@@ -5,13 +5,14 @@ import requests
 from auth_service import get_tenant_headers
 
 
-def build_backend_headers(identity=None, internal_key=None, default_tenant_id='tenant-alpha', default_user_role='analyst', default_user_clearance='2'):
+def build_backend_headers(identity=None, internal_key=None, default_tenant_id='tenant-alpha', default_user_role='analyst', default_user_clearance='2', workspace_id=None):
     return get_tenant_headers(
         identity,
         internal_key,
         default_tenant_id=default_tenant_id,
         default_user_role=default_user_role,
         default_user_clearance=default_user_clearance,
+        workspace_id=workspace_id,
     )
 
 

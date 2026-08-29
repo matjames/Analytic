@@ -1,6 +1,30 @@
 export interface Channel {
   id: string;
+  tenantId?: string;
   name: string;
+  description?: string;
+  visibility: 'public' | 'private';
+  createdBy?: string;
+  createdAt?: string;
+  memberCount: number;
+  joined: boolean;
+  archived?: boolean;
+}
+
+export interface PollOption {
+  id: string;
+  label: string;
+  votes: number;
+}
+
+export interface Poll {
+  id: string;
+  tenantId?: string;
+  question: string;
+  options: PollOption[];
+  createdBy: string;
+  createdAt: string;
+  voted?: boolean;
 }
 
 export interface MessageAttachment {
@@ -41,6 +65,43 @@ export interface Message {
   reactions?: MessageReaction[];
   pinned?: boolean;
   readBy?: string[];
+  forwardedFromMessageId?: string;
+  forwardedFromSender?: string;
+  location?: MessageLocation;
+  mentionUserIds?: string[];
+  mentionAll?: boolean;
+  savedAt?: string;
+}
+
+export interface MessageLocation {
+  messageId?: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  label?: string;
+  createdAt: string;
+}
+
+export interface ScheduledMessage {
+  id: string;
+  tenantId?: string;
+  conversationId: string;
+  senderId: string;
+  sender: string;
+  text: string;
+  scheduledFor: string;
+  status: 'pending' | 'sent' | 'cancelled';
+  messageId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaCatalogItem {
+  id: string;
+  kind: 'gif' | 'sticker';
+  label: string;
+  tags: string[];
+  previewUrl: string;
 }
 
 export interface User {
@@ -88,6 +149,7 @@ export interface UserSettings {
 export interface Conversation {
   id: string;
   tenantId?: string;
+  objectRef?: string;
   name: string;
   type: 'channel' | 'direct' | 'group';
   memberIds?: string[];
@@ -98,6 +160,7 @@ export interface Conversation {
   unreadCount?: number;
   favourite?: boolean;
   muted?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Favourite {
@@ -140,6 +203,31 @@ export interface Task {
   updatedAt?: string;
 }
 
+export interface MessageSearchFilters {
+  conversationId?: string;
+  sender?: string;
+  from?: string;
+  to?: string;
+  hasAttachment?: boolean;
+  savedOnly?: boolean;
+}
+
+export interface CalendarEvent {
+  id: string;
+  tenantId?: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  conversationId?: string;
+  attendeeIds: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;
@@ -157,6 +245,39 @@ export interface Presence {
   updatedAt: string;
 }
 
+export interface RetentionPolicy {
+  tenantId: string;
+  retentionDays: number;
+  enabled: boolean;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LegalHold {
+  id: string;
+  tenantId: string;
+  conversationId?: string;
+  name: string;
+  reason: string;
+  status: 'active' | 'released';
+  createdBy: string;
+  createdAt: string;
+  releasedBy?: string;
+  releasedAt?: string;
+}
+
+export interface ComplianceAuditEvent {
+  id: string;
+  tenantId: string;
+  actorId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  details?: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ── Conferencing (Native WebRTC) ──
 
 export type CallKind = 'voice' | 'video';
@@ -164,6 +285,7 @@ export type CallStatus = 'scheduled' | 'live' | 'ended';
 
 export interface CallSession {
   id: string;
+  tenantId?: string;
   roomId: string;
   roomName: string;
   kind: CallKind;
@@ -196,8 +318,23 @@ export interface CallRecording {
   createdAt: string;
 }
 
+export type CallQuality = 'excellent' | 'good' | 'fair' | 'poor' | 'offline' | 'unknown';
+export type CallConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+
+export interface CallQualitySample {
+  id: string;
+  sessionId: string;
+  userId: string;
+  rttMs: number;
+  jitterMs: number;
+  packetLossPct: number;
+  bitrateKbps: number;
+  quality: Exclude<CallQuality, 'offline' | 'unknown'>;
+  createdAt: string;
+}
+
 export interface CallSignal {
-  type: string; // offer | answer | ice-candidate | join | leave
+  type: string; // offer | answer | ice-candidate | screen-share-* | mute-requested | mute-accepted | mute-declined
   sessionId: string;
   from: string;
   fromName?: string;

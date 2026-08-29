@@ -1,7 +1,7 @@
 -- Learning, Community & Commercial (App 7 — P24 LMS/CPD, P26 CRM,
 -- P35 Stakeholder Stewardship) database and role.
 -- Password injected from environment (LMS_DB_PASSWORD), never hardcoded.
-CREATE DATABASE learning_crm;
+SELECT 'CREATE DATABASE learning_crm' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'learning_crm') \gexec
 
 \getenv lms_pw LMS_DB_PASSWORD
 SELECT format('CREATE ROLE "LearningCRM" WITH LOGIN PASSWORD %L', :'lms_pw')

@@ -15,12 +15,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"statgate/internal/abac"
 	"statgate/internal/assets"
+	"statgate/internal/intelligence"
+	"statgate/internal/iotbridge"
 	"statgate/internal/lakehouse"
+	"statgate/internal/sampling"
 	"statgate/internal/semantic"
+	"statgate/internal/spatial"
+	"statgate/internal/tabulation"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,9 +66,18 @@ type Server struct {
 	semRegistry    *semantic.Registry
 	abacEngine     *abac.Engine
 	assetManager   *assets.Manager
+	condCalculator *intelligence.ConditionCalculator
+	tabEngine      *tabulation.Engine
+	samplingEngine *sampling.Engine
+	spatialEngine  *spatial.Engine
+	iotBridge      *iotbridge.Bridge
 	startTime      time.Time
 	httpClient     *http.Client
 	internalAPIKey string
+
+	// Condition-change tracking for institutional.condition.changed events.
+	conditionMu      sync.Mutex
+	lastCondition    map[string]intelligence.ConditionLevel
 }
 
 func main() {
@@ -143,9 +158,15 @@ func main() {
 		storageEngine:  lakehouse.NewStorageEngine(),
 		semRegistry:    semantic.NewRegistry(),
 		assetManager:   assetMgr,
+		condCalculator: intelligence.NewConditionCalculator(),
+		tabEngine:      tabulation.NewEngine(),
+		samplingEngine: sampling.NewEngine(),
+		spatialEngine:  spatial.NewEngine(),
+		iotBridge:      iotbridge.NewBridge(),
 		startTime:      time.Now(),
 		httpClient:     &http.Client{Timeout: 5 * time.Second},
 		internalAPIKey: internalAPIKey,
+		lastCondition:  make(map[string]intelligence.ConditionLevel),
 	}
 
 	mux := http.NewServeMux()
@@ -169,6 +190,21 @@ func main() {
 	mux.HandleFunc("/api/v1/alerts", srv.handleAlerts)
 	mux.HandleFunc("/api/v1/agent/dispatch", srv.handleAgentDispatch)
 	mux.HandleFunc("/api/v1/agent/actions", srv.handleAgentActions)
+
+	// Phase XII Intelligence & Phase 6 Official Statistics Engine Routes
+	mux.HandleFunc("/api/v1/intelligence/condition", srv.handleCondition)
+	mux.HandleFunc("/api/v1/statistics/tabulate", srv.handleTabulate)
+	mux.HandleFunc("/api/v1/statistics/tabulate/export", srv.handleTabulationExport)
+	mux.HandleFunc("/api/v1/statistics/sampling/design", srv.handleSamplingDesign)
+	mux.HandleFunc("/api/v1/statistics/sampling/sample-size", srv.handleSamplingSampleSize)
+	mux.HandleFunc("/api/v1/statistics/sampling/frames", srv.handleSamplingFrames)
+	mux.HandleFunc("/api/v1/statistics/sampling/frames/{id}/allocate", srv.handleSamplingFrameAllocate)
+
+	// Sprint 3: GIS Spatial Indicator & IoT Bridge Routes
+	mux.HandleFunc("/api/v1/statistics/indicators/compute/spatial", srv.handleSpatialIndicator)
+	mux.HandleFunc("/api/v1/iot/ingest", srv.handleIoTIngest)
+	mux.HandleFunc("/api/v1/iot/indicators", srv.handleIoTIndicators)
+	mux.HandleFunc("/api/v1/iot/anomalies", srv.handleIoTAnomalies)
 
 	bindAddress := os.Getenv("BIND_ADDRESS")
 	if bindAddress == "" {
@@ -217,7 +253,7 @@ func enableCORS(next http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Tenant-ID, X-User-Role, X-User-Clearance, X-StatGate-Internal-Key")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Tenant-ID, X-Workspace-ID, X-User-Role, X-User-Clearance, X-StatGate-Internal-Key")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -433,6 +469,14 @@ func getUserContext(r *http.Request) abac.UserAttributes {
 	return empty
 }
 
+func requestWorkspaceID(r *http.Request) string {
+	workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+	if workspaceID != "" && !isSafeIdentifier(workspaceID) {
+		return ""
+	}
+	return workspaceID
+}
+
 func (s *Server) requireUserAccess(w http.ResponseWriter, r *http.Request, resource, action string) (abac.UserAttributes, bool) {
 	uCtx := getUserContext(r)
 	if err := s.abacEngine.Evaluate(uCtx, resource, action, uCtx.TenantID); err != nil {
@@ -486,12 +530,13 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	record := lakehouse.EventRecord{
-		ID:        payload.ID,
-		TenantID:  uCtx.TenantID,
-		Source:    payload.Source,
-		Payload:   payload.Data,
-		Timestamp: time.Now(),
-		Value:     payload.Value,
+		ID:          payload.ID,
+		TenantID:    uCtx.TenantID,
+		WorkspaceID: requestWorkspaceID(r),
+		Source:      payload.Source,
+		Payload:     payload.Data,
+		Timestamp:   time.Now(),
+		Value:       payload.Value,
 	}
 	if record.ID == "" {
 		record.ID = fmt.Sprintf("ingest-%d", time.Now().UnixNano())
@@ -531,7 +576,7 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data := s.storageEngine.QueryTenantData(uCtx.TenantID, limit)
+	data := s.storageEngine.QueryTenantData(uCtx.TenantID, requestWorkspaceID(r), limit)
 
 	s.logAudit(uCtx, "telemetry.read", "query", "allowed")
 
@@ -548,7 +593,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	stats := s.storageEngine.GetStats(uCtx.TenantID)
+	stats := s.storageEngine.GetStats(uCtx.TenantID, requestWorkspaceID(r))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
@@ -593,7 +638,7 @@ func (s *Server) handleCreateIndicator(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAnomalies(w http.ResponseWriter, r *http.Request) {
 	uCtx := getUserContext(r)
-	anomalies := s.storageEngine.GetAnomalies(uCtx.TenantID)
+	anomalies := s.storageEngine.GetAnomalies(uCtx.TenantID, requestWorkspaceID(r))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -749,6 +794,7 @@ func (s *Server) handleSaveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	asset.OwnerID = uCtx.TenantID
+	asset.WorkspaceID = requestWorkspaceID(r)
 	if err := s.assetManager.SaveAsset(asset); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 		return
@@ -765,9 +811,10 @@ func (s *Server) handleSaveAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetAsset(w http.ResponseWriter, r *http.Request) {
+	uCtx := getUserContext(r)
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/assets/get/")
 	if s.assetManager != nil {
-		asset, err := s.assetManager.GetAsset(id)
+		asset, err := s.assetManager.GetAsset(id, uCtx.TenantID, requestWorkspaceID(r))
 		if err == nil && asset != nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(asset)
@@ -780,7 +827,8 @@ func (s *Server) handleGetAsset(w http.ResponseWriter, r *http.Request) {
 		"id":                 id,
 		"asset_type":         "dashboard",
 		"content_definition": map[string]interface{}{"widgets": []interface{}{}},
-		"owner_id":           "tenant-alpha",
+		"owner_id":           uCtx.TenantID,
+		"workspace_id":       requestWorkspaceID(r),
 		"version_tag":        "1.0.0",
 	})
 }
@@ -790,7 +838,7 @@ func (s *Server) handleListAssets(w http.ResponseWriter, r *http.Request) {
 	assetType := r.URL.Query().Get("type")
 
 	if s.assetManager != nil {
-		list, err := s.assetManager.ListAssets(uCtx.TenantID, assetType)
+		list, err := s.assetManager.ListAssets(uCtx.TenantID, requestWorkspaceID(r), assetType)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -811,9 +859,10 @@ func (s *Server) handleListAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAssetHistory(w http.ResponseWriter, r *http.Request) {
+	uCtx := getUserContext(r)
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/assets/history/")
 	if s.assetManager != nil {
-		hist, err := s.assetManager.GetAssetHistory(id)
+		hist, err := s.assetManager.GetAssetHistory(id, uCtx.TenantID, requestWorkspaceID(r))
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -907,3 +956,343 @@ func (s *Server) handleAgentDispatch(w http.ResponseWriter, r *http.Request) {
 		"tenant_id": uCtx.TenantID,
 	})
 }
+
+// ─── Phase XII: Institutional Condition & Intelligence Handler ───────────────
+
+func (s *Server) handleCondition(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	uCtx := getUserContext(r)
+
+	// Fetch current anomalies count from lakehouse
+	anomalies := s.storageEngine.GetAnomalies(uCtx.TenantID, requestWorkspaceID(r))
+	anomaliesCount := len(anomalies)
+
+	// Evaluate condition
+	cond := s.condCalculator.EvaluateCondition(
+		r.Context(),
+		uCtx.TenantID,
+		anomaliesCount,
+		0,    // active risks
+		94.5, // schema quality baseline
+		89.0, // KPI progress baseline
+		98.2, // SLA compliance
+	)
+
+	// Emit an observability event whenever the condition level changes.
+	s.recordConditionChange(uCtx.TenantID, cond)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cond)
+}
+
+// recordConditionChange persists an institutional.condition.changed event to the
+// lakehouse ledger whenever the composite level transitions for a tenant. This
+// gives downstream consumers (dashboards, StatChat, StatFederation) an
+// authoritative changelog without adding a hard Redis dependency to the Go core.
+func (s *Server) recordConditionChange(tenantID string, cond *intelligence.InstitutionalCondition) {
+	if tenantID == "" || cond == nil {
+		return
+	}
+	s.conditionMu.Lock()
+	defer s.conditionMu.Unlock()
+
+	prev, known := s.lastCondition[tenantID]
+	if known && prev == cond.Level {
+		return // no level change; suppress duplicate events
+	}
+	s.lastCondition[tenantID] = cond.Level
+
+	previous := ""
+	if known {
+		previous = string(prev)
+	}
+	s.storageEngine.RecordEvent(lakehouse.EventRecord{
+		ID:       fmt.Sprintf("cond-%s-%d", tenantID, time.Now().UnixNano()),
+		TenantID: tenantID,
+		Source:   "institutional_condition",
+		Payload: map[string]interface{}{
+			"event_type":      "institutional.condition.changed",
+			"level":           string(cond.Level),
+			"previous_level":  previous,
+			"composite_score": cond.CompositeScore,
+			"recommendations": cond.Recommendations,
+		},
+		Timestamp: time.Now().UTC(),
+		Value:     cond.CompositeScore,
+	})
+	log.Printf("[Institutional Condition] %s: %s%s -> %s (score %.1f)", tenantID, previous, levelArrow(previous), cond.Level, cond.CompositeScore)
+}
+
+// levelArrow returns a Unicode arrow for condition transitions in logs.
+func levelArrow(prev string) string {
+	if prev == "" {
+		return ""
+	}
+	return " » "
+}
+
+// ─── Phase 6: Tabulation & Crosstab Calculation Handler ──────────────────────
+
+func (s *Server) handleTabulate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req tabulation.TabulationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request payload: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.tabEngine.Tabulate(r.Context(), req)
+	if err != nil {
+		http.Error(w, `{"error":"tabulation error: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handleTabulationExport computes a tabulation from a request body and returns
+// the result serialized in the requested official-statistics format
+// (?format=sdmx|csv), fulfilling the NSO export requirement.
+func (s *Server) handleTabulationExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	format := tabulation.ExportFormat(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format"))))
+	if format == "" {
+		format = tabulation.ExportFormatSDMX
+	}
+
+	var req tabulation.TabulationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request payload: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.tabEngine.Tabulate(r.Context(), req)
+	if err != nil {
+		http.Error(w, `{"error":"tabulation error: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	payload, contentType, err := s.tabEngine.Export(result, format)
+	if err != nil {
+		http.Error(w, `{"error":"unsupported export format: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	filename := "tabulation." + string(format)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+// ─── Phase 6: Sampling Design & Sample Size Handlers ─────────────────────────
+
+func (s *Server) handleSamplingDesign(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req sampling.SamplingPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid sampling plan payload: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	plan, err := s.samplingEngine.DesignSamplingPlan(r.Context(), req)
+	if err != nil {
+		http.Error(w, `{"error":"sampling design error: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(plan)
+}
+
+func (s *Server) handleSamplingSampleSize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req sampling.SampleSizeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid sample size payload: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	result := s.samplingEngine.CalculateSampleSize(req)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// handleSamplingFrames supports POST (register a new master sampling frame) and
+// GET (list registered frames), implementing the frame-upload part of the
+// sampling designer.
+func (s *Server) handleSamplingFrames(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		uCtx := getUserContext(r)
+		var frame sampling.MasterSamplingFrame
+		if err := json.NewDecoder(r.Body).Decode(&frame); err != nil {
+			http.Error(w, `{"error":"invalid sampling frame payload: `+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		if frame.TenantID == "" {
+			frame.TenantID = uCtx.TenantID
+		}
+		created, err := s.samplingEngine.RegisterFrame(r.Context(), &frame)
+		if err != nil {
+			http.Error(w, `{"error":"sampling frame registration error: `+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(created)
+
+	case http.MethodGet:
+		uCtx := getUserContext(r)
+		frames := s.samplingEngine.ListFrames(r.Context(), uCtx.TenantID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"frames": frames,
+			"count":  len(frames),
+		})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleSamplingFrameAllocate draws a reproducible set of enumeration areas from
+// a stored master sampling frame: GET /api/v1/statistics/sampling/frames/{id}/allocate.
+func (s *Server) handleSamplingFrameAllocate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, `{"error":"frame id is required"}`, http.StatusBadRequest)
+		return
+	}
+	targetEAs, _ := strconv.Atoi(r.URL.Query().Get("target_areas"))
+	if targetEAs <= 0 {
+		http.Error(w, `{"error":"target_areas query parameter is required (positive integer)"}`, http.StatusBadRequest)
+		return
+	}
+	seed, _ := strconv.ParseInt(r.URL.Query().Get("seed"), 10, 64)
+
+	allocated, err := s.samplingEngine.AllocateFrame(r.Context(), id, targetEAs, seed)
+	if err != nil {
+		http.Error(w, `{"error":"sampling frame allocation error: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"frame_id":           id,
+		"allocated_areas":    allocated,
+		"allocated_count":    len(allocated),
+		"requested_count":    targetEAs,
+	})
+}
+
+// ─── Sprint 3: Spatial Indicator Computation Handler ─────────────────────────
+
+func (s *Server) handleSpatialIndicator(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req spatial.SpatialIndicatorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid spatial indicator payload: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.spatialEngine.ComputeSpatialIndicator(r.Context(), req)
+	if err != nil {
+		http.Error(w, `{"error":"spatial computation error: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// ─── Sprint 3: StatIoT Bridge Handlers ───────────────────────────────────────
+
+func (s *Server) handleIoTIngest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var reading iotbridge.TelemetryReading
+	if err := json.NewDecoder(r.Body).Decode(&reading); err != nil {
+		http.Error(w, `{"error":"invalid telemetry reading: `+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	anomaly := s.iotBridge.IngestReading(r.Context(), reading)
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]interface{}{
+		"status":    "ingested",
+		"device_id": reading.DeviceID,
+		"sensor":    reading.SensorType,
+	}
+	if anomaly != nil {
+		resp["anomaly_detected"] = true
+		resp["anomaly"] = anomaly
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleIoTIndicators(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	indicators := s.iotBridge.ComputeIndicators(r.Context())
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"indicators": indicators,
+		"count":      len(indicators),
+	})
+}
+
+func (s *Server) handleIoTAnomalies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	anomalies := s.iotBridge.GetAnomalies()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"anomalies": anomalies,
+		"count":     len(anomalies),
+	})
+}
+

@@ -82,7 +82,7 @@ def analytics_context(identity):
     }
 
 
-def get_tenant_headers(identity=None, internal_key=None, default_tenant_id='tenant-alpha', default_user_role='analyst', default_user_clearance='2'):
+def get_tenant_headers(identity=None, internal_key=None, default_tenant_id='tenant-alpha', default_user_role='analyst', default_user_clearance='2', workspace_id=None):
     context = analytics_context(identity) if identity else {
         'tenant_id': default_tenant_id,
         'role': default_user_role,
@@ -102,5 +102,7 @@ def get_tenant_headers(identity=None, internal_key=None, default_tenant_id='tena
 
     if internal_key:
         headers['X-StatGate-Internal-Key'] = internal_key
+    if workspace_id:
+        headers['X-Workspace-ID'] = str(workspace_id)
 
     return headers

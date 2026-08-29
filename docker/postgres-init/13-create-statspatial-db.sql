@@ -2,7 +2,7 @@
 -- Phase y convergence: StatSpatial is brought into the platform and deployed as
 -- a first-class StatGate service. Password injected from environment
 -- (STATSPATIAL_DB_PASSWORD), fail-closed via docker-compose never hardcoded.
-CREATE DATABASE statspatial;
+SELECT 'CREATE DATABASE statspatial' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statspatial') \gexec
 
 \getenv statspatial_pw STATSPATIAL_DB_PASSWORD
 SELECT format('CREATE ROLE "StatSpatial" WITH LOGIN PASSWORD %L', :'statspatial_pw')

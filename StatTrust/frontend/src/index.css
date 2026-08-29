@@ -1,6 +1,11 @@
 :root {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Outfit', 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  --statgate-primary: #165c92;
+  --statgate-primary-light: #1a7ab5;
+  --statgate-primary-dark: #0f3f5f;
 
   --bg-primary: #0b0f19;
   --bg-secondary: #111827;

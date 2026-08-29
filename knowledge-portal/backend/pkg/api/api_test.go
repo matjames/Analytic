@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"knowledgeportal/pkg/api"
+	"knowledgeportal/pkg/model"
 
 	"github.com/gorilla/mux"
 )
@@ -139,6 +140,61 @@ func TestKnowledgeRoutesRegister(t *testing.T) {
 	api.RegisterRoutes(r)
 	if r == nil {
 		t.Fatal("router must be created")
+	}
+}
+
+// TestOGCBuilders verifies the OGC API - Features model builders produce the
+// correct catalogue and GeoJSON shapes without requiring a database.
+func TestOGCBuilders(t *testing.T) {
+	pub := time.Now().UTC().Add(-48 * time.Hour)
+	d := model.PublicDataset{
+		ID:          "ds-health-001",
+		Title:       "National Immunisation Coverage",
+		Description: "District-level DTP3 coverage",
+		License:     "CC-BY-4.0",
+		Format:      "CSV",
+		DownloadURL: "https://data.statgate.org/ds-health-001.csv",
+		SourceApp:   "knowledge-portal",
+		Status:      "published",
+		Version:     "1.2.0",
+		Tags:        []string{"immunisation", "sdg3"},
+		PublishedAt: &pub,
+		CreatedAt:   pub,
+		UpdatedAt:   pub,
+	}
+
+	coll := api.CollectionFromDataset(d, "https://data.statgate.org")
+	if coll.ID != "ds-health-001" {
+		t.Errorf("expected collection id ds-health-001, got %q", coll.ID)
+	}
+	if len(coll.Links) != 2 {
+		t.Errorf("expected 2 collection links, got %d", len(coll.Links))
+	}
+	itemsRel := false
+	for _, l := range coll.Links {
+		if l.Rel == "items" {
+			itemsRel = true
+			if l.Type != "application/geo+json" {
+				t.Errorf("expected items link geo+json, got %q", l.Type)
+			}
+		}
+	}
+	if !itemsRel {
+		t.Error("collection must expose an items link")
+	}
+
+	feat := api.FeatureFromDataset(d)
+	if feat.Type != "Feature" || feat.ID != "ds-health-001" {
+		t.Errorf("unexpected feature shape: %+v", feat)
+	}
+	if feat.Properties["title"] != "National Immunisation Coverage" {
+		t.Errorf("expected title property, got %v", feat.Properties["title"])
+	}
+	if feat.Properties["license"] != "CC-BY-4.0" {
+		t.Errorf("expected license property, got %v", feat.Properties["license"])
+	}
+	if feat.Properties["version"] != "1.2.0" {
+		t.Errorf("expected version property, got %v", feat.Properties["version"])
 	}
 }
 

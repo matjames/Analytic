@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Service Health & Metrics | StatGate Report Builder</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root {
+            --color-primary-rgb: 20, 184, 166; /* Vibrant Teal #14b8a6 for dark mode */
+            --color-success: #10b981;
+            --color-success-light: rgba(16, 185, 129, 0.15);
+            --color-error: #ef4444;
+            --color-error-light: rgba(239, 68, 68, 0.15);
+            --color-warning: #f59e0b;
+            --color-warning-light: rgba(245, 158, 11, 0.15);
+            --color-info: #3b82f6;
+            --color-info-light: rgba(59, 130, 246, 0.15);
+            --font-display: 'Outfit', 'Inter', sans-serif;
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            --card-hover-shadow: 0 10px 30px rgba(20, 184, 166, 0.15);
+            --card-border: 1px solid rgba(255, 255, 255, 0.08);
+            --color-card-bg: #1e293b; /* Dark slate card background */
+
+            /* Overriding style.css variables for dark theme */
+            --bg-primary: #0f172a;     /* Dark main background */
+            --bg-secondary: #1e293b;   /* Dark secondary background */
+            --bg-tertiary: #334155;    /* Dark tertiary background */
+            --ink: #f8fafc;            /* Light text color */
+            --caption: #94a3b8;        /* Muted light text */
+            --text-primary: var(--ink);
+            --text-secondary: var(--caption);
+            --text-light: var(--caption);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-dark: rgba(255, 255, 255, 0.15);
+            --accent-hover: rgba(20, 184, 166, 0.15);
+            --accent-color: #14b8a6;   /* Vibrant teal accent */
+            --shadow-light: rgba(0, 0, 0, 0.20);
+            --shadow-medium: rgba(0, 0, 0, 0.40);
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--ink);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .metrics-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Top Banner & Control Area */
+        .metrics-header-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            background: var(--color-card-bg);
+            padding: 20px 24px;
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            border: var(--card-border);
+        }
+
+        .metrics-title-section h1 {
+            font-family: var(--font-display);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin: 0 0 6px 0;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot-pulse {
+            width: 10px;
+            height: 10px;
+            background-color: var(--color-success);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        .server-status-label {
+            font-size: 13px;
+            color: var(--caption);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metrics-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .auto-refresh-switch {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--caption);
+            cursor: pointer;
+            background: var(--bg-secondary);
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+
+        .auto-refresh-switch:hover {
+            border-color: var(--accent-color);
+            background: var(--accent-hover);
+        }
+
+        .auto-refresh-switch input {
+            cursor: pointer;
+            width: 15px;
+            height: 15px;
+            accent-color: var(--accent-color);
+        }
+
+        .btn-refresh {
+            background: var(--accent-color);
+            color: white !important;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 9px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 10px rgba(20, 184, 166, 0.2);
+        }
+
+        .btn-refresh:hover {
+            background: #0d9488;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(20, 184, 166, 0.3);
+        }
+
+        .btn-refresh.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Tabs Navigation */
+        .metrics-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 2px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            outline: none;
+            font-family: var(--font-display);
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--caption);
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            color: var(--ink);
+            background-color: var(--accent-hover);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background-color: var(--accent-color);
+            border-radius: 4px;
+        }
+
+        /* Tab Content Panel */
+        .tab-pane {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* KPI Value Boxes Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: var(--color-card-bg);
+            border-radius: 12px;
+            border: var(--card-border);
+            padding: 20px;
+            box-shadow: var(--card-shadow);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--card-hover-shadow);
+        }
+
+        /* Left border accent removed for plain value boxes */
+        /*
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-color);
+        }
+
+        .kpi-card.success::before { background: var(--color-success); }
+        .kpi-card.warning::before { background: var(--color-warning); }
+        .kpi-card.error::before { background: var(--color-error); }
+        .kpi-card.info::before { background: var(--color-info); }
+        */
+
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--caption);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .kpi-value {
+            font-family: var(--font-display);
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1.2;
+        }
+
+        .kpi-subtext {
+            font-size: 11px;
+            color: var(--caption);
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Two Column Layout */
+        .dashboard-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .dashboard-row.equal {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .dashboard-row.full {
+            grid-template-columns: 1fr;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-row {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        /* Dashboard Section Card */
+        .chart-card {
+            background: var(--color-card-bg);
+            border-radius: 12px;
+            border: var(--card-border);
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .chart-card.compact {
+            padding: 16px;
+        }
+
+        .chart-card h3 {
+            font-family: var(--font-display);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+            margin: 0 0 16px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-card h3 .card-badge {
+            background: var(--accent-hover);
+            color: var(--accent-color);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(15, 118, 110, 0.1);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        /* Table Styling */
+        .table-search-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .table-search-input {
+            background: var(--bg-secondary);
+            color: var(--ink);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 13px;
+            width: 240px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .table-search-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
+        }
+
+        .table-scroll-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--color-card-bg);
+        }
+
+        .table-scroll-wrapper.scrollable-max {
+            max-height: 480px;
+            overflow-y: auto;
+        }
+
+        .table-scroll-wrapper.scrollable-min {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .metrics-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        .metrics-table th {
+            background: var(--bg-secondary);
+            color: var(--ink);
+            font-weight: 600;
+            padding: 12px 16px;
+            border-bottom: 2px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .metrics-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--ink);
+            vertical-align: middle;
+        }
+
+        .metrics-table tbody tr:hover {
+            background: var(--accent-hover);
+        }
+
+        .metrics-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .metrics-table .number {
+            font-family: var(--font-mono);
+            text-align: right;
+        }
+
+        .metrics-table .report-id {
+            font-family: var(--font-mono);
+            font-weight: 500;
+            color: var(--accent-color);
+        }
+
+        .metrics-table .time-ago {
+            color: var(--caption);
+            font-size: 12px;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .status-badge.success {
+            background-color: var(--color-success-light);
+            color: var(--color-success);
+        }
+
+        .status-badge.error {
+            background-color: var(--color-error-light);
+            color: var(--color-error);
+        }
+
+        .status-badge.warning {
+            background-color: var(--color-warning-light);
+            color: var(--color-warning);
+        }
+
+        .status-badge.info {
+            background-color: var(--color-info-light);
+            color: var(--color-info);
+        }
+
+        /* Category grouping rows */
+        .category-row {
+            background: rgba(255, 255, 255, 0.05) !important;
+            cursor: pointer;
+        }
+
+        .category-row td {
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        .category-toggle {
+            display: inline-block;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid var(--caption);
+            margin-right: 8px;
+            transition: transform 0.2s ease;
+            vertical-align: middle;
+        }
+
+        .category-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .category-name {
+            text-transform: capitalize;
+            font-family: var(--font-display);
+        }
+
+        .report-row.hidden {
+            display: none !important;
+        }
+
+        .report-row td:first-child {
+            padding-left: 32px;
+        }
+
+        /* Feedback Styles */
+        .feedback-row {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+
+        .feedback-row:hover {
+            background: var(--accent-hover);
+        }
+
+        .feedback-row:last-child {
+            border-bottom: none;
+        }
+
+        .feedback-row-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: var(--caption);
+        }
+
+        .feedback-row-user {
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        .feedback-row-report {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-family: var(--font-mono);
+            font-weight: 500;
+        }
+
+        .feedback-row-report:hover {
+            text-decoration: underline;
+        }
+
+        .feedback-row-comment {
+            font-size: 13.5px;
+            color: var(--ink);
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .empty-state {
+            padding: 32px;
+            text-align: center;
+            color: var(--caption);
+            font-size: 13px;
+        }
+
+        .chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .chip {
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--ink);
+        }
+
+        /* Distribution chart bars */
+        .distribution-bar {
+            display: inline-block;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--accent-color);
+            opacity: 0.85;
+        }
+
+        .busiest-day .distribution-bar {
+            background: var(--color-warning);
+        }
+
+        /* Quick-Stats side box */
+        .system-status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--color-success-light);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 16px;
+            border-radius: 8px;
+            color: var(--color-success);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .system-status-indicator.warning {
+            background: var(--color-warning-light);
+            border-color: rgba(245, 158, 11, 0.2);
+            color: var(--color-warning);
+        }
+
+        .system-status-indicator.error {
+            background: var(--color-error-light);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: var(--color-error);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header-left">
+            <a href="index.html" class="header-brand">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <div class="header-controls">
+                <a href="index.html" class="btn-refresh" style="background: transparent; color: var(--accent-color) !important; border: 1px solid var(--border-color); box-shadow: none;">
+                    ← Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="metrics-container">
+        
+        <!-- Header Panel with Controls -->
+        <div class="metrics-header-panel">
+            <div class="metrics-title-section">
+                <h1>
+                    <span class="status-dot-pulse" id="global-status-dot"></span>
+                    Service Health & Metrics
+                </h1>
+                <div class="server-status-label" id="server-info">
+                    Server Status: Checking...
+                </div>
+            </div>
+            <div class="metrics-controls">
+                <label class="auto-refresh-switch">
+                    <input type="checkbox" id="auto-refresh">
+                    Auto-refresh (30s)
+                </label>
+                <button class="btn-refresh" id="refresh-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                    </svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="metrics-tabs" role="tablist">
+            <button class="tab-btn active" role="tab" aria-selected="true" data-tab="tab-overview">Overview & Health</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-reports">Reports Performance</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-db">Database & Components</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-users" style="display: none;">User & UI Analytics</button>
+            <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-chat">Ask AI Chat Module</button>
+        </nav>
+
+        <!-- TAB 1: OVERVIEW -->
+        <div class="tab-pane active" id="tab-overview" role="tabpanel">
+            
+            <!-- Headline KPIs -->
+            <div class="kpi-grid">
+                <div class="kpi-card success" id="uptime-card">
+                    <div class="kpi-label">Uptime</div>
+                    <div class="kpi-value" id="uptime">--</div>
+                    <div class="kpi-subtext">Active Server Duration</div>
+                </div>
+                <div class="kpi-card info" id="requests-card">
+                    <div class="kpi-label">Total Requests</div>
+                    <div class="kpi-value" id="total-requests">--</div>
+                    <div class="kpi-subtext" id="concurrent-requests">0 active requests</div>
+                </div>
+                <div class="kpi-card success" id="error-rate-card">
+                    <div class="kpi-label">Global Error Rate</div>
+                    <div class="kpi-value" id="global-error-rate">--</div>
+                    <div class="kpi-subtext" id="total-errors">0 total errors</div>
+                </div>
+                <div class="kpi-card success" id="cache-card">
+                    <div class="kpi-label">Cache Hit Rate</div>
+                    <div class="kpi-value" id="cache-hit-rate">--</div>
+                    <div class="kpi-subtext" id="cache-entries">0 cache entries</div>
+                </div>
+            </div>
+
+            <!-- Dashboard Analytics Rows -->
+            <div class="dashboard-row">
+                
+                <!-- Main Trend Line Graph -->
+                <div class="chart-card">
+                    <h3>
+                        Daily Hits & Performance Trends
+                        <span class="card-badge">Daily requests</span>
+                    </h3>
+                    <div class="chart-container" style="height: 320px;">
+                        <canvas id="adoptionChartJS"></canvas>
+                    </div>
+                </div>
+
+                <!-- Status Panel and Mini Stats -->
+                <div>
+                    <div class="system-status-indicator" id="system-health-indicator">
+                        <span class="status-dot-pulse"></span>
+                        <span id="system-health-text">Systems Operational</span>
+                    </div>
+
+                    <div class="chart-card compact" style="margin-bottom: 16px;">
+                        <h3>Requests by Weekday</h3>
+                        <div class="table-scroll-wrapper scrollable-min">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Day</th>
+                                        <th style="text-align: right;">Hits</th>
+                                        <th style="width: 45%;">Distribution</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="daily-hits-body">
+                                    <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="chart-card compact">
+                        <h3>Response Speed Groups</h3>
+                        <div class="table-scroll-wrapper scrollable-min">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Latency</th>
+                                        <th style="text-align: right;">Count</th>
+                                        <th style="text-align: right;">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="duration-buckets-body">
+                                    <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- TAB 2: REPORTS PERFORMANCE -->
+        <div class="tab-pane" id="tab-reports" role="tabpanel">
+            
+            <!-- Statistics full width table -->
+            <div class="chart-card">
+                <div class="table-search-header">
+                    <h3>
+                        Report Traffic & Performance
+                        <span class="card-badge" id="report-count-badge">0 reports</span>
+                    </h3>
+                    <input type="text" id="report-search" class="table-search-input" placeholder="Search reports by ID...">
+                </div>
+                
+                <div class="table-scroll-wrapper scrollable-max">
+                    <table class="metrics-table" id="report-stats-table">
+                        <thead>
+                            <tr>
+                                <th>Report ID (Click category to expand)</th>
+                                <th style="text-align: right;">Requests</th>
+                                <th style="text-align: right;">Errors</th>
+                                <th style="text-align: right;">Avg Latency</th>
+                                <th style="text-align: right;">Max Latency</th>
+                                <th>Last Accessed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-stats-body">
+                            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top vs Least Grid -->
+            <div class="dashboard-row equal">
+                <div class="chart-card compact">
+                    <h3>Top 10 Busiest Reports</h3>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px;">#</th>
+                                    <th>Report ID</th>
+                                    <th style="text-align: right;">Requests</th>
+                                    <th style="text-align: right;">Errors</th>
+                                </tr>
+                            </thead>
+                            <tbody id="top-reports-body">
+                                <tr><td colspan="4" class="empty-state">No data yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-card compact">
+                    <h3>Least Requested Reports</h3>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px;">#</th>
+                                    <th>Report ID</th>
+                                    <th style="text-align: right;">Requests</th>
+                                    <th style="text-align: right;">Errors</th>
+                                </tr>
+                            </thead>
+                            <tbody id="least-reports-body">
+                                <tr><td colspan="4" class="empty-state">No data yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Metrics Card -->
+            <div class="dashboard-row equal">
+                <div class="chart-card">
+                    <h3>
+                        PDF Exports
+                        <span class="card-badge" id="pdf-report-count">0</span>
+                    </h3>
+                    <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;">
+                        <div class="kpi-card" style="padding: 12px 16px;">
+                            <div class="kpi-label">Downloads</div>
+                            <div class="kpi-value" id="pdf-downloads" style="font-size: 20px;">--</div>
+                        </div>
+                        <div class="kpi-card error" style="padding: 12px 16px;">
+                            <div class="kpi-label">Errors</div>
+                            <div class="kpi-value" id="pdf-errors" style="font-size: 20px;">--</div>
+                        </div>
+                        <div class="kpi-card" style="padding: 12px 16px;">
+                            <div class="kpi-label">Avg Time</div>
+                            <div class="kpi-value" id="pdf-avg-time" style="font-size: 20px;">--</div>
+                        </div>
+                    </div>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Report ID</th>
+                                    <th style="text-align: right;">PDF Downloads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pdf-by-report-body">
+                                <tr><td colspan="2" class="empty-state">No downloads yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>
+                        CSV Exports
+                        <span class="card-badge" id="csv-report-count">0</span>
+                    </h3>
+                    <div class="kpi-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
+                        <div class="kpi-card" style="padding: 12px 16px;">
+                            <div class="kpi-label">Downloads</div>
+                            <div class="kpi-value" id="csv-downloads" style="font-size: 20px;">--</div>
+                        </div>
+                        <div class="kpi-card info" style="padding: 12px 16px;">
+                            <div class="kpi-label">Rows Exported</div>
+                            <div class="kpi-value" id="csv-rows" style="font-size: 20px;">--</div>
+                        </div>
+                    </div>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Report ID</th>
+                                    <th style="text-align: right;">CSV Downloads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="csv-by-report-body">
+                                <tr><td colspan="2" class="empty-state">No downloads yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- TAB 3: DATABASE & COMPONENTS -->
+        <div class="tab-pane" id="tab-db" role="tabpanel">
+            
+            <!-- Connection pool stats -->
+            <div class="dashboard-row">
+                <div class="chart-card">
+                    <h3>Database Connection Pool Stats</h3>
+                    <div class="table-scroll-wrapper">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th style="text-align: right;">Value</th>
+                                    <th>Status / Description</th>
+                                </tr>
+                            </thead>
+                            <tbody id="db-pool-body">
+                                <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Database Connections</h3>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                        <div class="chart-container" style="height: 180px; width: 180px;">
+                            <canvas id="dbPoolChartJS"></canvas>
+                        </div>
+                        <div style="text-align: center; margin-top: 16px; font-size: 14px;">
+                            <span style="font-weight: bold; color: var(--accent-color);" id="db-open-conns">--</span> Open Connections
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Query Execution Performance -->
+            <div class="chart-card" id="query-stats-section">
+                <h3>
+                    Database Query Execution Performance
+                    <span class="card-badge" id="query-stats-count">0 tables</span>
+                </h3>
+                <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
+                    <div class="kpi-card" style="padding: 12px 16px;">
+                        <div class="kpi-label">Total Queries</div>
+                        <div class="kpi-value" id="query-total-executed" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card error" style="padding: 12px 16px;">
+                        <div class="kpi-label">Query Errors</div>
+                        <div class="kpi-value" id="query-total-errors" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card warning" style="padding: 12px 16px;">
+                        <div class="kpi-label">Error Rate</div>
+                        <div class="kpi-value" id="query-error-rate" style="font-size: 20px;">--</div>
+                    </div>
+                </div>
+
+                <div class="table-scroll-wrapper scrollable-max">
+                    <table class="metrics-table">
+                        <thead>
+                            <tr>
+                                <th>Table Name</th>
+                                <th style="text-align: right;">Executions</th>
+                                <th style="text-align: right;">Errors</th>
+                                <th style="text-align: right;">Avg Time</th>
+                                <th style="text-align: right;">Max Time</th>
+                                <th style="text-align: right;">Avg Rows</th>
+                                <th style="text-align: right;">Max Rows</th>
+                            </tr>
+                        </thead>
+                        <tbody id="query-by-table-body">
+                            <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Slow Queries and Large result sets -->
+            <div class="dashboard-row equal">
+                <div class="chart-card compact">
+                    <h3>Slow Queries (>1s)</h3>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Table</th>
+                                    <th style="text-align: right;">Duration</th>
+                                    <th style="text-align: right;">Rows</th>
+                                </tr>
+                            </thead>
+                            <tbody id="query-slow-body">
+                                <tr><td colspan="4" class="empty-state">No slow queries detected.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-card compact">
+                    <h3>Large Result Sets (>5,000 rows)</h3>
+                    <div class="table-scroll-wrapper scrollable-min">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Table</th>
+                                    <th style="text-align: right;">Rows</th>
+                                    <th style="text-align: right;">Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="query-large-body">
+                                <tr><td colspan="4" class="empty-state">No large result sets detected.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Component Health Section -->
+            <div class="chart-card" id="component-stats-section">
+                <h3>
+                    Report Component Execution Health
+                    <span class="card-badge" id="component-stats-count-badge">0 failures</span>
+                </h3>
+                <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
+                    <div class="kpi-card" style="padding: 12px 16px;">
+                        <div class="kpi-label">Executed Components</div>
+                        <div class="kpi-value" id="comp-total-executed" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card error" style="padding: 12px 16px;">
+                        <div class="kpi-label">Failed Components</div>
+                        <div class="kpi-value" id="comp-total-failed" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card error" style="padding: 12px 16px;">
+                        <div class="kpi-label">Failure Rate</div>
+                        <div class="kpi-value" id="comp-failure-rate" style="font-size: 20px;">--</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row equal" style="margin-bottom: 0;">
+                    <div>
+                        <h4>Component Failures by Report</h4>
+                        <div class="table-scroll-wrapper scrollable-min" style="margin-top: 10px;">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Report ID</th>
+                                        <th style="text-align: right;">Failures</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="comp-by-report-body">
+                                    <tr><td colspan="2" class="empty-state">No failures.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <h4>Recent Component Failures</h4>
+                        <div class="table-scroll-wrapper scrollable-min" style="margin-top: 10px;">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Component / Error</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="comp-recent-failures-body">
+                                    <tr><td colspan="2" class="empty-state">No failures.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- TAB 4: USER & UI ANALYTICS -->
+        <div class="tab-pane" id="tab-users" role="tabpanel">
+            
+            <!-- User activity status -->
+            <div class="chart-card" id="user-stats-section" style="display: none;">
+                <div class="table-search-header">
+                    <h3>
+                        Active Service Users
+                        <span class="card-badge" id="user-stats-count">0 active</span>
+                    </h3>
+                    <input type="text" id="user-search" class="table-search-input" placeholder="Search active users...">
+                </div>
+                
+                <div class="table-scroll-wrapper scrollable-max">
+                    <table class="metrics-table" id="user-stats-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th style="text-align: right;">Requests</th>
+                                <th>Last Seen</th>
+                                <th>Top Reports Accessed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-stats-body">
+                            <tr><td colspan="5" class="empty-state">No user sessions found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- UI Telemetry Summary -->
+            <div class="dashboard-row">
+                <div class="chart-card">
+                    <h3>UI Events Distribution</h3>
+                    <div class="chart-container" style="height: 240px; display: flex; justify-content: center; align-items: center;">
+                        <canvas id="uiEventChartJS" style="max-height: 240px; max-width: 240px;"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Recent User Feedback</h3>
+                    <div id="feedback-panel-state" class="empty-state">Checking credentials...</div>
+                    <div id="feedback-panel-list" class="table-scroll-wrapper scrollable-min" style="display:none; border: none;"></div>
+                    <div style="padding: 12px 0 0 0; text-align: center;">
+                        <button id="feedback-panel-more" class="btn-refresh" style="display:none; margin: 0 auto; background: transparent; color: var(--accent-color) !important; border: 1px solid var(--border-color); box-shadow: none;" type="button">Load more feedback</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed UI Event Logs -->
+            <div class="chart-card" id="ui-event-log-section">
+                <h3>Recent UI Event Log</h3>
+                <div class="table-scroll-wrapper scrollable-max">
+                    <table class="metrics-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event Name</th>
+                                <th>Report ID</th>
+                                <th>Additional Properties</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ui-event-log-body">
+                            <tr><td colspan="4" class="empty-state">No UI events tracked.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- TAB 5: ASK AI CHAT MODULE -->
+        <div class="tab-pane" id="tab-chat" role="tabpanel">
+            
+            <!-- Chat KPI summaries -->
+            <div class="chart-card" id="chat-stats-section">
+                <h3>
+                    Ask Module (AI Chat Assistant)
+                    <span class="card-badge" id="chat-stats-count">0 actions</span>
+                </h3>
+                
+                <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
+                    <div class="kpi-card" style="padding: 12px 16px;">
+                        <div class="kpi-label">Questions Asked</div>
+                        <div class="kpi-value" id="chat-questions" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card success" style="padding: 12px 16px;">
+                        <div class="kpi-label">Queries Executed</div>
+                        <div class="kpi-value" id="chat-executions" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card error" style="padding: 12px 16px;">
+                        <div class="kpi-label">Failures / Errors</div>
+                        <div class="kpi-value" id="chat-errors" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card" style="padding: 12px 16px;">
+                        <div class="kpi-label">Avg Parse Time</div>
+                        <div class="kpi-value" id="chat-avg-ask" style="font-size: 20px;">--</div>
+                    </div>
+                    <div class="kpi-card" style="padding: 12px 16px;">
+                        <div class="kpi-label">Avg Query Time</div>
+                        <div class="kpi-value" id="chat-avg-exec" style="font-size: 20px;">--</div>
+                    </div>
+                </div>
+
+                <!-- Chat layout: tables vs interactions -->
+                <div class="dashboard-row">
+                    <div>
+                        <h4>Popular Queried Tables</h4>
+                        <div class="table-scroll-wrapper scrollable-min" style="margin-top: 10px;">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Table Name</th>
+                                        <th style="text-align: right;">Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="chat-by-table-body">
+                                    <tr><td colspan="2" class="empty-state">No table queries recorded.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4>Recent Ask Interactions</h4>
+                        <div class="table-scroll-wrapper scrollable-min" style="margin-top: 10px;">
+                            <table class="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Question Details</th>
+                                        <th style="text-align: right;">Time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="chat-interactions-body">
+                                    <tr><td colspan="4" class="empty-state">No interactions recorded.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+        </div>
+
+    </main>
+
+    <!-- Keycloak Auth initialization script -->
+    <script type="module">
+        import { initAuthSilent } from './js/auth.js';
+        window.authReady = initAuthSilent();
+    </script>
+    
+    <!-- Dashboard Core Code -->
+    <script src="js/metrics.js?v=4"></script>
+    
+    <!-- Tab Toggle logic -->
+    <script>
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active classes
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                });
+                document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+                // Set active class
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                const paneId = btn.getAttribute('data-tab');
+                const pane = document.getElementById(paneId);
+                if (pane) {
+                    pane.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

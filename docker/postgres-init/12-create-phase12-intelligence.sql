@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS kpi_measurements (
     status       TEXT NOT NULL DEFAULT 'ACTUAL' CHECK (status IN ('ACTUAL', 'ESTIMATED', 'INVALID')),
     measured_at  TIMESTAMPTZ NOT NULL,
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ── 6. Risk Intelligence ───────────────────────────────────────────
 -- StatGovernance remains the source of record for authoritative risk
@@ -272,8 +273,6 @@ COMMENT ON TABLE ai_audit_log                IS 'Phase XII: Dedicated AI audit t
 
 
 CREATE INDEX IF NOT EXISTS idx_risk_events_ts ON risk_events(created_at DESC);
-
-);
 
 CREATE INDEX IF NOT EXISTS idx_kpi_measurements_kpi_ts ON kpi_measurements(kpi_id, measured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_kpi_measurements_tenant ON kpi_measurements(tenant_id);

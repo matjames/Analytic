@@ -17,8 +17,9 @@ export type SettingsSection =
 interface Props {
   user: User | null;
   theme: 'light' | 'dark';
+  themePreference: 'light' | 'dark' | 'system';
   isMobile: boolean;
-  onThemeChange: (theme: 'light' | 'dark') => void;
+  onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   onUserUpdate: (user: User) => void;
 }
 
@@ -90,7 +91,7 @@ const defaultSettings: UserSettings = {
   downloadDocuments: 'wifi',
 };
 
-export default function SettingsPanel({ user, theme, isMobile, onThemeChange, onUserUpdate }: Props) {
+export default function SettingsPanel({ user, theme, themePreference, isMobile, onThemeChange, onUserUpdate }: Props) {
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [mobileDetail, setMobileDetail] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -109,6 +110,7 @@ const [draftName, setDraftName] = useState(user?.name ?? '');
   const background = theme === 'dark' ? '#0a2b45' : '#ffffff';
   const textColor = theme === 'dark' ? '#e8eef4' : '#1a1a1a';
   const borderColor = theme === 'dark' ? '#6b7280' : '#e5e7eb';
+  const activePref = themePreference ?? 'light';
 
   useEffect(() => {
     let cancelled = false;
@@ -446,7 +448,7 @@ const nextName = draftName.trim() || user?.name || 'StatChat User';
         <div className={styles.themeOptions}>
           <button
             type="button"
-            className={`${styles.themeCard} ${theme === 'light' ? styles.themeCardActive : ''}`}
+            className={`${styles.themeCard} ${activePref === 'light' ? styles.themeCardActive : ''}`}
             onClick={() => {
               onThemeChange('light');
               saveSettings({ theme: 'light' });
@@ -454,11 +456,11 @@ const nextName = draftName.trim() || user?.name || 'StatChat User';
           >
             <span className={styles.themePreviewLight} />
             Light
-            {theme === 'light' && <span className={styles.themeCheck}>✓</span>}
+            {activePref === 'light' && <span className={styles.themeCheck}>✓</span>}
           </button>
           <button
             type="button"
-            className={`${styles.themeCard} ${theme === 'dark' ? styles.themeCardActive : ''}`}
+            className={`${styles.themeCard} ${activePref === 'dark' ? styles.themeCardActive : ''}`}
             onClick={() => {
               onThemeChange('dark');
               saveSettings({ theme: 'dark' });
@@ -466,7 +468,29 @@ const nextName = draftName.trim() || user?.name || 'StatChat User';
           >
             <span className={styles.themePreviewDark} />
             Dark
-            {theme === 'dark' && <span className={styles.themeCheck}>✓</span>}
+            {activePref === 'dark' && <span className={styles.themeCheck}>✓</span>}
+          </button>
+          <button
+            type="button"
+            className={`${styles.themeCard} ${activePref === 'system' ? styles.themeCardActive : ''}`}
+            onClick={() => {
+              onThemeChange('system');
+              saveSettings({ theme: 'system' });
+            }}
+          >
+            <span
+              style={{
+                width: 32,
+                height: 20,
+                borderRadius: 4,
+                border: '1px solid #e5e7eb',
+                background: 'linear-gradient(to right, #ffffff 50%, #0f3f5f 50%)',
+                display: 'inline-block',
+                verticalAlign: 'middle',
+              }}
+            />
+            System
+            {activePref === 'system' && <span className={styles.themeCheck}>✓</span>}
           </button>
         </div>
       </div>

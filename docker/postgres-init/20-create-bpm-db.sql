@@ -1,7 +1,7 @@
 -- Business Process Management (App 11 — P48 BPM, Case Management, Process
 -- Mining & Automation) database and role.
 -- Password injected from environment (BPM_DB_PASSWORD), never hardcoded.
-CREATE DATABASE bpm_hub;
+SELECT 'CREATE DATABASE bpm_hub' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bpm_hub') \gexec
 
 \getenv bpm_pw BPM_DB_PASSWORD
 SELECT format('CREATE ROLE "BPMEngine" WITH LOGIN PASSWORD %L', :'bpm_pw')

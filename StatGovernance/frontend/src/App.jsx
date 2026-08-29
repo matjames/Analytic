@@ -25,9 +25,16 @@ export default function App() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [userRole, setUserRole] = useState('Governance Officer');
   const [tenantID, setTenantID] = useState('tenant-alpha');
+  const [branding, setBranding] = useState({
+    display_name: 'StatGate',
+    logo_url: '',
+    primary_color: '#0f3f5f',
+    secondary_color: '#082236',
+  });
 
   // Backend API URL
   const apiBase = import.meta.env.VITE_GOVERNANCE_API_URL || 'http://localhost:8093';
+  const registryAPI = import.meta.env.VITE_REGISTRY_API_URL || 'http://localhost:9090/api';
 
   // Single-sign-on bootstrap: a Registry-issued token can be handed over by the
   // launcher via ?statgate_token (canonical) or ?registry_token (legacy alias).
@@ -84,6 +91,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${registryAPI}/organisation/branding`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setBranding((current) => ({
+          display_name: data.display_name || current.display_name,
+          logo_url: data.logo_url || '',
+          primary_color: data.primary_color || current.primary_color,
+          secondary_color: data.secondary_color || current.secondary_color,
+        }));
+      })
+      .catch(() => {});
+  }, [registryAPI, token]);
+
   const handleGlobalSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -102,13 +127,16 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
+    <div
+      className="app-container"
+      style={{ '--bg-sidebar': `linear-gradient(180deg, ${branding.primary_color} 0%, ${branding.secondary_color} 100%)` }}
+    >
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="brand-section">
-          <div className="brand-icon">🛡️</div>
+          <img src={branding.logo_url || '/logo.png'} alt={`${branding.display_name} logo`} className="brand-icon" onError={(e) => { e.target.style.display='none'; }} style={{ objectFit:'contain', borderRadius:5, background:'rgba(255,255,255,0.1)', padding:2 }} />
           <div className="brand-info">
-            <div className="brand-title">StatGovernance</div>
+            <div className="brand-title">{branding.display_name}</div>
             <div className="brand-subtitle">Institutional Control</div>
           </div>
         </div>

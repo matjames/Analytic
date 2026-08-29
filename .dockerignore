@@ -10,6 +10,7 @@ __pycache__
 .venv
 venv
 node_modules
+**/node_modules
 
 # Secrets — never send into a build context
 .env
@@ -19,6 +20,8 @@ secrets/
 # Build artifacts & compiled binaries
 dist
 build
+**/dist
+**/build
 *.exe
 *.exe.map
 *.syso
@@ -27,5 +30,7 @@ build
 # Runtime data & uploads
 uploads/
 data/
+**/uploads
+**/data
 *.log
 tmp/

@@ -2,17 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useHistory } from 'react-router-dom'
 import pic from './user.jpg'
-
-const launcherApps = [
-    { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bx bx-home', external: true },
-    { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bx bx-table', external: true },
-    { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bx bx-book-open', external: true },
-    { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bx bx-brain', external: true },
-    { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bx bx-shield', external: true },
-    { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bx bx-bank', external: true },
-    { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', external: true },
-    { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bx bx-edit', external: true },
-]
+import launcherApps from '../../../config/launcherApps'
 
 const Header = () => {
 
@@ -64,17 +54,17 @@ const Header = () => {
                             <i class="bi bi-grid-3x3-gap-fill"></i>
                         </button>
                         {showLauncher && (
-                            <div class="app-launcher-menu launcher-menu p-3" style={{position: 'absolute', right: '0', top: 'calc(100% + 10px)', minWidth: '280px', zIndex: 2000}}>
+                            <div class="app-launcher-menu launcher-menu p-3" role="dialog" aria-label="StatGate applications" style={{position: 'absolute', right: '0', top: 'calc(100% + 10px)', width: '320px', zIndex: 2000, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px'}}>
                                 {launcherApps.map((app) => (
                                     <a
                                         key={app.name}
                                         href={app.url}
-                                        class="launcher-card d-flex align-items-center gap-2 mb-2"
-                                        style={{padding: '10px 12px', borderRadius: '10px', background: '#f8fbff', color: '#12263f', textDecoration: 'none', border: '1px solid rgba(22,92,146,0.12)'}}
+                                        class="launcher-card d-flex flex-column align-items-center justify-content-center gap-2"
+                                        style={{minHeight: '78px', padding: '8px', borderRadius: '10px', background: app.name === 'Helpdesk' ? '#eff6ff' : '#f8fbff', color: '#12263f', textDecoration: 'none', border: '1px solid rgba(22,92,146,0.12)', textAlign: 'center'}}
                                         onClick={() => setShowLauncher(false)}
                                     >
-                                        <i class={app.icon} style={{fontSize: '1rem'}}></i>
-                                        <span>{app.name}</span>
+                                        <span style={{fontSize: '1.2rem'}}>{app.icon}</span>
+                                        <span style={{fontSize: '0.72rem', fontWeight: 700}}>{app.name}</span>
                                     </a>
                                 ))}
                             </div>

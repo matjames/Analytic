@@ -290,14 +290,41 @@ def test_refresh_kaggle_datasets_returns_new_snapshots(monkeypatch):
     monkeypatch.setattr(analytics_module, 'AUTH_REQUIRED', False)
     client = analytics_module.app.test_client()
 
-    monkeypatch.setattr(analytics_module, 'snapshot_all_tables', lambda: {'covid_19_data': 'ok', 'new_dataset': 'ok'})
-    monkeypatch.setattr(analytics_module, 'list_kaggle_tables', lambda: ['covid_19_data', 'new_dataset'])
+    metadata_calls = []
+    event_calls = []
 
-    response = client.post('/api/kaggle/datasets/refresh')
+    monkeypatch.setattr(analytics_module, 'snapshot_all_tables', lambda: {
+        'covid_19_data': {'status': 'ok', 'row_count': 12},
+        'new_dataset': {'status': 'ok', 'row_count': 4},
+    })
+    monkeypatch.setattr(analytics_module, 'list_kaggle_tables', lambda: ['covid_19_data', 'new_dataset'])
+    monkeypatch.setattr(analytics_module, 'get_table_schema', lambda table_name: [{'column_name': 'id'}, {'column_name': 'value'}])
+    monkeypatch.setattr(analytics_module, 'upsert_dataset_metadata', lambda **kwargs: metadata_calls.append(kwargs) or kwargs)
+    monkeypatch.setattr(analytics_module, 'publish_dataset_imported', lambda table_name, tenant_id='tenant-alpha', row_count=0, extra=None: event_calls.append({
+        'table_name': table_name,
+        'tenant_id': tenant_id,
+        'row_count': row_count,
+        'extra': extra or {},
+    }) or True)
+
+    response = client.post('/api/kaggle/datasets/refresh', headers={
+        'X-Tenant-ID': 'tenant-beta',
+        'X-Workspace-ID': 'workspace_1',
+    })
     assert response.status_code == 200
     assert response.json['count'] == 2
     assert 'new_dataset' in response.json['tables']
-    assert response.json['snapshot_results']['new_dataset'] == 'ok'
+    assert response.json['snapshot_results']['new_dataset']['status'] == 'ok'
+    assert response.json['tenant_id'] == 'tenant-beta'
+    assert response.json['workspace_id'] == 'workspace_1'
+    assert len(metadata_calls) == 2
+    assert all(call['tenant_id'] == 'tenant-beta' for call in metadata_calls)
+    assert all(call['workspace_id'] == 'workspace_1' for call in metadata_calls)
+    assert metadata_calls[0]['row_count'] == 12
+    assert metadata_calls[0]['col_count'] == 2
+    assert len(event_calls) == 2
+    assert all(call['tenant_id'] == 'tenant-beta' for call in event_calls)
+    assert all(call['extra']['workspace_id'] == 'workspace_1' for call in event_calls)
 
 
 def test_schema_health_returns_404_for_missing_table(monkeypatch):

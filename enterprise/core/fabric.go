@@ -489,6 +489,24 @@ func getRelationshipsForObject(objType, objID string) []FabricRelationship {
 	return res
 }
 
+func getRelationshipsForObjectScoped(objType, objID, tenantID, role string) []FabricRelationship {
+	fabricStore.RLock()
+	defer fabricStore.RUnlock()
+
+	res := make([]FabricRelationship, 0)
+	for _, r := range fabricStore.relations {
+		if !canAccessTenantResource(r.TenantID, tenantID, role) {
+			continue
+		}
+		if (strings.EqualFold(r.FromType, objType) && strings.EqualFold(r.FromID, objID)) ||
+			(strings.EqualFold(r.ToType, objType) && strings.EqualFold(r.ToID, objID)) {
+			res = append(res, r)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool { return res[i].CreatedAt > res[j].CreatedAt })
+	return res
+}
+
 func createFabricRelationship(link FabricRelationship) FabricRelationship {
 	fabricStore.Lock()
 	defer fabricStore.Unlock()
@@ -538,6 +556,13 @@ func createFabricRelationship(link FabricRelationship) FabricRelationship {
 	return link
 }
 
+func canAccessTenantResource(resourceTenantID, callerTenantID, role string) bool {
+	if isPlatformAccessRole(role) {
+		return true
+	}
+	return resourceTenantID != "" && callerTenantID != "" && resourceTenantID == callerTenantID
+}
+
 func buildFabricGraph(objType, objID string, maxDepth int) map[string]interface{} {
 	root := resolveCanonicalObject(objType, objID)
 	directRels := getRelationshipsForObject(objType, objID)
@@ -560,6 +585,46 @@ func buildFabricGraph(objType, objID string, maxDepth int) map[string]interface{
 
 		otherNode := resolveCanonicalObject(otherType, otherID)
 		nodes[otherNode.CanonicalID] = otherNode
+	}
+
+	nodesList := make([]CanonicalObject, 0, len(nodes))
+	for _, n := range nodes {
+		nodesList = append(nodesList, n)
+	}
+
+	return map[string]interface{}{
+		"root":        root,
+		"nodes_count": len(nodesList),
+		"edges_count": len(edges),
+		"nodes":       nodesList,
+		"edges":       edges,
+	}
+}
+
+func buildFabricGraphScoped(objType, objID, tenantID, role string, maxDepth int) map[string]interface{} {
+	root := resolveCanonicalObject(objType, objID)
+	directRels := getRelationshipsForObjectScoped(objType, objID, tenantID, role)
+
+	nodes := map[string]CanonicalObject{}
+	if canAccessTenantResource(root.TenantID, tenantID, role) {
+		nodes[root.CanonicalID] = root
+	}
+	edges := make([]FabricRelationship, 0, len(directRels))
+
+	for _, rel := range directRels {
+		edges = append(edges, rel)
+
+		otherType := rel.ToType
+		otherID := rel.ToID
+		if strings.EqualFold(rel.ToType, objType) && strings.EqualFold(rel.ToID, objID) {
+			otherType = rel.FromType
+			otherID = rel.FromID
+		}
+
+		otherNode := resolveCanonicalObject(otherType, otherID)
+		if canAccessTenantResource(otherNode.TenantID, tenantID, role) {
+			nodes[otherNode.CanonicalID] = otherNode
+		}
 	}
 
 	nodesList := make([]CanonicalObject, 0, len(nodes))
@@ -602,18 +667,28 @@ func handleFabricResolveObject(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "type and id query parameters required"})
 		return
 	}
-	c.JSON(200, resolveCanonicalObject(objType, objID))
+	obj := resolveCanonicalObject(objType, objID)
+	if !canAccessTenantResource(obj.TenantID, getContextTenantID(c), getContextRole(c)) {
+		c.JSON(404, gin.H{"error": "object not found"})
+		return
+	}
+	c.JSON(200, obj)
 }
 
 func handleFabricListCanonicalObjects(c *gin.Context) {
 	objType := c.Query("type")
 	query := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	tenantID := getContextTenantID(c)
+	role := getContextRole(c)
 
 	fabricStore.RLock()
 	defer fabricStore.RUnlock()
 
 	out := make([]CanonicalObject, 0)
 	for _, obj := range fabricStore.objects {
+		if !canAccessTenantResource(obj.TenantID, tenantID, role) {
+			continue
+		}
 		if objType != "" && !strings.EqualFold(obj.ObjectType, objType) {
 			continue
 		}
@@ -633,7 +708,7 @@ func handleFabricRelationshipGraph(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "type and id are required"})
 		return
 	}
-	c.JSON(200, buildFabricGraph(objType, objID, 2))
+	c.JSON(200, buildFabricGraphScoped(objType, objID, getContextTenantID(c), getContextRole(c), 2))
 }
 
 func handleFabricCreateRelationship(c *gin.Context) {
@@ -641,6 +716,19 @@ func handleFabricCreateRelationship(c *gin.Context) {
 	if err := c.ShouldBindJSON(&link); err != nil || link.FromType == "" || link.FromID == "" || link.ToType == "" || link.ToID == "" {
 		c.JSON(400, gin.H{"error": "from_type, from_id, to_type and to_id are required"})
 		return
+	}
+	tenantID := getContextTenantID(c)
+	role := getContextRole(c)
+	if tenantID == "" {
+		c.JSON(403, gin.H{"error": "tenant_context_required"})
+		return
+	}
+	if !isPlatformAccessRole(role) && link.TenantID != "" && link.TenantID != tenantID {
+		c.JSON(403, gin.H{"error": "forbidden", "message": "relationship tenant must match authenticated tenant"})
+		return
+	}
+	if link.TenantID == "" || !isPlatformAccessRole(role) {
+		link.TenantID = tenantID
 	}
 	if link.CreatedBy == "" {
 		link.CreatedBy = knowledgeActor(c)

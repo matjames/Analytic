@@ -1,6 +1,7 @@
 import React, { Fragment } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import "../../styles/adminLayout.css";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 /**
  * Generic application shell with:
@@ -55,6 +56,7 @@ export default function MainLayoutShell({
   return (
     <Fragment>
       {header}
+      <WorkspaceSwitcher />
 
       <div className="main-layout">
         {/* Primary sidebar rail */}
@@ -119,5 +121,4 @@ export default function MainLayoutShell({
     </Fragment>
   );
 }
-
 

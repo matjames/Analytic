@@ -13,6 +13,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func requestScope(c *gin.Context) (string, string) {
+	tenantID, _ := c.Get("tenant_id")
+	workspaceID, _ := c.Get("workspace_id")
+	tenant, _ := tenantID.(string)
+	workspace, _ := workspaceID.(string)
+	return tenant, workspace
+}
+
+func appendRequestLedger(c *gin.Context, eventType, sourceApp, actorID string, payload map[string]interface{}) AuditLedgerBlock {
+	tenantID, workspaceID := requestScope(c)
+	return globalStore.AppendLedgerScoped(eventType, sourceApp, actorID, payload, tenantID, workspaceID)
+}
+
 // HealthHandler returns liveness and basic system status
 func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
@@ -42,7 +55,8 @@ func SummaryHandler(c *gin.Context) {
 // ==========================================
 
 func ListIncidentsHandler(c *gin.Context) {
-	incidents := globalStore.ListIncidents()
+	tenantID, workspaceID := requestScope(c)
+	incidents := globalStore.ListIncidentsScoped(tenantID, workspaceID)
 	c.JSON(http.StatusOK, gin.H{
 		"count":     len(incidents),
 		"incidents": incidents,
@@ -56,14 +70,15 @@ func CreateIncidentHandler(c *gin.Context) {
 		return
 	}
 
-	created := globalStore.AddIncident(req)
+	tenantID, workspaceID := requestScope(c)
+	created := globalStore.AddIncidentScoped(req, tenantID, workspaceID)
 
 	// Publish to Redis event bus
-	publishEvent("secops.incident.created", "incident", created.ID, created.AssignedTo, "tenant-alpha", map[string]interface{}{
-		"title":     created.Title,
-		"severity":  created.Severity,
-		"source":    created.SourceApp,
-		"threat":    created.ThreatCategory,
+	publishEvent("secops.incident.created", "incident", created.ID, created.AssignedTo, tenantID, map[string]interface{}{
+		"title":    created.Title,
+		"severity": created.Severity,
+		"source":   created.SourceApp,
+		"threat":   created.ThreatCategory,
 	})
 
 	// Dispatch notification to StatChat
@@ -84,13 +99,14 @@ func UpdateIncidentStatusHandler(c *gin.Context) {
 		return
 	}
 
-	updated, err := globalStore.UpdateIncidentStatus(id, req.Status, req.Note)
+	tenantID, workspaceID := requestScope(c)
+	updated, err := globalStore.UpdateIncidentStatusScoped(id, req.Status, req.Note, tenantID, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	publishEvent("secops.incident.updated", "incident", id, "secops-operator", "tenant-alpha", map[string]interface{}{
+	publishEvent("secops.incident.updated", "incident", id, "secops-operator", tenantID, map[string]interface{}{
 		"status": req.Status,
 		"note":   req.Note,
 	})
@@ -201,7 +217,8 @@ func ListBCMChecksHandler(c *gin.Context) {
 // ==========================================
 
 func ListLedgerHandler(c *gin.Context) {
-	blocks := globalStore.ListLedger()
+	tenantID, workspaceID := requestScope(c)
+	blocks := globalStore.ListLedgerScoped(tenantID, workspaceID)
 	c.JSON(http.StatusOK, gin.H{
 		"height": len(blocks),
 		"ledger": blocks,
@@ -221,11 +238,12 @@ func AppendLedgerHandler(c *gin.Context) {
 		return
 	}
 
-	block := globalStore.AppendLedger(req.EventType, req.SourceApp, req.ActorID, req.Payload)
+	tenantID, workspaceID := requestScope(c)
+	block := globalStore.AppendLedgerScoped(req.EventType, req.SourceApp, req.ActorID, req.Payload, tenantID, workspaceID)
 
 	// Sync with Enterprise Core and Event Bus
 	go interAppClient.SyncAuditToEnterpriseCore(block)
-	publishEvent("trust.ledger.appended", "ledger_block", fmt.Sprintf("%d", block.Index), req.ActorID, "tenant-alpha", map[string]interface{}{
+	publishEvent("trust.ledger.appended", "ledger_block", fmt.Sprintf("%d", block.Index), req.ActorID, tenantID, map[string]interface{}{
 		"block_index": block.Index,
 		"record_hash": block.RecordHash,
 		"event_type":  block.EventType,
@@ -267,12 +285,12 @@ func IssueCredentialHandler(c *gin.Context) {
 	sig := ed25519.Sign(privKey, []byte(claimBytes))
 
 	vc := VerifiableCredential{
-		CredentialID: fmt.Sprintf("urn:uuid:%s", hex.EncodeToString(pubKey[:16])),
-		Type:         []string{"VerifiableCredential", req.CredentialType},
-		IssuerDID:    issuer,
-		HolderDID:    req.HolderDID,
-		HolderName:   req.HolderName,
-		IssuanceDate: time.Now().UTC(),
+		CredentialID:      fmt.Sprintf("urn:uuid:%s", hex.EncodeToString(pubKey[:16])),
+		Type:              []string{"VerifiableCredential", req.CredentialType},
+		IssuerDID:         issuer,
+		HolderDID:         req.HolderDID,
+		HolderName:        req.HolderName,
+		IssuanceDate:      time.Now().UTC(),
 		CredentialSubject: req.CredentialSubject,
 		Proof: CredentialProof{
 			Type:               "Ed25519Signature2020",
@@ -330,7 +348,8 @@ func VerifyCredentialHandler(c *gin.Context) {
 }
 
 func ListProvenanceHandler(c *gin.Context) {
-	provs := globalStore.ListProvenance()
+	tenantID, workspaceID := requestScope(c)
+	provs := globalStore.ListProvenanceScoped(tenantID, workspaceID)
 	c.JSON(http.StatusOK, gin.H{
 		"count":      len(provs),
 		"provenance": provs,
@@ -339,7 +358,8 @@ func ListProvenanceHandler(c *gin.Context) {
 
 func GetProvenanceHandler(c *gin.Context) {
 	id := c.Param("id")
-	p, found := globalStore.GetProvenance(id)
+	tenantID, workspaceID := requestScope(c)
+	p, found := globalStore.GetProvenanceScoped(id, tenantID, workspaceID)
 	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Artifact provenance not found for ID: " + id})
 		return
@@ -360,15 +380,16 @@ func RegisterProvenanceHandler(c *gin.Context) {
 		req.Sha256Checksum = hex.EncodeToString(h[:])
 	}
 
-	// Anchor to ledger
-	block := globalStore.AppendLedger("provenance.artifact.registered", req.OriginApp, req.CurrentOwner, map[string]interface{}{
+	// Anchor to the selected workspace ledger.
+	tenantID, workspaceID := requestScope(c)
+	block := globalStore.AppendLedgerScoped("provenance.artifact.registered", req.OriginApp, req.CurrentOwner, map[string]interface{}{
 		"artifact_id":   req.ArtifactID,
 		"artifact_name": req.ArtifactName,
 		"checksum":      req.Sha256Checksum,
-	})
+	}, tenantID, workspaceID)
 	req.LedgerIndex = block.Index
 
-	reg := globalStore.RegisterProvenance(req)
+	reg := globalStore.RegisterProvenanceScoped(req, tenantID, workspaceID)
 	c.JSON(http.StatusCreated, reg)
 }
 

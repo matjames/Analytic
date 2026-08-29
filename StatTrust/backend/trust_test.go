@@ -333,3 +333,31 @@ func TestInterAppConnectivityList(t *testing.T) {
 		t.Fatalf("Expected 200, got %d", w.Code)
 	}
 }
+
+func TestWorkspaceScopedTrustRecords(t *testing.T) {
+	store := NewMemStore()
+
+	store.AddIncidentScoped(SecurityIncident{Title: "Workspace one"}, "tenant-alpha", "workspace_one")
+	second := store.AddIncidentScoped(SecurityIncident{Title: "Workspace two"}, "tenant-alpha", "workspace_two")
+	workspaceOneIncidents := store.ListIncidentsScoped("tenant-alpha", "workspace_one")
+	if len(workspaceOneIncidents) != 1 {
+		t.Fatal("workspace one should only see its incident")
+	}
+	if _, err := store.UpdateIncidentStatusScoped(second.ID, "CLOSED", "cross-workspace", "tenant-alpha", "workspace_one"); err == nil {
+		t.Fatal("cross-workspace incident update should be rejected")
+	}
+
+	one := store.AppendLedgerScoped("workspace.one", "StatTrust", "actor", map[string]interface{}{}, "tenant-alpha", "workspace_one")
+	two := store.AppendLedgerScoped("workspace.two", "StatTrust", "actor", map[string]interface{}{}, "tenant-alpha", "workspace_two")
+	if one.Index != 1 || two.Index != 1 {
+		t.Fatalf("workspace ledgers should have independent chain indexes, got %d and %d", one.Index, two.Index)
+	}
+	if len(store.ListLedgerScoped("tenant-alpha", "workspace_one")) != 1 {
+		t.Fatal("workspace one should only see its ledger")
+	}
+
+	store.RegisterProvenanceScoped(ArtifactProvenance{ArtifactID: "shared-artifact", ArtifactName: "One", ArtifactType: "DATASET", OriginApp: "PMS"}, "tenant-alpha", "workspace_one")
+	if _, found := store.GetProvenanceScoped("shared-artifact", "tenant-alpha", "workspace_two"); found {
+		t.Fatal("cross-workspace provenance lookup should be rejected")
+	}
+}

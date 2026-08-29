@@ -1,136 +1,154 @@
 {
-  "services": [
-    {
-      "id": "analytics",
-      "name": "StatGate Analytics",
-      "ui": "http://localhost:5000",
-      "health": "http://statgate-analytics:5000/health"
-    },
-    {
-      "id": "core",
-      "name": "StatGate Core",
-      "ui": "http://localhost:8082",
-      "health": "http://statgate-core:8080/health"
-    },
-    {
-      "id": "registry",
-      "name": "Registry API",
-      "ui": "http://localhost:3007",
-      "health": "http://statgate-registry-api:9090/health"
-    },
-    {
-      "id": "postgres",
-      "name": "Postgres DB",
-      "ui": null,
-      "health": "tcp://postgres:5432"
-    },
-    {
-      "id": "redis",
-      "name": "Redis",
-      "ui": null,
-      "health": "tcp://redis:6379"
-    },
-    {
-      "id": "minio",
-      "name": "MinIO",
-      "ui": "http://localhost:9001",
-      "health": "http://minio:9000/minio/health/ready"
-    },
-    {
-      "id": "prometheus",
-      "name": "Prometheus",
-      "ui": "http://localhost:9095",
-      "health": "http://prometheus:9090/-/healthy"
-    },
-    {
-      "id": "grafana",
-      "name": "Grafana",
-      "ui": "http://localhost:3003",
-      "health": "http://grafana:3000/api/health"
-    },
-    {
-      "id": "alertmanager",
-      "name": "Alertmanager",
-      "ui": "http://localhost:9093",
-      "health": "http://alertmanager:9093/-/healthy"
-    },
-    {
-      "id": "statchat",
-      "name": "StatChat",
-      "ui": "http://localhost:3009",
-      "health": "http://statchat-backend:4000/health"
-    },
-    {
-      "id": "helpdesk",
-      "name": "Operations Helpdesk",
-      "ui": "http://localhost:3005",
-      "health": "http://statgate-helpdesk-api:5000/api-docs"
-    },
-    {
-      "id": "pms",
-      "name": "Projects Management System",
-      "ui": "http://localhost:3010",
-      "health": "http://statgate-pms-api:8080/health"
-    },
-    {
-      "id": "rms",
-      "name": "Research Management System",
-      "ui": "http://localhost:3011",
-      "health": "http://statgate-rms-api:8080/health"
-    },
-    {
-      "id": "jupyterhub",
-      "name": "JupyterHub",
-      "ui": "http://localhost:8000",
-      "health": "http://jupyterhub:8000/hub/health"
-    },
-    {
-      "id": "superset",
-      "name": "Superset BI",
-      "ui": "http://localhost:8088",
-      "health": "http://superset:8088/health"
-    },
-    {
-      "id": "mlflow",
-      "name": "MLflow",
-      "ui": "http://localhost:5002",
-      "health": "http://mlflow:5000/health"
-    },
-    {
-      "id": "governance",
-      "name": "StatGovernance UI",
-      "ui": "http://localhost:3012",
-      "health": "http://statgate-governance-ui:80/"
-    },
-    {
-      "id": "governance-api",
-      "name": "StatGovernance API",
-      "ui": "http://localhost:8093",
-      "health": "http://statgate-governance-api:8080/health"
-    },
-    {
-      "id": "statspatial",
-      "name": "StatSpatial (GIS)",
-      "ui": "http://localhost:4200",
-      "health": "http://statspatial:4200/health"
-    },
-    {
-      "id": "statcollect",
-      "name": "StatCollect (Field Data)",
-      "ui": "http://localhost:8080",
-      "health": "http://statcollect:8080/health"
-    },
-    {
-      "id": "enterprise",
-      "name": "Enterprise Search",
-      "ui": "http://localhost:8095",
-      "health": "http://statgate-enterprise:8095/health"
-    },
-    {
-      "id": "enterprise-core",
-      "name": "Enterprise Core (AI/Workflow)",
-      "ui": "http://localhost:8096",
-      "health": "http://statgate-enterprise-core:8096/health"
-    }
-  ]
+    "services":  [
+                     {
+                         "id":  "analytics",
+                         "name":  "StatGate Analytics",
+                         "ui":  "http://localhost:5000",
+                         "health":  "http://statgate-analytics:5000/health"
+                     },
+                     {
+                         "id":  "core",
+                         "name":  "StatGate Core",
+                         "ui":  "http://localhost:8082",
+                         "health":  "http://statgate-core:8080/health"
+                     },
+                     {
+                         "id":  "registry",
+                         "name":  "Registry API",
+                         "ui":  "http://localhost:3007",
+                         "health":  "http://statgate-registry-api:9090/health"
+                     },
+                     {
+                         "id":  "postgres",
+                         "name":  "Postgres DB",
+                         "ui":  null,
+                         "health":  "tcp://postgres:5432"
+                     },
+                     {
+                         "id":  "redis",
+                         "name":  "Redis",
+                         "ui":  null,
+                         "health":  "tcp://redis:6379"
+                     },
+                     {
+                         "id":  "minio",
+                         "name":  "MinIO",
+                         "ui":  "http://localhost:9001",
+                         "health":  "http://minio:9000/minio/health/ready"
+                     },
+                     {
+                         "id":  "prometheus",
+                         "name":  "Prometheus",
+                         "ui":  "http://localhost:9095",
+                         "health":  "http://prometheus:9090/-/healthy"
+                     },
+                     {
+                         "id":  "grafana",
+                         "name":  "Grafana",
+                         "ui":  "http://localhost:3003",
+                         "health":  "http://grafana:3000/api/health"
+                     },
+                     {
+                         "id":  "alertmanager",
+                         "name":  "Alertmanager",
+                         "ui":  "http://localhost:9093",
+                         "health":  "http://alertmanager:9093/-/healthy"
+                     },
+                     {
+                         "id":  "statchat",
+                         "name":  "StatChat",
+                         "ui":  "http://localhost:3009",
+                         "health":  "http://statchat-backend:4000/health"
+                     },
+                     {
+                         "id":  "helpdesk",
+                         "name":  "Operations Helpdesk",
+                         "ui":  "http://localhost:3005",
+                         "health":  "http://statgate-helpdesk-api:5000/api-docs"
+                     },
+                     {
+                         "id":  "pms",
+                         "name":  "Projects Management System",
+                         "ui":  "http://localhost:3010",
+                         "health":  "http://statgate-pms-api:8080/health"
+                     },
+                     {
+                         "id":  "rms",
+                         "name":  "Research Management System",
+                         "ui":  "http://localhost:3011",
+                         "health":  "http://statgate-rms-api:8080/health"
+                     },
+                     {
+                         "id":  "jupyterhub",
+                         "name":  "JupyterHub",
+                         "ui":  "http://localhost:8000",
+                         "health":  "http://jupyterhub:8000/hub/health"
+                     },
+                     {
+                         "id":  "superset",
+                         "name":  "Superset BI",
+                         "ui":  "http://localhost:8088",
+                         "health":  "http://superset:8088/health"
+                     },
+                     {
+                         "id":  "mlflow",
+                         "name":  "MLflow",
+                         "ui":  "http://localhost:5002",
+                         "health":  "http://mlflow:5000/health"
+                     },
+                     {
+                         "id":  "governance",
+                         "name":  "StatGovernance UI",
+                         "ui":  "http://localhost:3012",
+                         "health":  "http://statgate-governance-ui:80/"
+                     },
+                     {
+                         "id":  "governance-api",
+                         "name":  "StatGovernance API",
+                         "ui":  "http://localhost:8093",
+                         "health":  "http://statgate-governance-api:8080/health"
+                     },
+                     {
+                         "id":  "app-federation",
+                         "name":  "National & Global Federation",
+                         "ui":  "http://localhost:3016",
+                         "health":  "http://statfederation:8105/health"
+                     },
+                     {
+                         "id":  "statspatial",
+                         "name":  "StatSpatial (GIS)",
+                         "ui":  "http://localhost:4200",
+                         "health":  "http://statspatial:4200/health"
+                     },
+                     {
+                         "id":  "statcollect",
+                         "name":  "StatCollect (Field Data)",
+                         "ui":  "http://localhost:8080",
+                         "health":  "http://statcollect:8080/health"
+                     },
+                     {
+                         "id":  "enterprise",
+                         "name":  "Enterprise Search",
+                         "ui":  "http://localhost:8095",
+                         "health":  "http://statgate-enterprise:8095/health"
+                     },
+                     {
+                         "id":  "enterprise-core",
+                         "name":  "Enterprise Core (AI/Workflow)",
+                         "ui":  "http://localhost:8096",
+                         "health":  "http://statgate-enterprise-core:8096/health"
+                     },
+                     {
+                         "id":  "open-data-portal",
+                         "name":  "Open Data Portal",
+                         "ui":  "http://localhost:8099",
+                         "health":  "http://knowledge-portal:8099/health"
+                     },
+                     {
+                         "id":  "report-builder",
+                         "name":  "StatGate Report Builder",
+                         "ui":  "http://localhost:8110/builder.html",
+                         "health":  "http://localhost:8110/health"
+                     }
+                 ]
 }

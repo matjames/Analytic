@@ -20,10 +20,15 @@ func handleListFiles(c *gin.Context) {
 	project := c.Query("project_id")
 	uploader := c.Query("uploaded_by")
 	limit := parseIntDefault(c.Query("limit"), 50)
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 
 	files := fetchFileRecords(limit)
 	filtered := make([]FileRecord, 0, len(files))
 	for _, f := range files {
+		if !canAccessFileRecord(f, tenantID, platformRole) {
+			continue
+		}
 		if category != "" && f.Category != category {
 			continue
 		}
@@ -59,9 +64,11 @@ func fetchFileRecords(limit int) []FileRecord {
 
 func handleGetFile(c *gin.Context) {
 	id := c.Param("id")
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	files := fetchFileRecords(500)
 	for _, f := range files {
-		if f.ID == id {
+		if f.ID == id && canAccessFileRecord(f, tenantID, platformRole) {
 			c.JSON(200, f)
 			return
 		}
@@ -102,6 +109,7 @@ func handleUploadFile(c *gin.Context) {
 
 	rec := FileRecord{
 		ID:           id,
+		TenantID:     getContextTenantID(c),
 		Name:         header.Filename,
 		OriginalName: header.Filename,
 		Path:         filePath,
@@ -148,9 +156,11 @@ func handleUploadFile(c *gin.Context) {
 
 func handleDownloadFile(c *gin.Context) {
 	id := c.Param("id")
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	files := fetchFileRecords(500)
 	for _, f := range files {
-		if f.ID == id {
+		if f.ID == id && canAccessFileRecord(f, tenantID, platformRole) {
 			c.FileAttachment(f.Path, f.Name)
 			return
 		}
@@ -160,9 +170,11 @@ func handleDownloadFile(c *gin.Context) {
 
 func handleUpdateFileMetadata(c *gin.Context) {
 	id := c.Param("id")
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	files := fetchFileRecords(500)
 	for _, f := range files {
-		if f.ID == id {
+		if f.ID == id && canAccessFileRecord(f, tenantID, platformRole) {
 			var updates map[string]interface{}
 			if err := c.ShouldBindJSON(&updates); err != nil {
 				c.JSON(400, gin.H{"error": "invalid metadata"})
@@ -188,6 +200,8 @@ func handleUpdateFileMetadata(c *gin.Context) {
 
 func handleDeleteFile(c *gin.Context) {
 	id := c.Param("id")
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	if redisClient != nil {
 		ctx := context.Background()
 		raw, _ := redisClient.LRange(ctx, "statgate:files", 0, -1).Result()
@@ -195,7 +209,7 @@ func handleDeleteFile(c *gin.Context) {
 		for _, item := range raw {
 			var f FileRecord
 			if err := json.Unmarshal([]byte(item), &f); err == nil {
-				if f.ID == id {
+				if f.ID == id && canAccessFileRecord(f, tenantID, platformRole) {
 					os.Remove(f.Path)
 					continue
 				}
@@ -208,9 +222,11 @@ func handleDeleteFile(c *gin.Context) {
 
 func handleFileVersions(c *gin.Context) {
 	id := c.Param("id")
+	tenantID := getContextTenantID(c)
+	platformRole := getContextRole(c)
 	files := fetchFileRecords(500)
 	for _, f := range files {
-		if f.ID == id {
+		if f.ID == id && canAccessFileRecord(f, tenantID, platformRole) {
 			versions := []map[string]interface{}{
 				{"version": f.Version, "name": f.Name, "size": f.Size, "uploaded_by": f.UploadedBy, "created_at": f.CreatedAt},
 			}
@@ -266,4 +282,20 @@ func sanitizeFilename(name string) string {
 	name = strings.ReplaceAll(name, "\\", "_")
 	name = strings.ReplaceAll(name, "/", "_")
 	return name
+}
+
+func canAccessFileRecord(f FileRecord, tenantID, platformRole string) bool {
+	if isPlatformAccessRole(platformRole) {
+		return true
+	}
+	return tenantID != "" && f.TenantID == tenantID
+}
+
+func isPlatformAccessRole(role string) bool {
+	switch role {
+	case "admin", "superadmin", "platform_admin":
+		return true
+	default:
+		return false
+	}
 }

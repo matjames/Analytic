@@ -19,7 +19,6 @@ var callClientsMutex sync.Mutex
 // SignalRelay relays a WebRTC signaling message to the appropriate recipient(s).
 // - If To is empty, broadcast to everyone in the room except the sender.
 // - If To is set, deliver only to that socket (keyed by user identity).
-// The signal is also persisted as a call event for audit.
 func SignalRelay(signal model.CallSignal) {
 	callClientsMutex.Lock()
 	defer callClientsMutex.Unlock()
@@ -101,11 +100,11 @@ var connCallMetaMutex sync.Mutex
 // SetConnCallIdentity associates a socket with a user + session.
 func SetConnCallIdentity(conn *websocket.Conn, sessionID, userID string) {
 	connCallMetaMutex.Lock()
-	defer connCallMetaMutex.Unlock()
 	connCallMeta[conn] = struct {
 		userID    string
 		sessionID string
 	}{userID: userID, sessionID: sessionID}
+	connCallMetaMutex.Unlock()
 	if sessionID != "" {
 		RegisterCallClient(conn, sessionID)
 	}
@@ -114,8 +113,8 @@ func SetConnCallIdentity(conn *websocket.Conn, sessionID, userID string) {
 // ClearConnCallIdentity removes per-socket call identity.
 func ClearConnCallIdentity(conn *websocket.Conn) {
 	connCallMetaMutex.Lock()
-	defer connCallMetaMutex.Unlock()
 	delete(connCallMeta, conn)
+	connCallMetaMutex.Unlock()
 	UnregisterCallClient(conn)
 }
 

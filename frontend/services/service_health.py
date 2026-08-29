@@ -36,7 +36,9 @@ _FALLBACK_SERVICES = [
     {"id": "statspatial", "name": "StatSpatial (GIS)", "ui": "http://localhost:4200", "health": "http://statspatial:4200/health"},
     {"id": "statcollect", "name": "StatCollect (Field Data)", "ui": "http://localhost:8080", "health": "http://statcollect:8080/health"},
     {"id": "enterprise", "name": "Enterprise Search", "ui": "http://localhost:8095", "health": "http://statgate-enterprise:8095/health"},
-    {"id": "enterprise-core", "name": "Enterprise Core (AI/Workflow)", "ui": "http://localhost:8096", "health": "http://statgate-enterprise-core:8096/health"}
+    {"id": "enterprise-core", "name": "Enterprise Core (AI/Workflow)", "ui": "http://localhost:8096", "health": "http://statgate-enterprise-core:8096/health"},
+    {"id": "app-federation", "name": "National & Global Federation", "ui": "http://localhost:3016", "health": "http://statfederation:8105/health"},
+    {"id": "open-data-portal", "name": "Open Data Portal", "ui": "http://localhost:8099", "health": "http://knowledge-portal:8099/health"}
 ]
 
 

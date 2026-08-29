@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StatGate – Dynamic Tabulation & SDMX Engine</title>
+  <meta name="description" content="National Statistical System crosstabulation matrix generator with Chi-Square test of independence and SDMX-JSON export.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    .tab-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    .tab-table th, .tab-table td {
+      border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+      padding: 10px 14px;
+      text-align: right;
+    }
+    .tab-table th {
+      background: rgba(22,92,146,0.15);
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    .tab-table th.row-header {
+      text-align: left;
+      background: rgba(255,255,255,0.03);
+      color: var(--text-main, #f8fafc);
+    }
+    .tab-table tr.total-row {
+      font-weight: 800;
+      background: rgba(6,182,212,0.1);
+      border-top: 2px solid #06b6d4;
+    }
+    .cell-sub {
+      font-size: 11px;
+      color: #94a3b8;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand-link">
+      <img src="{{ analytics_logo_url }}" alt="StatGate logo" class="brand-logo">
+      <div class="brand-title">StatGate <span class="brand-badge">Official Statistics Tabulation</span></div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-item">Home</a>
+      <a href="/datasets" class="nav-item">Datasets</a>
+      <a href="/tabulate" class="nav-item active">Tabulation</a>
+      <a href="/sampling" class="nav-item">Sampling</a>
+      {% include '_launcher.html' %}
+      <a href="/executive" class="nav-item executive-link">Executive</a>
+      <a href="http://localhost:3017" class="nav-item" style="color:#38bdf8; font-weight:600;">🌐 Federation</a>
+    </nav>
+  </header>
+
+  <main class="main-container" style="max-width: 1320px; margin: 24px auto; padding: 0 24px;">
+    <section class="hero-panel" style="margin-bottom: 24px;">
+      <div>
+        <p class="eyebrow" style="color: #38bdf8;">Phase 6 Official Statistics Engine</p>
+        <h1>Dynamic Multidimensional Crosstabulation & SDMX Generator</h1>
+        <p>Compute 2-way and 3-way contingency matrices, weighted frequency estimates, Pearson Chi-Square tests of independence, and export directly to international SDMX-JSON.</p>
+      </div>
+    </section>
+
+    <!-- Query Builder Panel -->
+    <div class="glass-panel" style="padding: 24px; margin-bottom: 24px; background: rgba(15,23,42,0.85); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+      <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px; color: #38bdf8;">1. Tabulation Matrix Configuration</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div>
+          <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">Row Classification (Disaggregation)</label>
+          <input type="text" id="rowVar" class="input-field" value="region" placeholder="e.g. region, gender, education_level" style="width: 100%; padding: 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: white;">
+        </div>
+        <div>
+          <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">Column Classification</label>
+          <input type="text" id="colVar" class="input-field" value="employment_status" placeholder="e.g. employment_status, poverty_tier" style="width: 100%; padding: 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: white;">
+        </div>
+        <div>
+          <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">Measure Variable (Optional for Sum/Mean)</label>
+          <input type="text" id="measureVar" class="input-field" value="household_income" placeholder="e.g. household_income, yield" style="width: 100%; padding: 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: white;">
+        </div>
+        <div>
+          <label style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">Aggregation Function</label>
+          <select id="aggType" style="width: 100%; padding: 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155; color: white;">
+            <option value="COUNT">Record Count (Frequencies)</option>
+            <option value="SUM">Sum of Measure</option>
+            <option value="MEAN">Mean Average</option>
+            <option value="PERCENTAGE">Row & Column Percentages</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <button id="loadDemoBtn" style="background: rgba(255,255,255,0.06); border: 1px solid #334155; color: white; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+          📂 Load Sample Census Microdata
+        </button>
+        <button id="runTabulateBtn" style="background: linear-gradient(135deg, #06b6d4, #3b82f6); border: none; color: white; padding: 10px 24px; border-radius: 6px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(6,182,212,0.4);">
+          ⚡ Generate Tabulation Matrix
+        </button>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div id="resultsContainer" style="display: none;">
+      <div class="glass-panel" style="padding: 24px; margin-bottom: 24px; background: rgba(15,23,42,0.85); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div>
+            <h3 id="tableTitle" style="font-size: 18px; font-weight: 700; color: #38bdf8;">Tabulation Matrix</h3>
+            <p id="tableSubtitle" style="font-size: 12px; color: #94a3b8;"></p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button id="exportSdmxBtn" style="background: rgba(139,92,246,0.2); border: 1px solid #8b5cf6; color: #c084fc; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
+              📦 Export SDMX-JSON
+            </button>
+            <button id="exportCsvBtn" style="background: rgba(16,185,129,0.2); border: 1px solid #10b981; color: #34d399; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
+              📥 Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="tab-table" id="crosstabTable"></table>
+        </div>
+
+        <!-- Chi-Square Test Card -->
+        <div id="chiSquareCard" style="margin-top: 20px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); display: none;">
+          <div style="font-size: 13px; font-weight: 700; color: #fbbf24; margin-bottom: 6px;">📐 Pearson's Chi-Square Test of Statistical Independence</div>
+          <div id="chiSquareDetails" style="font-size: 12px; color: #cbd5e1; font-family: 'JetBrains Mono', monospace;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let sampleRecords = [];
+
+    // Generate realistic multi-domain microdata
+    function generateMicrodata() {
+      const regions = ['Central', 'Eastern', 'Northern', 'Western'];
+      const empStatus = ['Employed (Formal)', 'Self-Employed (Agri)', 'Informal Sector', 'Unemployed'];
+      const data = [];
+      for (let i = 0; i < 200; i++) {
+        const r = regions[Math.floor(Math.random() * regions.length)];
+        const e = empStatus[Math.floor(Math.random() * empStatus.length)];
+        let inc = Math.round(150 + Math.random() * 850);
+        if (r === 'Central') inc += 200;
+        data.push({
+          region: r,
+          employment_status: e,
+          household_income: inc,
+          sampling_weight: 1.25
+        });
+      }
+      return data;
+    }
+
+    sampleRecords = generateMicrodata();
+
+    document.getElementById('loadDemoBtn').addEventListener('click', () => {
+      sampleRecords = generateMicrodata();
+      alert(`Loaded ${sampleRecords.length} synthetic census household records!`);
+    });
+
+    document.getElementById('runTabulateBtn').addEventListener('click', async () => {
+      const rowVar = document.getElementById('rowVar').value.trim();
+      const colVar = document.getElementById('colVar').value.trim();
+      const measureVar = document.getElementById('measureVar').value.trim();
+      const aggType = document.getElementById('aggType').value;
+
+      if (!rowVar) {
+        alert('Please enter a row variable');
+        return;
+      }
+
+      const payload = {
+        title: `Crosstabulation of ${rowVar} by ${colVar}`,
+        row_variable: rowVar,
+        col_variable: colVar,
+        measure_variable: measureVar,
+        aggregation: aggType,
+        data_records: sampleRecords
+      };
+
+      try {
+        const res = await fetch('/api/statistics/tabulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        renderCrosstab(data);
+      } catch (err) {
+        alert('Tabulation error: ' + err.message);
+      }
+    });
+
+    function renderCrosstab(data) {
+      document.getElementById('resultsContainer').style.display = 'block';
+      document.getElementById('tableTitle').innerText = data.title;
+      document.getElementById('tableSubtitle').innerText = `Computed across ${data.total_record_count} observations | Dimension: ${data.sdmx_dimension}`;
+
+      const table = document.getElementById('crosstabTable');
+      table.innerHTML = '';
+
+      // Header Row
+      let thead = '<thead><tr><th class="row-header">' + data.row_variable.toUpperCase() + ' \\ ' + (data.col_variable || 'TOTAL').toUpperCase() + '</th>';
+      for (const col of data.col_categories) {
+        thead += `<th>${col}</th>`;
+      }
+      thead += '<th>Total</th></tr></thead>';
+
+      // Body Rows
+      let tbody = '<tbody>';
+      for (const row of data.row_categories) {
+        tbody += `<tr><th class="row-header">${row}</th>`;
+        for (const col of data.col_categories) {
+          const cell = data.matrix[row][col] || { value: 0, row_percentage: 0 };
+          tbody += `<td><strong>${cell.value.toLocaleString()}</strong><span class="cell-sub">${cell.row_percentage}%</span></td>`;
+        }
+        const rowTot = data.row_totals[row] || 0;
+        tbody += `<td style="font-weight:700;">${rowTot.toLocaleString()}</td></tr>`;
+      }
+
+      // Grand Total Row
+      tbody += '<tr class="total-row"><th class="row-header">Total</th>';
+      for (const col of data.col_categories) {
+        const colTot = data.col_totals[col] || 0;
+        tbody += `<td>${colTot.toLocaleString()}</td>`;
+      }
+      tbody += `<td>${data.grand_total.toLocaleString()}</td></tr></tbody>`;
+
+      table.innerHTML = thead + tbody;
+
+      // Chi-Square Test
+      const chiCard = document.getElementById('chiSquareCard');
+      if (data.chi_square_test) {
+        chiCard.style.display = 'block';
+        document.getElementById('chiSquareDetails').innerHTML = `
+          Statistic (χ²): <strong>${data.chi_square_test.statistic_value}</strong> |
+          Degrees of Freedom (df): <strong>${data.chi_square_test.degrees_of_freedom}</strong> |
+          p-value: <strong>${data.chi_square_test.approx_p_value}</strong> |
+          Conclusion: <span style="color:${data.chi_square_test.approx_p_value < 0.05 ? '#34d399' : '#94a3b8'}">${data.chi_square_test.approx_p_value < 0.05 ? 'Significant statistical association detected (p < 0.05)' : 'No statistically significant association'}</span>
+        `;
+      } else {
+        chiCard.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>

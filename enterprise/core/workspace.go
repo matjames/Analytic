@@ -15,18 +15,20 @@ import (
 
 // handleWorkspace returns personalized workspace data for the authenticated user.
 func handleWorkspace(c *gin.Context) {
-	userID := c.Query("user_id")
+	// Workspace identity is always derived from the verified Registry JWT.
+	// Never accept a caller-supplied query parameter or header here: changing
+	// user_id would expose another user's tasks, messages, and approvals.
+	userID := getContextUserID(c)
 	if userID == "" {
-		userID = c.GetHeader("X-User-ID")
-	}
-	if userID == "" {
-		c.JSON(400, gin.H{"error": "user_id required"})
+		c.JSON(401, gin.H{"error": "authenticated user required"})
 		return
 	}
+	tenantID := getContextTenantID(c)
 
 	// Gather personalized data from all services
 	workspace := map[string]interface{}{
 		"user_id":          userID,
+		"tenant_id":        tenantID,
 		"my_tasks":         fetchMyTasks(userID),
 		"my_projects":      fetchMyProjects(userID),
 		"my_research":      fetchMyResearch(userID),

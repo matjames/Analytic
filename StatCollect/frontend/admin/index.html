@@ -297,10 +297,11 @@
       <span class="badge-live"><span class="live-dot"></span> Live</span>
     </div>
     <div class="header-nav">
-      <a href="/ai/">🧠 AI Assistant</a>
-      <a href="templates.html">📐 Builder</a>
+      <a href="index.html" style="background:rgba(255,255,255,0.22);color:#fff;font-weight:700">📊 Dashboard</a>
+      <a href="templates.html">📐 Form Builder</a>
       <a href="operations.html">⚙️ Operations</a>
       <a href="survey-dashboard.html">📈 Survey Intel</a>
+      <a href="/ai/">🧠 AI Intelligence</a>
       <a href="../field/agent.html">📱 Field Agent</a>
 
       <!-- 3x3 StatGate App Launcher Button -->
@@ -591,20 +592,20 @@
           <!-- App 1: Analytics -->
           <a href="http://localhost:5000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
             <span style="font-size:32px;margin-bottom:8px">📊</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">StatGate Analytics</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Analytics Hub</span>
             <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 5000</span>
           </a>
           <!-- App 2: StatCollect -->
-          <a href="http://localhost:8080/admin/" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:2px solid var(--accent);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:#eff6ff">
-            <span style="font-size:32px;margin-bottom:8px">📋</span>
+          <a href="index.html" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:2px solid var(--accent);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:#eff6ff">
+            <span style="font-size:32px;margin-bottom:8px">📥</span>
             <span style="font-weight:700;font-size:13px;text-align:center;color:var(--accent)">StatCollect</span>
-            <span style="font-size:10px;color:var(--accent);margin-top:2px">Active Service</span>
+            <span style="font-size:10px;color:var(--accent);margin-top:2px">Port 8084 · Active</span>
           </a>
           <!-- App 3: Field Registry -->
-          <a href="http://localhost:3000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
-            <span style="font-size:32px;margin-bottom:8px">🏥</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">Facility Registry</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3000</span>
+          <a href="http://localhost:3007" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">🗂️</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Entity Registry</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3007</span>
           </a>
           <!-- App 4: Helpdesk -->
           <a href="http://localhost:3005" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
@@ -613,40 +614,89 @@
             <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3005</span>
           </a>
           <!-- App 5: StatChat -->
-          <a href="http://localhost:5173" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+          <a href="http://localhost:3009" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
             <span style="font-size:32px;margin-bottom:8px">💬</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">StatChat</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 5173</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">StatChat Hub</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3009 / 4000</span>
           </a>
-          <!-- App 6: JupyterHub -->
+          <!-- App 6: PMS (Projects) -->
+          <a href="http://localhost:3010" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">📁</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">PMS Projects</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3010 / 8091</span>
+          </a>
+          <!-- App 7: RMS (Research) -->
+          <a href="http://localhost:3011" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">🔬</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">RMS Research</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3011 / 8092</span>
+          </a>
+          <!-- App 8: StatSpatial GIS -->
           <a href="http://localhost:8000" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
-            <span style="font-size:32px;margin-bottom:8px">📓</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">JupyterHub</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8000</span>
-          </a>
-          <!-- App 7: Superset BI -->
-          <a href="http://localhost:8088" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
-            <span style="font-size:32px;margin-bottom:8px">📈</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">Superset BI</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8088</span>
-          </a>
-          <!-- App 8: Metabase -->
-          <a href="http://localhost:3001" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
-            <span style="font-size:32px;margin-bottom:8px">📊</span>
-            <span style="font-weight:700;font-size:13px;text-align:center">Metabase BI</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3001</span>
-          </a>
-          <!-- App 9: StatSpatial GIS -->
-          <a href="http://localhost:8084" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
             <span style="font-size:32px;margin-bottom:8px">🌍</span>
             <span style="font-weight:700;font-size:13px;text-align:center">StatSpatial GIS</span>
-            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8084</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 8000</span>
+          </a>
+          <!-- App 9: Governance & Compliance -->
+          <a href="http://localhost:3012" target="_blank" class="app-383-card" style="display:flex;flex-direction:column;align-items:center;padding:16px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);transition:all 0.2s;background:white">
+            <span style="font-size:32px;margin-bottom:8px">⚖️</span>
+            <span style="font-weight:700;font-size:13px;text-align:center">Governance & QA</span>
+            <span style="font-size:10px;color:var(--text-light);margin-top:2px">Port 3012</span>
           </a>
         </div>
       </div>
       <div class="modal-footer" style="background:#f8fafc;border-radius:0 0 16px 16px;justify-content:space-between;align-items:center">
         <span style="font-size:11px;color:var(--text-muted)">StatGate Unified Ecosystem Services</span>
         <button class="btn btn-outline btn-sm" onclick="closeModal('launcher383Modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SUBMISSION DETAIL & RESPONSE INSPECTION MODAL ═══ -->
+  <div class="modal-overlay hidden" id="reviewModal" style="z-index:2000">
+    <div class="modal" style="max-width:960px;width:95%;height:90vh;border-radius:16px;box-shadow:0 25px 60px -15px rgba(0,0,0,0.3);overflow:hidden">
+      <!-- Modal Header -->
+      <div class="modal-header" style="background:linear-gradient(135deg,#0d3d5f 0%,#165c92 100%);color:white;padding:16px 24px">
+        <div style="display:flex;align-items:center;gap:12px;flex:1">
+          <span style="font-size:24px">📋</span>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <h2 id="rm_title" style="font-size:16px;font-weight:800;color:white;margin:0">Submission Detail</h2>
+              <span id="rm_status_badge" class="badge" style="font-size:11px">received</span>
+            </div>
+            <div id="rm_subtitle" style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:2px">Instance ID: loading…</div>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeModal('reviewModal')" style="background:rgba(255,255,255,0.2);color:white;border:none">✕</button>
+      </div>
+
+      <!-- Modal Tabs Navigation -->
+      <div class="tab-bar" style="background:#f8fafc;padding:0 20px;border-bottom:1px solid var(--border)">
+        <button class="tab-btn active" id="rm_tab_btn_qa" onclick="switchReviewTab('qa', this)">📝 Responses (Q&A)</button>
+        <button class="tab-btn" id="rm_tab_btn_media" onclick="switchReviewTab('media', this)">🎥 Media & Evidence (<span id="rm_media_count">0</span>)</button>
+        <button class="tab-btn" id="rm_tab_btn_gps" onclick="switchReviewTab('gps', this)">📍 GPS & Location</button>
+        <button class="tab-btn" id="rm_tab_btn_lineage" onclick="switchReviewTab('lineage', this)">📜 Lineage & Audit</button>
+        <button class="tab-btn" id="rm_tab_btn_raw" onclick="switchReviewTab('raw', this)">🔍 Raw XML & JSON</button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="modal-body" id="reviewModalBody" style="padding:20px;overflow-y:auto;background:#fcfdfd">
+        <!-- Dynamic content rendered by openReview -->
+        <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading submission responses…</div>
+      </div>
+
+      <!-- Modal Footer (Workflow Actions) -->
+      <div class="modal-footer" style="background:#f8fafc;padding:12px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:280px">
+          <input type="text" id="reviewNotes" placeholder="Reviewer notes (optional)…" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font)" />
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-sm btn-outline" style="color:var(--red);border-color:#fca5a5" onclick="deleteCurrentSubmission()">🗑️ Delete</button>
+          <button class="btn btn-sm btn-outline" onclick="exportCurrentSubmissionJSON()">⬇️ JSON</button>
+          <button class="btn btn-sm btn-amber" onclick="submitReview('flagged')">🚩 Flag</button>
+          <button class="btn btn-sm btn-danger" onclick="submitReview('rejected')">✕ Reject</button>
+          <button class="btn btn-sm btn-success" onclick="submitReview('approved')">✔ Approve</button>
+        </div>
       </div>
     </div>
   </div>
@@ -812,13 +862,13 @@
   ════════════════════════════════════════════════════════════════════════ */
   async function loadSubmissions() {
     const url = currentFormId
-      ? `/admin/submissions/export?form_id=${encodeURIComponent(currentFormId)}&format=json`
-      : `/admin/submissions/export?format=json`;
+      ? `/admin/submissions?form_id=${encodeURIComponent(currentFormId)}&per_page=100`
+      : `/admin/submissions?per_page=100`;
     try {
       const res = await fetch(url, { headers: headers() });
       if (!res.ok) { renderError(); return; }
       const data = await res.json();
-      allSubmissions = Array.isArray(data) ? data : [];
+      allSubmissions = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
       renderSubmissions(allSubmissions);
       // Load geographic intelligence
       loadGeoIntelligence();
@@ -834,7 +884,7 @@
     }
     document.getElementById('pageInfo').textContent = subs.length + ' submission(s)';
     tbody.innerHTML = subs.map(s => {
-      const flags = qaFlags[s.instance_id] || [];
+      const flags = (s.qa_flags && s.qa_flags.length) ? s.qa_flags : (qaFlags[s.instance_id] || []);
       const gpsOk = hasGPS(s);
       return `
         <tr>
@@ -849,7 +899,7 @@
           <td><span style="font-size:11px;color:${gpsOk?'var(--green)':'var(--red)'}">${gpsOk?'📍':'❌'}</span></td>
           <td><span class="badge badge-${s.status||'received'}">${s.status||'received'}</span></td>
           <td style="font-size:11px;color:var(--text-muted)">${formatDate(s.received_at)}</td>
-          <td>${flags.length ? flags.slice(0,2).map(f => `<span class="qa-flag-chip">⚠</span>`).join('') : '<span style="color:var(--text-light);font-size:11px">—</span>'}</td>
+          <td>${flags.length ? `<span class="qa-flag-chip" title="${flags.map(f=>typeof f==='string'?f:(f.flag||f.name||JSON.stringify(f))).join(', ')}">⚠ ${flags.length}</span>` : '<span style="color:var(--text-light);font-size:11px">—</span>'}</td>
           <td>
             <div style="display:flex;gap:3px">
               <button class="review-btn approve" onclick="quickReview('${esc(s.instance_id)}','approved')">✔</button>
@@ -1151,31 +1201,30 @@
       const res = await fetch(url, { headers: headers() });
       if (!res.ok) { showToast('QA scan failed', 'error'); return; }
       const data = await res.json();
-      const flags = data.flagged || [];
+      const flaggedItems = data.flagged || [];
 
       qaFlags = {};
-      flags.forEach(f => {
-        if (!qaFlags[f.instance_id]) qaFlags[f.instance_id] = [];
-        qaFlags[f.instance_id].push(f);
+      flaggedItems.forEach(item => {
+        qaFlags[item.instance_id] = item.flags || [];
       });
 
       const panel = document.getElementById('qaFlagsPanel');
-      if (!flags.length) {
+      if (!flaggedItems.length) {
         panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--green);font-size:14px;font-weight:600">✅ No QA issues detected</div>';
       } else {
-        panel.innerHTML = flags.slice(0,20).map(f => `
+        panel.innerHTML = flaggedItems.slice(0,20).map(item => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
-            <span style="font-size:18px">${flagIcon(f.flag)}</span>
+            <span style="font-size:18px">⚠️</span>
             <div style="flex:1">
-              <div style="font-size:13px;font-weight:600">${esc(f.flag.replace(/_/g,' '))}</div>
-              <div style="font-size:11px;color:var(--text-muted)">Instance: <code>${esc((f.instance_id||'').slice(0,24))}</code></div>
+              <div style="font-size:13px;font-weight:600">${(item.flags || []).map(fl => esc(String(fl).replace(/_/g,' '))).join(' · ')}</div>
+              <div style="font-size:11px;color:var(--text-muted)">Instance: <code>${esc((item.instance_id||'').slice(0,24))}</code> · User: ${esc(item.submitted_by||'Anonymous')}</div>
             </div>
-            <button class="review-btn flag" onclick="openReview('${esc(f.instance_id)}')">Review</button>
+            <button class="review-btn flag" onclick="openReview('${esc(item.instance_id)}')">Review</button>
           </div>
         `).join('');
       }
       filterSubmissions();
-      showToast(`QA scan: ${flags.length} flags found`, flags.length ? 'error' : 'success');
+      showToast(`QA scan: ${flaggedItems.length} records flagged`, flaggedItems.length ? 'error' : 'success');
     } catch(e) { showToast('QA error: ' + e.message, 'error'); }
   }
 
@@ -1247,60 +1296,395 @@
   }
 
   /* ════════════════════════════════════════════════════════════════════════
-     REVIEW MODAL
+     ENHANCED REVIEW & RESPONSE INSPECTION MODAL
   ════════════════════════════════════════════════════════════════════════ */
-  function openReview(instanceId) {
+  let currentSubmissionData = null;
+  let reviewMiniMap = null;
+
+  async function openReview(instanceId) {
     currentReviewId = instanceId;
-    const sub = allSubmissions.find(s => s.instance_id === instanceId);
-    const flags = (qaFlags[instanceId] || []).map(f => f.flag);
-    document.getElementById('reviewModalBody').innerHTML = `
-      <div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:16px">
-        <div class="detail-row"><span class="detail-key">Instance ID</span><span class="detail-val"><code>${esc(instanceId)}</code></span></div>
-        <div class="detail-row"><span class="detail-key">Form</span><span class="detail-val">${esc(sub?.form_id||'—')}</span></div>
-        <div class="detail-row"><span class="detail-key">Submitted By</span><span class="detail-val">${esc(sub?.submitted_by||'—')}</span></div>
-        <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${sub?.status||'received'}">${sub?.status||'received'}</span></span></div>
-        <div class="detail-row"><span class="detail-key">Received At</span><span class="detail-val">${formatDate(sub?.received_at)}</span></div>
-        <div class="detail-row"><span class="detail-key">GPS</span><span class="detail-val">${hasGPS(sub||{}) ? '✅ Captured' : '❌ Missing'}</span></div>
-        ${flags.length ? `<div class="detail-row"><span class="detail-key">QA Flags</span><span class="detail-val">${flags.map(f => `<span class="qa-flag-chip">${esc(f.replace(/_/g,' '))}</span>`).join(' ')}</span></div>` : ''}
-      </div>
-      <div style="background:#eff6ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px">
-        <div style="font-weight:700;color:#0369a1;margin-bottom:8px">📋 Survey Header (MSH)</div>
-        <div class="detail-row"><span class="detail-key">Respondent Type</span><span class="detail-val">${esc(sub?.meta?._msh_respondent_type||'Individual')}</span></div>
-        <div class="detail-row"><span class="detail-key">Region / District</span><span class="detail-val">${esc(sub?.meta?._msh_region||'—')} / ${esc(sub?.meta?._msh_district||'—')}</span></div>
-        <div class="detail-row"><span class="detail-key">Enumerator ID</span><span class="detail-val"><code>${esc(sub?.meta?._msh_enumerator_id||'—')}</code></span></div>
-      </div>
-      <div style="margin-bottom:14px">
-        <button onclick="fetchAndShowLineage('${esc(instanceId)}')" class="btn btn-outline btn-sm">🔗 Data Lineage</button>
-      </div>
-      <div id="lineageSection" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px"></div>
-      <div class="prop-label">Reviewer Notes</div>
-      <textarea class="prop-input" id="reviewNotes" placeholder="Add notes…"></textarea>
-    `;
     openModal('reviewModal');
+
+    document.getElementById('rm_title').textContent = 'Submission ' + instanceId.slice(0, 16) + '…';
+    document.getElementById('rm_subtitle').textContent = 'Instance ID: ' + instanceId;
+    document.getElementById('reviewNotes').value = '';
+    document.getElementById('reviewModalBody').innerHTML = `
+      <div style="text-align:center;padding:50px;color:var(--text-muted)">
+        <div style="font-size:28px;margin-bottom:10px">⏳</div>
+        <div>Loading complete survey responses, attachments, and GPS telemetry…</div>
+      </div>`;
+
+    // Reset tabs
+    document.querySelectorAll('#reviewModal .tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('rm_tab_btn_qa').classList.add('active');
+
+    try {
+      const res = await fetch(`/admin/submission?instance_id=${encodeURIComponent(instanceId)}`, { headers: headers() });
+      if (!res.ok) throw new Error('Could not load submission: ' + res.status);
+      const data = await res.json();
+      currentSubmissionData = data;
+
+      const sub = data.summary || {};
+      const responses = data.parsed_responses || {};
+      const attachments = data.attachments || [];
+      const validations = data.validations || [];
+      const flags = sub.qa_flags || qaFlags[instanceId] || [];
+
+      // Update Header
+      const statusBadge = document.getElementById('rm_status_badge');
+      statusBadge.className = 'badge badge-' + (sub.status || 'received');
+      statusBadge.textContent = sub.status || 'received';
+      document.getElementById('rm_subtitle').textContent = `Form: ${sub.form_id || '—'} · Submitter: ${sub.submitted_by || 'Anonymous'} · Received: ${formatDate(sub.received_at)}`;
+      document.getElementById('rm_media_count').textContent = attachments.length;
+
+      // Render the default Responses (Q&A) tab
+      renderReviewModalQA();
+
+    } catch (e) {
+      document.getElementById('reviewModalBody').innerHTML = `
+        <div style="padding:30px;text-align:center;color:var(--red)">
+          <div style="font-size:32px;margin-bottom:8px">⚠️</div>
+          <div style="font-weight:700">Failed to load responses</div>
+          <div style="font-size:12px;margin-top:4px;color:var(--text-muted)">${esc(e.message)}</div>
+        </div>`;
+    }
   }
 
-  async function fetchAndShowLineage(instanceId) {
-    const el = document.getElementById('lineageSection');
-    el.style.display = 'block';
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Loading lineage…</div>';
-    try {
-      const res = await fetch(`/admin/lineage?instance_id=${encodeURIComponent(instanceId)}`, { headers: headers() });
-      if (!res.ok) throw new Error(await res.text());
-      const d = await res.json();
-      const att = d.attachments || [];
-      const app = d.approval_history || [];
-      el.innerHTML = `
-        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">DATA LINEAGE & PROVENANCE</div>
-        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;font-size:11px;background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:10px">
-          <b>Device ID:</b><span><code>${esc(d.device_id||'—')}</code></span>
-          <b>OS:</b><span>${esc((d.metadata||{}).operating_system||'—')}</span>
-          <b>Status:</b><span>${esc(d.status||'—')}</span>
+  function switchReviewTab(tab, btn) {
+    document.querySelectorAll('#reviewModal .tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (!currentSubmissionData) return;
+
+    if (tab === 'qa') renderReviewModalQA();
+    else if (tab === 'media') renderReviewModalMedia();
+    else if (tab === 'gps') renderReviewModalGPS();
+    else if (tab === 'lineage') renderReviewModalLineage();
+    else if (tab === 'raw') renderReviewModalRaw();
+  }
+
+  function renderReviewModalQA() {
+    const sub = currentSubmissionData?.summary || {};
+    const responses = currentSubmissionData?.parsed_responses || {};
+    const keys = Object.keys(responses);
+    const flags = sub.qa_flags || qaFlags[currentReviewId] || [];
+
+    let headerHtml = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px">
+        <div><span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Form ID</span><div style="font-weight:700;font-size:13px">${esc(sub.form_id || '—')}</div></div>
+        <div><span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Submitted By</span><div style="font-weight:600;font-size:13px">${esc(sub.submitted_by || 'Anonymous')}</div></div>
+        <div><span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Received</span><div style="font-size:12px">${formatDate(sub.received_at)}</div></div>
+        <div><span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">GPS Status</span><div>${hasGPS(sub) ? '📍 <span style="color:var(--green);font-weight:700">Captured</span>' : '❌ <span style="color:var(--red)">Missing</span>'}</div></div>
+      </div>
+    `;
+
+    if (flags.length) {
+      headerHtml += `
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⚠️</span>
+          <div>
+            <div style="font-weight:700;font-size:12px;color:#92400e">Quality Assurance Flags Detected</div>
+            <div style="font-size:11px;color:#78350f">${flags.map(f => typeof f === 'string' ? esc(f.replace(/_/g,' ')) : esc((f.flag||f.name||JSON.stringify(f)).replace(/_/g,' '))).join(' · ')}</div>
+          </div>
+        </div>`;
+    }
+
+    // Search bar for fields
+    let searchBar = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--primary)">Survey Question Responses (${keys.length})</div>
+        <input type="text" id="qaSearchInput" placeholder="Filter questions & answers…" oninput="filterQAList()" style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:240px" />
+      </div>
+    `;
+
+    if (keys.length === 0) {
+      document.getElementById('reviewModalBody').innerHTML = headerHtml + `
+        <div style="padding:30px;text-align:center;color:var(--text-muted);background:white;border-radius:8px;border:1px dashed var(--border)">
+          No individual question fields were parsed. View the <a href="#" onclick="switchReviewTab('raw', document.getElementById('rm_tab_btn_raw'));return false" style="color:var(--accent)">Raw XML</a> to see unformatted payload.
+        </div>`;
+      return;
+    }
+
+    let listHtml = `<div id="qaListContainer" style="display:flex;flex-direction:column;gap:8px">`;
+    keys.forEach(k => {
+      const val = responses[k];
+      let valDisplay = '';
+      if (typeof val === 'boolean') {
+        valDisplay = val ? '<span class="badge badge-approved">True / Yes</span>' : '<span class="badge badge-rejected">False / No</span>';
+      } else if (typeof val === 'number') {
+        valDisplay = `<span style="font-weight:700;color:var(--accent);font-family:monospace;font-size:14px">${val}</span>`;
+      } else if (typeof val === 'string') {
+        if (/^https?:\/\//i.test(val)) {
+          valDisplay = `<a href="${esc(val)}" target="_blank" style="color:var(--accent)">${esc(val)} ↗</a>`;
+        } else {
+          valDisplay = `<span style="color:var(--text);font-weight:500">${esc(val)}</span>`;
+        }
+      } else if (typeof val === 'object' && val !== null) {
+        valDisplay = `<pre style="font-size:11px;background:#f1f5f9;padding:6px;border-radius:4px">${esc(JSON.stringify(val,null,2))}</pre>`;
+      } else {
+        valDisplay = `<span style="color:var(--text-light);font-style:italic">empty</span>`;
+      }
+
+      const formattedLabel = esc(k.replace(/^_+/, '').replace(/_/g, ' ').toUpperCase());
+
+      listHtml += `
+        <div class="qa-item" style="background:white;border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px" data-key="${esc(k.toLowerCase())}" data-val="${esc(String(val).toLowerCase())}">
+          <div style="flex:1">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.3px">${formattedLabel}</div>
+            <div style="font-size:10px;color:var(--text-light);font-family:monospace">${esc(k)}</div>
+          </div>
+          <div style="flex:1.5;text-align:right;font-size:13px">${valDisplay}</div>
+        </div>`;
+    });
+    listHtml += `</div>`;
+
+    document.getElementById('reviewModalBody').innerHTML = headerHtml + searchBar + listHtml;
+  }
+
+  function filterQAList() {
+    const q = (document.getElementById('qaSearchInput')?.value || '').toLowerCase();
+    document.querySelectorAll('#qaListContainer .qa-item').forEach(item => {
+      const match = !q || item.getAttribute('data-key').includes(q) || item.getAttribute('data-val').includes(q);
+      item.style.display = match ? 'flex' : 'none';
+    });
+  }
+
+  function renderReviewModalMedia() {
+    const attachments = currentSubmissionData?.attachments || [];
+    if (attachments.length === 0) {
+      document.getElementById('reviewModalBody').innerHTML = `
+        <div style="text-align:center;padding:50px;color:var(--text-muted)">
+          <div style="font-size:36px;margin-bottom:10px">📁</div>
+          <div style="font-weight:700;font-size:14px">No Media Attachments</div>
+          <div style="font-size:12px;margin-top:4px">No field video, audio clips, or photo attachments were uploaded with this submission.</div>
+        </div>`;
+      return;
+    }
+
+    let html = `<div style="display:flex;flex-direction:column;gap:18px">`;
+
+    // 1. Check for field video
+    const videos = attachments.filter(a => (a.filename||'').toLowerCase().includes('video') || (a.content_type||'').includes('video'));
+    if (videos.length > 0) {
+      html += `
+        <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+            🎥 Field Evidence Video Recording
+          </div>`;
+      videos.forEach(v => {
+        html += `
+          <div style="border-radius:8px;overflow:hidden;background:#0f172a;max-width:640px;margin:0 auto">
+            <video controls playsinline style="width:100%;max-height:360px;display:block" src="${esc(v.url)}">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px;text-align:center">
+            ${esc(v.filename)} (${(v.size / 1024 / 1024).toFixed(2)} MB) · <a href="${esc(v.url)}" download style="color:var(--accent)">Download ↗</a>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // 2. Photos & Images
+    const images = attachments.filter(a => /\.(jpe?g|png|gif|webp)$/i.test(a.filename||'') || (a.content_type||'').includes('image'));
+    if (images.length > 0) {
+      html += `
+        <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">🖼️ Photo Evidence & Captured Images (${images.length})</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+            ${images.map(img => `
+              <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#f8fafc">
+                <a href="${esc(img.url)}" target="_blank">
+                  <img src="${esc(img.url)}" alt="${esc(img.filename)}" style="width:100%;height:140px;object-fit:cover;display:block" />
+                </a>
+                <div style="padding:6px 8px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(img.filename)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+    }
+
+    // 3. All Files List
+    html += `
+      <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px">📦 All Uploaded Files (${attachments.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left;color:var(--text-muted);font-size:11px">
+              <th style="padding:8px">Filename</th>
+              <th style="padding:8px">Type</th>
+              <th style="padding:8px">Size</th>
+              <th style="padding:8px;text-align:right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${attachments.map(a => `
+              <tr style="border-bottom:1px solid #f1f5f9">
+                <td style="padding:8px;font-weight:600"><code>${esc(a.filename)}</code></td>
+                <td style="padding:8px;color:var(--text-muted)">${esc(a.content_type || 'file')}</td>
+                <td style="padding:8px;color:var(--text-muted)">${a.size ? (a.size > 1048576 ? (a.size/1048576).toFixed(2)+' MB' : (a.size/1024).toFixed(1)+' KB') : '—'}</td>
+                <td style="padding:8px;text-align:right">
+                  <a href="${esc(a.url)}" target="_blank" download class="btn btn-outline btn-sm" style="padding:4px 8px;font-size:11px">Download</a>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+    document.getElementById('reviewModalBody').innerHTML = html;
+  }
+
+  function renderReviewModalGPS() {
+    const sub = currentSubmissionData?.summary || {};
+    const lat = sub.gps_lat;
+    const lng = sub.gps_lng;
+    const raw = sub.gps_raw || sub.meta?.gps_raw || '';
+
+    if (lat === null || lat === undefined || lng === null || lng === undefined) {
+      document.getElementById('reviewModalBody').innerHTML = `
+        <div style="text-align:center;padding:50px;color:var(--text-muted)">
+          <div style="font-size:36px;margin-bottom:10px">📍</div>
+          <div style="font-weight:700;font-size:14px;color:var(--red)">No GPS Telemetry Available</div>
+          <div style="font-size:12px;margin-top:4px">This record was submitted without coordinates or GPS locking was unavailable.</div>
+        </div>`;
+      return;
+    }
+
+    document.getElementById('reviewModalBody').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
+          <div><span style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase">Latitude</span><div style="font-size:16px;font-weight:800;color:#15803d;font-family:monospace">${lat.toFixed(6)}</div></div>
+          <div><span style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase">Longitude</span><div style="font-size:16px;font-weight:800;color:#15803d;font-family:monospace">${lng.toFixed(6)}</div></div>
+          <div><span style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase">Raw Telemetry</span><div style="font-size:11px;color:#166534;font-family:monospace">${esc(raw || '—')}</div></div>
+          <div style="display:flex;align-items:center;justify-content:flex-end">
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm" style="background:white">Google Maps ↗</a>
+          </div>
         </div>
-        <div style="font-size:11px;font-weight:700;margin-bottom:4px">Approval Pipeline</div>
-        ${app.length ? app.map(a => `<div style="font-size:11px;background:${a.status==='approved'?'#ecfdf5':'#fef2f2'};padding:6px;border-radius:4px;margin-bottom:3px">[${esc(a.stage)}] ${esc(a.approver_role||a.validator)} — ${esc(a.notes||'no notes')}</div>`).join('') : '<div style="font-size:11px;color:var(--text-light)">No approval records</div>'}
-      `;
+        <div id="rmLeafletMap" style="height:380px;border-radius:12px;border:1px solid var(--border);overflow:hidden"></div>
+      </div>`;
+
+    setTimeout(() => {
+      const mapEl = document.getElementById('rmLeafletMap');
+      if (mapEl && window.L) {
+        if (reviewMiniMap) {
+          reviewMiniMap.remove();
+          reviewMiniMap = null;
+        }
+        reviewMiniMap = L.map(mapEl).setView([lat, lng], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(reviewMiniMap);
+        L.marker([lat, lng]).addTo(reviewMiniMap)
+          .bindPopup(`<b>${esc(sub.form_id||'Survey')}</b><br>Submitted by: ${esc(sub.submitted_by||'Anonymous')}<br>${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+          .openPopup();
+      }
+    }, 100);
+  }
+
+  function renderReviewModalLineage() {
+    const sub = currentSubmissionData?.summary || {};
+    const validations = currentSubmissionData?.validations || [];
+    const discussion = currentSubmissionData?.discussion || '';
+
+    let html = `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <!-- Verification History -->
+        <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px">📋 Approval & Review History</div>
+          ${validations.length === 0 ? '<div style="font-size:12px;color:var(--text-muted)">No prior validation or review actions recorded.</div>' : `
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${validations.map(v => `
+                <div style="border-left:3px solid ${v.status==='approved'?'var(--green)':v.status==='rejected'?'var(--red)':'var(--amber)'};background:#f8fafc;padding:10px 14px;border-radius:0 8px 8px 0">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <span style="font-weight:700;font-size:12px">${esc(v.validator || 'Admin')} marked as <span class="badge badge-${v.status}">${v.status}</span></span>
+                    <span style="font-size:10px;color:var(--text-light)">${formatDate(v.created_at || v.validated_at)}</span>
+                  </div>
+                  ${v.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px">“${esc(v.notes)}”</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- StatChat object discussion -->
+        <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:8px">💬 StatChat Object Discussion</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+            Channel: <code>${esc(discussion || `obj:submission:${currentReviewId}`)}</code>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openStatChatChannel('${esc(discussion || `obj:submission:${currentReviewId}`)}')">Open Discussion in StatChat Drawer</button>
+        </div>
+      </div>`;
+
+    document.getElementById('reviewModalBody').innerHTML = html;
+  }
+
+  function renderReviewModalRaw() {
+    const rawXML = currentSubmissionData?.xml || '';
+    const responses = currentSubmissionData?.parsed_responses || {};
+
+    document.getElementById('reviewModalBody').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:700;color:var(--text-muted)">Parsed JSON Payload</span>
+            <button class="btn btn-outline btn-sm" onclick="copyToClipboard(JSON.stringify(currentSubmissionData,null,2))">📋 Copy JSON</button>
+          </div>
+          <pre style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:11px;max-height:220px;overflow:auto;font-family:monospace">${esc(JSON.stringify(responses,null,2))}</pre>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:700;color:var(--text-muted)">Raw ODK XML Document</span>
+            <button class="btn btn-outline btn-sm" onclick="copyToClipboard(currentSubmissionData?.xml || '')">📋 Copy XML</button>
+          </div>
+          <pre style="background:#0f172a;color:#38bdf8;padding:14px;border-radius:8px;font-size:11px;max-height:260px;overflow:auto;font-family:monospace">${esc(rawXML || 'No XML document stored')}</pre>
+        </div>
+      </div>`;
+  }
+
+  function openStatChatChannel(channel) {
+    document.getElementById('sc_channel_id').value = channel;
+    const drawer = document.getElementById('statchatDrawer');
+    if (drawer.style.right !== '0px') toggleStatChat();
+    loadDrawerComments();
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Copied to clipboard! 📋', 'success');
+    }).catch(() => {
+      showToast('Could not copy text', 'error');
+    });
+  }
+
+  function exportCurrentSubmissionJSON() {
+    if (!currentSubmissionData) return;
+    const blob = new Blob([JSON.stringify(currentSubmissionData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `submission_${currentReviewId}.json`;
+    a.click();
+    showToast('Exported submission JSON', 'success');
+  }
+
+  async function deleteCurrentSubmission() {
+    if (!currentReviewId) return;
+    if (!confirm(`Are you sure you want to permanently delete submission ${currentReviewId}?`)) return;
+
+    try {
+      const res = await fetch(`/admin/submission/delete?instance_id=${encodeURIComponent(currentReviewId)}`, {
+        method: 'POST',
+        headers: headers()
+      });
+      if (!res.ok) throw new Error(await res.text());
+      showToast('Submission deleted successfully', 'success');
+      closeModal('reviewModal');
+      await loadSubmissions();
     } catch(e) {
-      el.innerHTML = `<div style="color:var(--red);font-size:11px">Failed: ${esc(e.message)}</div>`;
+      showToast('Delete failed: ' + e.message, 'error');
     }
   }
 
@@ -1313,7 +1697,7 @@
         body: JSON.stringify({ instance_id: currentReviewId, status: decision, notes })
       });
       if (!res.ok) throw new Error(await res.text());
-      showToast(`Submission ${decision}!`, decision === 'approved' ? 'success' : 'error');
+      showToast(`Submission marked as ${decision}! ✔`, decision === 'approved' ? 'success' : 'error');
       closeModal('reviewModal');
       await loadSubmissions();
     } catch(e) { showToast('Review failed: ' + e.message, 'error'); }
@@ -1426,8 +1810,15 @@
   /* ════════════════════════════════════════════════════════════════════════
      UTILS
   ════════════════════════════════════════════════════════════════════════ */
-  function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
-  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('hidden');
+  }
+
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  }
 
   function showToast(msg, type = '') {
     const t = document.getElementById('toast');
@@ -1442,10 +1833,13 @@
   }
 
   function hasGPS(sub) {
-    if (!sub || !sub.meta) return false;
+    if (!sub) return false;
+    if (sub.gps_lat !== null && sub.gps_lat !== undefined && sub.gps_lng !== null && sub.gps_lng !== undefined) return true;
+    if (sub.gps_raw && sub.gps_raw.trim() !== '') return true;
+    if (!sub.meta) return false;
     for (const v of Object.values(sub.meta)) {
       if (typeof v === 'string' && /^-?\d+\.\d+/.test(v)) return true;
-      if (typeof v === 'object' && v !== null && (v.lat !== undefined || v.latitude !== undefined)) return true;
+      if (typeof v === 'object' && v !== null && (v.lat !== undefined || v.latitude !== undefined || v.gps_lat !== undefined)) return true;
     }
     return false;
   }

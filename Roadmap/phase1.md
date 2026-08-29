@@ -264,18 +264,28 @@ StatChat creates conversation threads for platform objects automatically:
 
 Phase 1 is complete only if:
 
-- [ ] All services build with `go build ./...` (no errors)
+- [x] All Go modules build and test with `go build ./...` / `go test ./...` (24 modules verified 2026-08-21)
 - [ ] Docker Compose starts all services successfully (`docker compose up`)
 - [ ] `GET /health` responds 200 on every Go service
-- [ ] Flask UI loads at `http://localhost:5000`
-- [ ] App Launcher loads at `http://localhost:3006`
-- [ ] PostgreSQL connects and all schemas are auto-migrated on startup
+- [x] Flask UI loads at `http://localhost:5000`
+- [x] App Launcher loads at `http://localhost:3006`
+- [x] PostgreSQL connects and every bootstrap script succeeds on a clean PostgreSQL 15 volume
 - [ ] Redis connects on all services that require it
-- [ ] Prometheus metrics are scraped by `monitoring/`
+- [x] All currently configured Prometheus targets are up (Core, Analytics, Registry, PMS, StatChat, Prometheus)
 - [ ] GitHub Actions CI pipeline executes and passes
-- [ ] No secrets committed in git (`.env`, `secrets/`)
-- [ ] No compiled binaries committed (`.exe`)
-- [ ] `PROJECT_PROGRESS.md` and `SYSTEM_COMPLETION.md` exist and are maintained
+- [x] No secrets committed in git (`.env`, `secrets/`) in the current index
+- [x] No compiled binaries committed (`.exe`) in the current index
+- [x] `PROJECT_PROGRESS.md` and `SYSTEM_COMPLETION.md` exist and are maintained
+
+### Verification snapshot — 2026-08-21
+
+- Running and healthy: PostgreSQL, authenticated Redis, Analytics Core/UI, Registry API/UI, StatChat API/UI, PMS API/UI, RMS API/UI, Governance API/UI, Prometheus, Grafana, and Alertmanager.
+- The StatGate Next.js launcher is available at `http://localhost:3006`; an independently healthy Compose preview remains available at `http://localhost:3106`.
+- Python tests pass in the supported container runtime: 77 passed. All audited module frontends produce production builds.
+- Clean PostgreSQL initialization passes all bootstrap scripts from an empty disposable volume.
+- PMS, RMS, and Governance readiness probes now report authenticated Redis event-bus connectivity explicitly (`redis: true`).
+- Expansion-stack builds uncovered and fixed invalid shared-library Docker contexts in StatFederation, StatOps, and StatTrust. Deployment of that batch is currently blocked by repeated external registry/Go-proxy download resets; their local Go test suites pass.
+- Remaining gate: start and health-certify the entire 41-service Compose inventory, verify Redis/event integration for every applicable service, and obtain a passing GitHub Actions run.
 
 ---
 

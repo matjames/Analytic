@@ -38,35 +38,36 @@ const (
 
 // FederatedNode represents a registered node in NSS or global diplomacy network
 type FederatedNode struct {
-	ID           string       `json:"id"`
-	Name         string       `json:"name"`
-	Code         string       `json:"code"`
-	NodeType     NodeType     `json:"node_type"`
-	Jurisdiction string       `json:"jurisdiction"`
-	EndpointURL  string       `json:"endpoint_url"`
-	HealthStatus HealthStatus `json:"health_status"`
-	TrustLevel   TrustLevel   `json:"trust_level"`
-	PublicKey    string       `json:"public_key,omitempty"`
-	Protocols    []string     `json:"protocols"`
-	Capabilities []string     `json:"capabilities"`
-	TenantID     string       `json:"tenant_id"`
-	ContactEmail string       `json:"contact_email,omitempty"`
-	LastHeartbeat *time.Time  `json:"last_heartbeat,omitempty"`
-	LatencyMs    int          `json:"latency_ms"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Code          string       `json:"code"`
+	NodeType      NodeType     `json:"node_type"`
+	Jurisdiction  string       `json:"jurisdiction"`
+	EndpointURL   string       `json:"endpoint_url"`
+	HealthStatus  HealthStatus `json:"health_status"`
+	TrustLevel    TrustLevel   `json:"trust_level"`
+	PublicKey     string       `json:"public_key,omitempty"`
+	Protocols     []string     `json:"protocols"`
+	Capabilities  []string     `json:"capabilities"`
+	TenantID      string       `json:"tenant_id"`
+	WorkspaceID   string       `json:"workspace_id,omitempty"`
+	ContactEmail  string       `json:"contact_email,omitempty"`
+	LastHeartbeat *time.Time   `json:"last_heartbeat,omitempty"`
+	LatencyMs     int          `json:"latency_ms"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
 }
 
 // DSAStatus defines the legal lifecycle of a Data Sharing Agreement
 type DSAStatus string
 
 const (
-	DSAStatusDraft        DSAStatus = "DRAFT"
-	DSAStatusUnderReview  DSAStatus = "UNDER_REVIEW"
-	DSAStatusActive       DSAStatus = "ACTIVE"
-	DSAStatusSuspended    DSAStatus = "SUSPENDED"
-	DSAStatusExpired      DSAStatus = "EXPIRED"
-	DSAStatusRevoked      DSAStatus = "REVOKED"
+	DSAStatusDraft       DSAStatus = "DRAFT"
+	DSAStatusUnderReview DSAStatus = "UNDER_REVIEW"
+	DSAStatusActive      DSAStatus = "ACTIVE"
+	DSAStatusSuspended   DSAStatus = "SUSPENDED"
+	DSAStatusExpired     DSAStatus = "EXPIRED"
+	DSAStatusRevoked     DSAStatus = "REVOKED"
 )
 
 // DataSharingAgreement models legal, bilateral data governance boundaries
@@ -90,6 +91,7 @@ type DataSharingAgreement struct {
 	GovernanceApprovedBy  string     `json:"governance_approved_by,omitempty"`
 	GovernanceApprovedAt  *time.Time `json:"governance_approved_at,omitempty"`
 	TenantID              string     `json:"tenant_id"`
+	WorkspaceID           string     `json:"workspace_id,omitempty"`
 	CreatedAt             time.Time  `json:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at"`
 }
@@ -115,6 +117,7 @@ type NationalIndicator struct {
 	IsOfficialStatistic      bool       `json:"is_official_statistic"`
 	CalendarReleaseDate      *time.Time `json:"calendar_release_date,omitempty"`
 	TenantID                 string     `json:"tenant_id"`
+	WorkspaceID              string     `json:"workspace_id,omitempty"`
 	CreatedAt                time.Time  `json:"created_at"`
 	UpdatedAt                time.Time  `json:"updated_at"`
 }
@@ -144,21 +147,22 @@ type DistributedQueryRequest struct {
 
 // DistributedQueryRecord represents query state ledger
 type DistributedQueryRecord struct {
-	ID                   string                 `json:"id"`
-	QueryName            string                 `json:"query_name"`
-	InitiatorUserID      string                 `json:"initiator_user_id"`
-	InitiatorTenantID    string                 `json:"initiator_tenant_id"`
-	TargetNodes          []string               `json:"target_nodes"`
-	QuerySyntax          map[string]interface{} `json:"query_syntax"`
-	ExecutionStrategy    string                 `json:"execution_strategy"`
-	Status               QueryStatus            `json:"status"`
-	DispatchTimestamp    time.Time              `json:"dispatch_timestamp"`
-	CompletedTimestamp   *time.Time             `json:"completed_timestamp,omitempty"`
-	TotalRecordsRetrieved int                   `json:"total_records_retrieved"`
-	ExecutionTimeMs      int                    `json:"execution_time_ms"`
-	NodeResponses        map[string]interface{} `json:"node_responses"`
-	ErrorSummary         string                 `json:"error_summary,omitempty"`
-	CreatedAt            time.Time              `json:"created_at"`
+	ID                    string                 `json:"id"`
+	QueryName             string                 `json:"query_name"`
+	InitiatorUserID       string                 `json:"initiator_user_id"`
+	InitiatorTenantID     string                 `json:"initiator_tenant_id"`
+	WorkspaceID           string                 `json:"workspace_id,omitempty"`
+	TargetNodes           []string               `json:"target_nodes"`
+	QuerySyntax           map[string]interface{} `json:"query_syntax"`
+	ExecutionStrategy     string                 `json:"execution_strategy"`
+	Status                QueryStatus            `json:"status"`
+	DispatchTimestamp     time.Time              `json:"dispatch_timestamp"`
+	CompletedTimestamp    *time.Time             `json:"completed_timestamp,omitempty"`
+	TotalRecordsRetrieved int                    `json:"total_records_retrieved"`
+	ExecutionTimeMs       int                    `json:"execution_time_ms"`
+	NodeResponses         map[string]interface{} `json:"node_responses"`
+	ErrorSummary          string                 `json:"error_summary,omitempty"`
+	CreatedAt             time.Time              `json:"created_at"`
 }
 
 // MetadataVocabulary encapsulates cross-agency semantic harmonization
@@ -173,81 +177,85 @@ type MetadataVocabulary struct {
 	TransformationExpression string                 `json:"transformation_expression,omitempty"`
 	Status                   string                 `json:"status"`
 	TenantID                 string                 `json:"tenant_id"`
+	WorkspaceID              string                 `json:"workspace_id,omitempty"`
 	CreatedAt                time.Time              `json:"created_at"`
 	UpdatedAt                time.Time              `json:"updated_at"`
 }
 
 // DiplomaticTreaty represents international evidence exchange frameworks
 type DiplomaticTreaty struct {
-	ID                       string                 `json:"id"`
-	TreatyCode               string                 `json:"treaty_code"`
-	Title                    string                 `json:"title"`
-	PartnerStates            []string               `json:"partner_states"`
-	Jurisdiction             string                 `json:"jurisdiction"`
-	FrameworkType            string                 `json:"framework_type"`
-	Status                   string                 `json:"status"`
-	RatificationDate         *time.Time             `json:"ratification_date,omitempty"`
-	ExpiryDate               *time.Time             `json:"expiry_date,omitempty"`
-	GoverningBody            string                 `json:"governing_body"`
-	ComplianceRules          []map[string]interface{}`json:"compliance_rules"`
-	DataLocalizationRequired bool                   `json:"data_localization_required"`
-	EncryptionStandard       string                 `json:"encryption_standard"`
-	TenantID                 string                 `json:"tenant_id"`
-	CreatedAt                time.Time              `json:"created_at"`
-	UpdatedAt                time.Time              `json:"updated_at"`
+	ID                       string                   `json:"id"`
+	TreatyCode               string                   `json:"treaty_code"`
+	Title                    string                   `json:"title"`
+	PartnerStates            []string                 `json:"partner_states"`
+	Jurisdiction             string                   `json:"jurisdiction"`
+	FrameworkType            string                   `json:"framework_type"`
+	Status                   string                   `json:"status"`
+	RatificationDate         *time.Time               `json:"ratification_date,omitempty"`
+	ExpiryDate               *time.Time               `json:"expiry_date,omitempty"`
+	GoverningBody            string                   `json:"governing_body"`
+	ComplianceRules          []map[string]interface{} `json:"compliance_rules"`
+	DataLocalizationRequired bool                     `json:"data_localization_required"`
+	EncryptionStandard       string                   `json:"encryption_standard"`
+	TenantID                 string                   `json:"tenant_id"`
+	WorkspaceID              string                   `json:"workspace_id,omitempty"`
+	CreatedAt                time.Time                `json:"created_at"`
+	UpdatedAt                time.Time                `json:"updated_at"`
 }
 
 // InternationalReport represents multilateral submission records (SDG, AU, EAC, UN)
 type InternationalReport struct {
-	ID                    string                 `json:"id"`
-	ReportTitle           string                 `json:"report_title"`
-	DestinationBody       string                 `json:"destination_body"`
-	ReportingPeriod       string                 `json:"reporting_period"`
-	Status                string                 `json:"status"`
-	SubmissionHash        string                 `json:"submission_hash,omitempty"`
-	TransferredIndicators []map[string]interface{}`json:"transferred_indicators"`
-	CompliancePassed      bool                   `json:"compliance_passed"`
-	ComplianceNotes       string                 `json:"compliance_notes,omitempty"`
-	SubmittedBy           string                 `json:"submitted_by,omitempty"`
-	SubmittedAt           *time.Time             `json:"submitted_at,omitempty"`
-	AcknowledgementReceipt map[string]interface{} `json:"acknowledgement_receipt,omitempty"`
-	TenantID              string                 `json:"tenant_id"`
-	CreatedAt             time.Time              `json:"created_at"`
-	UpdatedAt             time.Time              `json:"updated_at"`
+	ID                     string                   `json:"id"`
+	ReportTitle            string                   `json:"report_title"`
+	DestinationBody        string                   `json:"destination_body"`
+	ReportingPeriod        string                   `json:"reporting_period"`
+	Status                 string                   `json:"status"`
+	SubmissionHash         string                   `json:"submission_hash,omitempty"`
+	TransferredIndicators  []map[string]interface{} `json:"transferred_indicators"`
+	CompliancePassed       bool                     `json:"compliance_passed"`
+	ComplianceNotes        string                   `json:"compliance_notes,omitempty"`
+	SubmittedBy            string                   `json:"submitted_by,omitempty"`
+	SubmittedAt            *time.Time               `json:"submitted_at,omitempty"`
+	AcknowledgementReceipt map[string]interface{}   `json:"acknowledgement_receipt,omitempty"`
+	TenantID               string                   `json:"tenant_id"`
+	WorkspaceID            string                   `json:"workspace_id,omitempty"`
+	CreatedAt              time.Time                `json:"created_at"`
+	UpdatedAt              time.Time                `json:"updated_at"`
 }
 
 // FederatedSearchResult represents a cross-node discovered evidence item
 type FederatedSearchResult struct {
-	NodeID             string    `json:"node_id"`
-	NodeName           string    `json:"node_name"`
-	ResourceType       string    `json:"resource_type"`
-	RemoteResourceID   string    `json:"remote_resource_id"`
-	Title              string    `json:"title"`
-	Abstract           string    `json:"abstract"`
-	Keywords           []string  `json:"keywords"`
-	Classification     string    `json:"classification"`
-	TemporalCoverage   string    `json:"temporal_coverage,omitempty"`
-	SpatialCoverage    string    `json:"spatial_coverage,omitempty"`
-	DirectAccessURL    string    `json:"direct_access_url,omitempty"`
-	Score              float64   `json:"score"`
+	NodeID           string   `json:"node_id"`
+	NodeName         string   `json:"node_name"`
+	ResourceType     string   `json:"resource_type"`
+	RemoteResourceID string   `json:"remote_resource_id"`
+	Title            string   `json:"title"`
+	Abstract         string   `json:"abstract"`
+	Keywords         []string `json:"keywords"`
+	Classification   string   `json:"classification"`
+	TemporalCoverage string   `json:"temporal_coverage,omitempty"`
+	SpatialCoverage  string   `json:"spatial_coverage,omitempty"`
+	DirectAccessURL  string   `json:"direct_access_url,omitempty"`
+	Score            float64  `json:"score"`
 }
 
 // ComplianceAuditLog represents immutable sovereign transboundary evaluation logs
 type ComplianceAuditLog struct {
-	ID                 string                 `json:"id"`
-	EventTimestamp     time.Time              `json:"event_timestamp"`
-	ActorUserID        string                 `json:"actor_user_id"`
-	ActorTenantID      string                 `json:"actor_tenant_id"`
-	Action             string                 `json:"action"`
-	SourceJurisdiction string                 `json:"source_jurisdiction"`
-	TargetJurisdiction string                 `json:"target_jurisdiction"`
-	ResourceType       string                 `json:"resource_type"`
-	ResourceID         string                 `json:"resource_id"`
-	Decision           string                 `json:"decision"`
-	AppliedRules       []string               `json:"applied_rules"`
-	RedactedFields     []string               `json:"redacted_fields"`
-	PolicyHash         string                 `json:"policy_hash"`
-	Reason             string                 `json:"reason,omitempty"`
+	ID                 string    `json:"id"`
+	EventTimestamp     time.Time `json:"event_timestamp"`
+	ActorUserID        string    `json:"actor_user_id"`
+	ActorTenantID      string    `json:"actor_tenant_id"`
+	WorkspaceID        string    `json:"workspace_id,omitempty"`
+	Action             string    `json:"action"`
+	SourceJurisdiction string    `json:"source_jurisdiction"`
+	TargetJurisdiction string    `json:"target_jurisdiction"`
+	ResourceType       string    `json:"resource_type"`
+	ResourceID         string    `json:"resource_id"`
+	Decision           string    `json:"decision"`
+	AppliedRules       []string  `json:"applied_rules"`
+	RedactedFields     []string  `json:"redacted_fields"`
+	PolicyHash         string    `json:"policy_hash"`
+	Reason             string    `json:"reason,omitempty"`
 }
 
 // ObjectLink mirrors the universal StatGate cross-entity contract
@@ -259,6 +267,7 @@ type ObjectLink struct {
 	TargetID     string    `json:"target_id"`
 	Relationship string    `json:"relationship"`
 	TenantID     string    `json:"tenant_id"`
+	WorkspaceID  string    `json:"workspace_id,omitempty"`
 	CreatedBy    string    `json:"created_by,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }

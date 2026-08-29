@@ -53,51 +53,39 @@ function Test-Ignored {
 $hits = @()
 $maxBytes = 2MB
 
-# Breadth-first directory walk that PRUNES excluded trees before descending,
-# so vendor/runtime directories are never enumerated.
-$queue = [System.Collections.Generic.Queue[string]]::new()
-$queue.Enqueue($RepoRoot)
+# Scan exactly what can enter a commit: tracked files plus untracked files that
+# are not ignored. This keeps local .env files, caches, and runtime uploads out
+# of both the scan and CI while still checking new source files before commit.
+$candidateFiles = @(& git -C $RepoRoot ls-files --cached --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw 'git ls-files failed; secret scan cannot determine the commitable file set.'
+}
 
-while ($queue.Count -gt 0) {
-    $dir = $queue.Dequeue()
-    $leaf = [System.IO.Path]::GetFileName($dir.TrimEnd('\', '/'))
-    foreach ($ex in $excludeDirs) {
-        if ($leaf -match $ex -and $dir -ne $RepoRoot) { continue 2 }
-    }
+foreach ($relativePath in $candidateFiles) {
+    $filePath = Join-Path $RepoRoot $relativePath
+    if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) { continue }
 
-    foreach ($filePath in [System.IO.Directory]::EnumerateFiles($dir)) {
-        $file = Get-Item -LiteralPath $filePath -Force
-        if ($file.Name -in @('secret-scan.ps1', 'generate-security-docs.ps1')) { continue }
-        if ($file.Length -gt $maxBytes) { continue }
-        if ($file.Name -notin $fileTypes -and $file.Extension -notin $fileTypes) { continue }
+    $file = Get-Item -LiteralPath $filePath -Force
+    if (Test-Ignored -Path $file.FullName -LeafName $file.Name) { continue }
+    if ($file.Length -gt $maxBytes) { continue }
+    if ($file.Name -notin $fileTypes -and $file.Extension -notin $fileTypes) { continue }
 
-        try { $content = [System.IO.File]::ReadAllText($file.FullName) } catch { continue }
+    try { $content = [System.IO.File]::ReadAllText($file.FullName) } catch { continue }
 
-        foreach ($secret in $knownSecrets) {
-            # Documentation and audit reports (SECRET_MANAGEMENT.md,
-            # STATGATE_AUDIT_REPORT.txt) legitimately name the removed
-            # sentinels, so only scan code/config files for them.
-            if ($file.Extension -in @('.md', '.txt')) { continue }
-            if ($content.Contains($secret)) {
-                $hits += [pscustomobject]@{ Severity='KNOWN-SECRET'; File=$file.FullName; Match=$secret }
-            }
-        }
-
-        foreach ($p in $defaultPatterns) {
-            if ($file.Extension -in @('.md', '.txt')) { continue }
-            if ($content -match $p) {
-                $hits += [pscustomobject]@{ Severity='default-cred'; File=$file.FullName; Match=$p }
-            }
+    foreach ($secret in $knownSecrets) {
+        # Documentation and audit reports legitimately name removed sentinels,
+        # so only scan code/config files for them.
+        if ($file.Extension -in @('.md', '.txt')) { continue }
+        if ($content.Contains($secret)) {
+            $hits += [pscustomobject]@{ Severity='KNOWN-SECRET'; File=$file.FullName; Match=$secret }
         }
     }
 
-    foreach ($sub in [System.IO.Directory]::EnumerateDirectories($dir)) {
-        $subLeaf = [System.IO.Path]::GetFileName($sub.TrimEnd('\', '/'))
-        $excluded = $false
-        foreach ($ex in $excludeDirs) {
-            if ($subLeaf -match $ex) { $excluded = $true; break }
+    foreach ($p in $defaultPatterns) {
+        if ($file.Extension -in @('.md', '.txt')) { continue }
+        if ($content -match $p) {
+            $hits += [pscustomobject]@{ Severity='default-cred'; File=$file.FullName; Match=$p }
         }
-        if (-not $excluded) { $queue.Enqueue($sub) }
     }
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, fetchUserSettings, fetchMeetingCallSession, getWebSocketURL, searchAPI } from './api/client';
-import { Conversation, Message, User, Notification, SearchResult } from './types';
+import { fetchConversations, fetchCurrentUser, fetchMessages, sendChatMessage, uploadChatAttachment, fetchNotifications, markAllNotificationsRead, updatePresence, fetchUserSettings, fetchMeetingCallSession, fetchOrganisationBranding, getWebSocketURL, getWebSocketProtocols, searchAPI, fetchObjectConversation } from './api/client';
+import { Conversation, Message, User, Notification, SearchResult, MessageSearchFilters } from './types';
 import ChatSidebarList from './components/ChatSidebarList';
 import ChatWorkspace from './components/ChatWorkspace';
 import SidebarRail from './components/SidebarRail';
@@ -31,12 +31,13 @@ export type SidebarView =
   | 'communities'
   | 'settings';
 
-export type SubHeaderView = 'home' | 'connect' | 'opportunities' | 'network' | 'jobs';
+export type SubHeaderView = 'home' | 'communities' | 'connect' | 'opportunities' | 'network' | 'jobs';
 
 export type CalendarSubView = 'overview' | 'schedule' | 'rooms' | 'recordings';
 
 const subHeaderTabs: Array<{ id: SubHeaderView; label: string }> = [
   { id: 'home', label: 'Home' },
+  { id: 'communities', label: 'Communities' },
   { id: 'connect', label: 'Connect' },
   { id: 'opportunities', label: 'Opportunities' },
   { id: 'network', label: 'My Network' },
@@ -50,6 +51,27 @@ const calendarTabs: Array<{ id: CalendarSubView; label: string }> = [
   { id: 'recordings', label: 'Recordings' },
 ];
 
+const defaultBranding = {
+  display_name: 'StatGate',
+  logo_url: '',
+  primary_color: '#165c92',
+  secondary_color: '#1a7ab5',
+};
+
+// Theme support — the user preference can be explicit Light/Dark or "system"
+// (follow the operating system's prefers-color-scheme). Components receive the
+// resolved effective theme so existing light/dark logic is unaffected.
+type ThemePreference = 'light' | 'dark' | 'system';
+
+function systemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+}
+
+function resolveTheme(pref: ThemePreference): 'light' | 'dark' {
+  if (pref === 'system') return systemPrefersDark() ? 'dark' : 'light';
+  return pref;
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -59,6 +81,7 @@ export default function App() {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [themePreference, setThemePreference] = useState<ThemePreference>('system');
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
@@ -72,6 +95,10 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
+  const [searchFilters, setSearchFilters] = useState<MessageSearchFilters>({});
+  const [focusedMessageId, setFocusedMessageId] = useState('');
+  const [branding, setBranding] = useState(defaultBranding);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
   const [meetingCallRemoteStreams, setMeetingCallRemoteStreams] = useState<Record<string, MediaStream>>({});
   const currentConversationRef = useRef(currentConversation);
@@ -143,7 +170,7 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     }
   };
 
-  const isChatWorkspace = ['directMessages', 'teams'].includes(activeSidebarView);
+  const isChatWorkspace = ['chat', 'directMessages', 'teams'].includes(activeSidebarView);
   const isSettingsView = activeSidebarView === 'settings';
   const isCollaborationView = activeSidebarView === 'channels';
   const isCalendarView = activeSidebarView === 'calendar' || activeSidebarView === 'meetings';
@@ -159,13 +186,14 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     const query = globalSearch.trim();
-    if (query.length < 2) {
+    const hasFilters = Boolean(searchFilters.conversationId || searchFilters.sender || searchFilters.from || searchFilters.to || searchFilters.hasAttachment !== undefined || searchFilters.savedOnly);
+    if (query.length < 2 && !hasFilters) {
       setSearchResults(null);
       return;
     }
     let active = true;
     const timer = window.setTimeout(() => {
-      searchAPI(query)
+      searchAPI(query, searchFilters)
         .then((result) => { if (active) setSearchResults(result); })
         .catch(() => { if (active) setSearchResults(null); });
     }, 250);
@@ -173,7 +201,33 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       active = false;
       window.clearTimeout(timer);
     };
-  }, [globalSearch]);
+  }, [globalSearch, searchFilters]);
+
+  const openLocatedMessage = (conversationId: string, messageId = '') => {
+    const target = conversations.find((conversation) => conversation.id === conversationId);
+    if (target?.type === 'group') setActiveSidebarView('teams');
+    else if (target?.type === 'channel') setActiveSidebarView('chat');
+    else setActiveSidebarView('directMessages');
+    setCurrentConversation(conversationId);
+    setFocusedMessageId(messageId);
+    setMobileView('chat');
+    setGlobalSearch('');
+    setSearchResults(null);
+    setAdvancedSearchOpen(false);
+  };
+
+  useEffect(() => {
+    fetchOrganisationBranding()
+      .then((data) => {
+        setBranding({
+          display_name: data.display_name || defaultBranding.display_name,
+          logo_url: data.logo_url || '',
+          primary_color: data.primary_color || defaultBranding.primary_color,
+          secondary_color: data.secondary_color || defaultBranding.secondary_color,
+        });
+      })
+      .catch(() => setBranding(defaultBranding));
+  }, []);
 
   useEffect(() => {
     document.body.style.margin = '0';
@@ -187,12 +241,27 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
           fetchUserSettings(),
         ]);
         setUser(currentUser);
-        setConversations(conversationList);
-        if (userSettings.theme === 'dark' || userSettings.theme === 'light') {
-          setTheme(userSettings.theme);
+        let nextConversations = conversationList;
+        const objectRef = new URLSearchParams(window.location.search).get('objectRef')?.trim();
+        if (objectRef) {
+          try {
+            const objectConversation = await fetchObjectConversation(objectRef);
+            nextConversations = conversationList.some((conversation) => conversation.id === objectConversation.id)
+              ? conversationList
+              : [objectConversation, ...conversationList];
+            setCurrentConversation(objectConversation.id);
+          } catch (objectError) {
+            console.error('Failed to open linked object conversation', objectError);
+          }
         }
-        if (!conversationList.some((conversation: Conversation) => conversation.id === currentConversation)) {
-          setCurrentConversation(conversationList[0]?.id ?? currentConversation);
+        setConversations(nextConversations);
+        if (userSettings.theme === 'dark' || userSettings.theme === 'light' || userSettings.theme === 'system') {
+          const pref = userSettings.theme as ThemePreference;
+          setThemePreference(pref);
+          setTheme(resolveTheme(pref));
+        }
+        if (!objectRef && !nextConversations.some((conversation: Conversation) => conversation.id === currentConversation)) {
+          setCurrentConversation(nextConversations[0]?.id ?? currentConversation);
         }
         setMessages(initialMessages);
       } catch (error) {
@@ -209,7 +278,7 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     const tenantId = user?.organizationId ?? 'default';
     const connect = () => {
       if (destroyed) return;
-      ws = new WebSocket(getWebSocketURL());
+      ws = new WebSocket(getWebSocketURL(), getWebSocketProtocols());
       ws.addEventListener('open', () => {
         if (!ws || destroyed) return;
         wsRetryCountRef.current = 0;
@@ -251,6 +320,11 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
           setMessages((previous) => previous.filter((message) => message.id !== payload.id));
           return;
         }
+        if (envelope.event === 'notification.created' && typeof payload.id === 'string') {
+          const notification = payload as unknown as Notification;
+          setNotifications((previous) => previous.some((item) => item.id === notification.id) ? previous : [notification, ...previous].slice(0, 50));
+          return;
+        }
         if (envelope.event) return;
         const message = data as Message;
         if (!message.id || message.conversationId !== currentConversationRef.current) return;
@@ -272,6 +346,21 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       document.body.style.margin = '';
     };
   }, [user?.organizationId]);
+// When the preference is "system", follow the OS light/dark setting live.
+  useEffect(() => {
+    if (themePreference !== 'system') return;
+    setTheme(systemPrefersDark() ? 'dark' : 'light');
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => setTheme(mq.matches ? 'dark' : 'light');
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [themePreference]);
+
+  const handleThemePreference = useCallback((pref: ThemePreference) => {
+    setThemePreference(pref);
+    setTheme(resolveTheme(pref));
+  }, []);
 
   const handleDraftChange = useCallback((value: string) => {
     setDraft(value);
@@ -345,7 +434,8 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const sendMessage = async (
     textOverride?: string,
-    replyContext?: { parentMessageId?: string; threadRootId?: string }
+    replyContext?: { parentMessageId?: string; threadRootId?: string },
+    mentionContext?: { mentionUserIds?: string[]; mentionAll?: boolean },
   ) => {
     const messageText = (textOverride ?? draft).trim();
     if (!messageText) return;
@@ -359,6 +449,8 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       tenantId: user?.organizationId ?? 'statgate-uganda',
       parentMessageId: replyContext?.parentMessageId,
       threadRootId: replyContext?.threadRootId,
+      mentionUserIds: mentionContext?.mentionUserIds,
+      mentionAll: mentionContext?.mentionAll,
     };
 
     setDraft('');
@@ -389,8 +481,12 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     }
   };
 
-const handleMessageUpdate = (updated: Message) => {
+  const handleMessageUpdate = (updated: Message) => {
     setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  };
+
+  const handleMessageCreated = (created: Message) => {
+    setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
   };
 
   const handleMessageDelete = (messageId: string) => {
@@ -481,11 +577,14 @@ const handleMessageUpdate = (updated: Message) => {
       )}
 
       {/* ── Header (StatGate brand style) ── */}
-      <header className={`${styles.header} ${theme === 'dark' ? styles.headerDark : ''}`}>
+      <header
+        className={`${styles.header} ${theme === 'dark' ? styles.headerDark : ''}`}
+        style={{ background: `linear-gradient(135deg, ${branding.primary_color} 0%, ${branding.secondary_color} 100%)` }}
+      >
         <div className={styles.headerBrand}>
-          <span style={{ fontSize: 20 }}>🚀</span>
+          <img src={branding.logo_url || '/logo.png'} alt={`${branding.display_name} logo`} style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain', background: 'rgba(255,255,255,0.12)', padding: 2, marginRight: 6 }} onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
           <div className={styles.headerBrandText}>
-            <span className={styles.headerBrandTitle}>StatGate</span>
+            <span className={styles.headerBrandTitle}>{branding.display_name}</span>
             <span className={styles.headerBrandSub}>StatChat</span>
           </div>
         </div>
@@ -499,15 +598,34 @@ const handleMessageUpdate = (updated: Message) => {
             value={globalSearch}
             onChange={(event) => setGlobalSearch(event.target.value)}
           />
-          {searchResults && (
+          <button type="button" onClick={() => setAdvancedSearchOpen((value) => !value)} aria-pressed={advancedSearchOpen} style={{ border: 0, borderRadius: 7, background: advancedSearchOpen ? 'rgba(255,255,255,.24)' : 'transparent', color: 'inherit', padding: '5px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>Filters</button>
+          {(searchResults || advancedSearchOpen) && (
             <div style={{ position: 'absolute', top: 44, left: 0, width: 'min(420px, 82vw)', maxHeight: 360, overflowY: 'auto', padding: 8, borderRadius: 12, background: theme === 'dark' ? '#0a2b45' : '#ffffff', color: theme === 'dark' ? '#e8eef4' : '#1a1a1a', boxShadow: '0 12px 30px rgba(0,0,0,0.22)', zIndex: 80 }}>
-              {[...searchResults.conversations, ...searchResults.messages.map((message) => ({ id: message.conversationId, name: `${message.sender}: ${message.text}`, type: 'message' as const }))].slice(0, 12).map((result) => (
-                <button key={`${result.type}-${result.id}-${result.name}`} type="button" onClick={() => { setCurrentConversation(result.id); setGlobalSearch(''); setSearchResults(null); }} style={{ display: 'block', width: '100%', padding: '9px 10px', border: 0, borderRadius: 8, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-                  <strong style={{ fontSize: 12, opacity: 0.65 }}>{result.type === 'message' ? 'Message' : 'Conversation'}</strong><br />
-                  <span>{result.name}</span>
+              {advancedSearchOpen && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '8px 8px 12px', borderBottom: '1px solid rgba(107,162,195,.2)' }}>
+                  <select value={searchFilters.conversationId ?? ''} onChange={(event) => setSearchFilters((current) => ({ ...current, conversationId: event.target.value || undefined }))} style={{ gridColumn: '1 / -1', padding: 8, border: '1px solid rgba(107,162,195,.35)', background: 'transparent', color: 'inherit' }}>
+                    <option value="">All accessible conversations</option>
+                    {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.name}</option>)}
+                  </select>
+                  <input value={searchFilters.sender ?? ''} onChange={(event) => setSearchFilters((current) => ({ ...current, sender: event.target.value || undefined }))} placeholder="Sender name" maxLength={120} style={{ gridColumn: '1 / -1', padding: 8, border: '1px solid rgba(107,162,195,.35)', background: 'transparent', color: 'inherit' }} />
+                  <label style={{ display: 'grid', gap: 3, fontSize: 11 }}>From<input type="date" value={searchFilters.from ?? ''} onChange={(event) => setSearchFilters((current) => ({ ...current, from: event.target.value || undefined }))} style={{ padding: 7, border: '1px solid rgba(107,162,195,.35)', background: 'transparent', color: 'inherit' }} /></label>
+                  <label style={{ display: 'grid', gap: 3, fontSize: 11 }}>To<input type="date" value={searchFilters.to ?? ''} onChange={(event) => setSearchFilters((current) => ({ ...current, to: event.target.value || undefined }))} style={{ padding: 7, border: '1px solid rgba(107,162,195,.35)', background: 'transparent', color: 'inherit' }} /></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><input type="checkbox" checked={searchFilters.hasAttachment === true} onChange={(event) => setSearchFilters((current) => ({ ...current, hasAttachment: event.target.checked ? true : undefined }))} />Attachments</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><input type="checkbox" checked={searchFilters.savedOnly === true} onChange={(event) => setSearchFilters((current) => ({ ...current, savedOnly: event.target.checked || undefined }))} />Saved only</label>
+                  <button type="button" onClick={() => setSearchFilters({})} style={{ gridColumn: '1 / -1', border: 0, background: 'transparent', color: '#1a7ab5', padding: 5, textAlign: 'right', cursor: 'pointer' }}>Clear filters</button>
+                </div>
+              )}
+              {searchResults?.conversations.slice(0, 5).map((result) => (
+                <button key={`conversation-${result.id}`} type="button" onClick={() => openLocatedMessage(result.id)} style={{ display: 'block', width: '100%', padding: '9px 10px', border: 0, borderRadius: 8, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                  <strong style={{ fontSize: 12, opacity: 0.65 }}>Conversation</strong><br /><span>{result.name}</span>
                 </button>
               ))}
-              {searchResults.conversations.length + searchResults.messages.length === 0 && <div style={{ padding: 12, opacity: 0.7 }}>No conversations or messages found.</div>}
+              {searchResults?.messages.slice(0, 20).map((message) => (
+                <button key={`message-${message.id}`} type="button" onClick={() => openLocatedMessage(message.conversationId, message.id)} style={{ display: 'block', width: '100%', padding: '9px 10px', border: 0, borderRadius: 8, background: message.savedAt ? 'rgba(213,138,36,.09)' : 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                  <strong style={{ fontSize: 12, opacity: 0.65 }}>{message.savedAt ? 'Saved message' : 'Message'} · {message.sender}</strong><br /><span>{message.text}</span>
+                </button>
+              ))}
+              {searchResults && searchResults.conversations.length + searchResults.messages.length === 0 && <div style={{ padding: 12, opacity: 0.7 }}>No accessible messages or conversations found.</div>}
             </div>
           )}
         </div>
@@ -571,6 +689,21 @@ const handleMessageUpdate = (updated: Message) => {
                   notifications.map((notification) => (
                     <div
                       key={notification.id}
+                      role={notification.link ? 'button' : undefined}
+                      tabIndex={notification.link ? 0 : undefined}
+                      onClick={() => {
+                        const conversationId = notification.link?.match(/^\/chat\/(.+)$/)?.[1];
+                        if (conversationId && conversations.some((item) => item.id === conversationId)) {
+                          setCurrentConversation(conversationId);
+                          setShowNotifications(false);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.currentTarget.click();
+                        }
+                      }}
                       style={{
                         padding: '10px 12px',
                         borderRadius: 12,
@@ -579,6 +712,7 @@ const handleMessageUpdate = (updated: Message) => {
                           ? (theme === 'dark' ? '#0f3f5f' : '#f9fafb')
                           : (theme === 'dark' ? '#165c92' : '#e8f0fe'),
                         color: theme === 'dark' ? '#e8eef4' : '#1a1a1a',
+                        cursor: notification.link ? 'pointer' : 'default',
                       }}
                     >
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{notification.title}</div>
@@ -694,6 +828,7 @@ const handleMessageUpdate = (updated: Message) => {
                   messages={messages}
                   isMobile={isMobile}
                   currentUserId={user?.id}
+                  currentUserRoles={user?.roles}
                   onConversationCreated={handleConversationCreated}
                   viewType={chatViewType}
                   externalSearch={globalSearch}
@@ -701,19 +836,25 @@ const handleMessageUpdate = (updated: Message) => {
               ) : (
 <ChatWorkspace
                   conversation={activeConversation}
+                  conversations={conversations}
                   messages={messages}
                   draft={draft}
                   theme={theme}
                   isMobile={isMobile}
+                  viewType={chatViewType}
                   currentUserName={user?.name}
                   currentUserId={user?.id}
+                  currentUserRoles={user?.roles}
                   typingUsers={typingUsers[currentConversation] ?? []}
                   onDraftChange={handleDraftChange}
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
                   onCloseMobile={closeMobileChat}
                   onMessageUpdate={handleMessageUpdate}
+                  onMessageCreated={handleMessageCreated}
                   onMessageDelete={handleMessageDelete}
+                  focusedMessageId={focusedMessageId}
+                  onOpenMessage={openLocatedMessage}
                 />
               )
             ) : (
@@ -732,10 +873,12 @@ const handleMessageUpdate = (updated: Message) => {
                 />
 <ChatWorkspace
                   conversation={activeConversation}
+                  conversations={conversations}
                   messages={messages}
                   draft={draft}
                   theme={theme}
                   isMobile={isMobile}
+                  viewType={chatViewType}
                   currentUserName={user?.name}
                   currentUserId={user?.id}
                   typingUsers={typingUsers[currentConversation] ?? []}
@@ -743,7 +886,10 @@ const handleMessageUpdate = (updated: Message) => {
                   onSend={sendMessage}
                   onUploadAttachment={uploadAttachment}
                   onMessageUpdate={handleMessageUpdate}
+                  onMessageCreated={handleMessageCreated}
                   onMessageDelete={handleMessageDelete}
+                  focusedMessageId={focusedMessageId}
+                  onOpenMessage={openLocatedMessage}
                 />
               </div>
             )
@@ -751,8 +897,9 @@ const handleMessageUpdate = (updated: Message) => {
             <SettingsPanel
               user={user}
               theme={theme}
+              themePreference={themePreference}
               isMobile={isMobile}
-              onThemeChange={setTheme}
+              onThemeChange={handleThemePreference}
               onUserUpdate={setUser}
             />
           ) : isCollaborationView ? (
@@ -805,6 +952,7 @@ const handleMessageUpdate = (updated: Message) => {
           micMuted={meetingMicMuted}
           cameraOff={meetingCameraOff}
           connecting={meetingConnecting}
+          currentUserId={user?.id}
           currentUserName={user?.name}
           onToggleMute={toggleMeetingMute}
           onToggleCamera={toggleMeetingCamera}
@@ -843,6 +991,17 @@ const handleMessageUpdate = (updated: Message) => {
             onClick={() => { setLegalPanelTab('status'); setLegalPanelOpen(true); }}
           >
             Status
+          </button>
+          <button
+            type="button"
+            className={styles.footerLink}
+            onClick={() => {
+              window.localStorage.removeItem('statchat_token');
+              window.dispatchEvent(new Event('statchat-auth'));
+            }}
+            title="Sign out and return to the login screen"
+          >
+            Sign out
           </button>
         </div>
       </footer>

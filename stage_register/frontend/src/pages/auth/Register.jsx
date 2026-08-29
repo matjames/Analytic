@@ -164,9 +164,9 @@ export default function Register() {
         phoneno: form.phoneno || null,
         district_id: form.district_id || null,
         organisation: form.organisation || null,
-        role: "public",
+        role: "viewer",
       });
-      setSuccess("Registration successful! You will be redirected to the login page.");
+      setSuccess("Registration successful. Check your email to verify your account before signing in.");
       // Redirect to login page after showing success message
       setTimeout(() => {
         history.push("/login");
@@ -192,7 +192,7 @@ export default function Register() {
       <div className="register-container">
         <div className="register-card">
           <div className="register-header">
-            <img src="/statgate-logo.svg" alt="StatGate logo" className="brand-logo" />
+            <img src="/statgate-logo.png" alt="StatGate logo" className="brand-logo" />
             <h1>StatGate</h1>
             <p>Create your account</p>
           </div>

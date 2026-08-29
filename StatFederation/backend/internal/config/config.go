@@ -26,6 +26,7 @@ type Config struct {
 	CORSAllowedOrigin string
 	NodeID            string
 	Jurisdiction      string
+	StatTrustURL      string
 }
 
 // LoadConfig retrieves configuration parameters with zero-default safety checks.
@@ -55,6 +56,11 @@ func LoadConfig() (*Config, error) {
 	corsOrigin := getEnv("CORS_ALLOWED_ORIGIN", "*")
 	nodeID := getEnv("STATGATE_NODE_ID", "NODE-NSS-HQ-001")
 	jurisdiction := getEnv("STATGATE_JURISDICTION", "NATIONAL")
+	statTrustURL := os.Getenv("STATTRUST_API_URL")
+	if statTrustURL == "" {
+		// Docker-compose maps the StatTrust API container (port 8080) to host 8094.
+		statTrustURL = "http://localhost:8094"
+	}
 
 	// Fail closed in production if critical security tokens are missing
 	if strings.EqualFold(env, "production") {
@@ -84,6 +90,7 @@ func LoadConfig() (*Config, error) {
 		CORSAllowedOrigin: corsOrigin,
 		NodeID:            nodeID,
 		Jurisdiction:      jurisdiction,
+		StatTrustURL:      statTrustURL,
 	}, nil
 }
 

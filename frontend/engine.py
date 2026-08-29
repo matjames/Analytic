@@ -10,10 +10,12 @@ from kaggle_connector import query_kaggle_table, get_table_schema, list_kaggle_t
 ASSET_ID_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
 
 
-def _dashboard_path(dashboard_id):
+def _dashboard_path(dashboard_id, workspace_id=None):
     if not isinstance(dashboard_id, str) or not ASSET_ID_PATTERN.fullmatch(dashboard_id):
         raise ValueError('Invalid dashboard identifier.')
-    dashboards_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'dashboards')
+    if workspace_id is not None and (not isinstance(workspace_id, str) or not re.fullmatch(r'[A-Za-z0-9_]{1,128}', workspace_id)):
+        raise ValueError('Invalid workspace identifier.')
+    dashboards_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'dashboards', workspace_id) if workspace_id else os.path.join(os.path.dirname(__file__), '..', 'data', 'dashboards')
     return dashboards_dir, os.path.join(dashboards_dir, f"{dashboard_id}.json")
 
 class StatGateAnalysisEngine:
@@ -132,21 +134,21 @@ class StatGateAnalysisEngine:
             return df
         return pd.DataFrame()
 
-    def save_dashboard_metadata(self, dashboard_id, metadata):
+    def save_dashboard_metadata(self, dashboard_id, metadata, workspace_id=None):
         """
         Persists dashboard layout and chart definitions as JSON metadata.
         """
-        dashboards_dir, path = _dashboard_path(dashboard_id)
+        dashboards_dir, path = _dashboard_path(dashboard_id, workspace_id)
         os.makedirs(dashboards_dir, exist_ok=True)
         with open(path, 'w') as f:
             json.dump(metadata, f, indent=2)
         return {"status": "saved", "path": path}
 
-    def load_dashboard_metadata(self, dashboard_id="default", strict=False):
+    def load_dashboard_metadata(self, dashboard_id="default", strict=False, workspace_id=None):
         """
         Loads persisted dashboard layout JSON metadata.
         """
-        _, path = _dashboard_path(dashboard_id)
+        _, path = _dashboard_path(dashboard_id, workspace_id)
         if os.path.exists(path):
             with open(path, 'r') as f:
                 return json.load(f)

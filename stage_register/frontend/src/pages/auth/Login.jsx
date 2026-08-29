@@ -5,7 +5,7 @@ import { getRoleRoute } from "../../utils/roleRoutes";
 import "./styles.css";
 
 export default function Login() {
-  const [form, setForm] = useState({ emailOrUsername: "", password: "" });
+  const [form, setForm] = useState({ emailOrUsername: "", password: "", mfaCode: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +23,7 @@ export default function Login() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   // District users with default password must change before continuing
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -34,8 +35,16 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const { token, user } = await UsersApi.login(form);
+      const result = await UsersApi.login(form);
+      if (result.mfa_required) {
+        setMfaRequired(true);
+        setError("Enter the six-digit code from your authenticator app.");
+        setLoading(false);
+        return;
+      }
+      const { token, refresh_token: refreshToken, user } = result;
       localStorage.setItem("token", token);
+      if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
       localStorage.setItem("user", JSON.stringify(user));
 
       // District role with default password: force password change before continuing
@@ -160,7 +169,7 @@ export default function Login() {
     <div className="main-container">
       <div className="login-container">
         <div className="login-header">
-          <img src="/statgate-logo.svg" alt="StatGate logo" className="brand-logo" />
+          <img src="/statgate-logo.png" alt="StatGate logo" className="brand-logo" />
           <h1>StatGate</h1>
           <p>Field Operations &amp; Agent Workforce Registry</p>
         </div>
@@ -190,6 +199,28 @@ export default function Login() {
                 />
               </div>
             </div>
+
+            {mfaRequired && (
+              <div className="form-group">
+                    <label className="form-label">Authenticator or recovery code</label>
+                <div className="input-group">
+                  <i className="bi bi-shield-lock input-icon"></i>
+                  <input
+                    type="text"
+                    className="form-control"
+                    name="mfaCode"
+                    value={form.mfaCode}
+                    onChange={handleChange}
+                    placeholder="Enter authenticator or recovery code"
+                    pattern="[A-Za-z0-9]{6,10}"
+                    maxLength={10}
+                    autoComplete="one-time-code"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Password</label>

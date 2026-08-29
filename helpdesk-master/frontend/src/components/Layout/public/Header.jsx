@@ -1,37 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Launcher from '../../Launcher/Launcher'
 
-const launcherApps = [
-    { name: 'Dashboard', url: 'http://localhost:5000', icon: 'fa fa-home', external: true },
-    { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'fa fa-table', external: true },
-    { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'fa fa-book', external: true },
-    { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'fa fa-brain', external: true },
-    { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'fa fa-shield-alt', external: true },
-    { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'fa fa-university', external: true },
-    { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', external: true },
-    { name: 'Register Portal', url: 'http://localhost:3000', icon: 'fa fa-edit', external: true },
-]
-
 const Header = () => {
     const location = useLocation()
-    const [showLauncher, setShowLauncher] = useState(false)
-    const launcherRef = useRef(null)
 
     const isActive = (path) => {
         return location.pathname === path
     }
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (launcherRef.current && !launcherRef.current.contains(event.target)) {
-                setShowLauncher(false)
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-    }, [])
-    
     return (
         <nav className="navbar navbar-expand-lg top-navbar">
             <div className="container-fluid">

@@ -28,6 +28,14 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      // StatGate Registry (identity auth). Same-origin proxy so the browser
+      // can log in without CORS; rewrites /registry/... -> /api/...
+      '/registry': {
+        target: 'http://127.0.0.1:9090',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/registry/, '/api'),
+      },
     },
   },
 });

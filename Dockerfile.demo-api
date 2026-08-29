@@ -1,0 +1,4 @@
+FROM alpine:3.20
+RUN apk add --no-cache curl
+EXPOSE 8080
+CMD ["sh", "-c", "while true; do echo 'HTTP/1.1 200 OK' | nc -l -p 8080 -q 1; done"]

@@ -169,7 +169,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-icon">🗺️</span>
+          <img src="/logo.png" alt="StatGate" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain', background: 'rgba(255,255,255,0.1)', padding: 2, marginRight: 8 }} onError={(e) => { e.target.style.display='none'; }} />
           <span className="brand-name">StatSpatial</span>
         </div>
 

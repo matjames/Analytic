@@ -83,18 +83,26 @@ func main() {
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		if err := DB.Ping(); err != nil {
-			c.JSON(503, gin.H{"status": "unavailable", "service": "statgate-pms", "database": err.Error()})
+			c.JSON(503, gin.H{"status": "unavailable", "service": "statgate-pms", "database": err.Error(), "redis": redisAvailable()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "healthy", "service": "statgate-pms", "database": "connected"})
+		if !redisAvailable() {
+			c.JSON(503, gin.H{"status": "degraded", "service": "statgate-pms", "database": "connected", "redis": false})
+			return
+		}
+		c.JSON(200, gin.H{"status": "healthy", "service": "statgate-pms", "database": "connected", "redis": true})
 	})
 
 	r.GET("/ready", func(c *gin.Context) {
 		if err := DB.Ping(); err != nil {
-			c.JSON(503, gin.H{"status": "not-ready", "service": "statgate-pms", "database": err.Error()})
+			c.JSON(503, gin.H{"status": "not-ready", "service": "statgate-pms", "database": err.Error(), "redis": redisAvailable()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "ready", "service": "statgate-pms", "database": "connected"})
+		if !redisAvailable() {
+			c.JSON(503, gin.H{"status": "not-ready", "service": "statgate-pms", "database": "connected", "redis": false})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ready", "service": "statgate-pms", "database": "connected", "redis": true})
 	})
 
 	// CORS configuration

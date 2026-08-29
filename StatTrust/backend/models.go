@@ -9,6 +9,8 @@ import "time"
 // SecurityIncident represents a cybersecurity or operational security event.
 type SecurityIncident struct {
 	ID             string                 `json:"id"`
+	TenantID       string                 `json:"tenant_id,omitempty"`
+	WorkspaceID    string                 `json:"workspace_id,omitempty"`
 	Title          string                 `json:"title"`
 	Severity       string                 `json:"severity"` // LOW, MEDIUM, HIGH, CRITICAL
 	Status         string                 `json:"status"`   // OPEN, INVESTIGATING, CONTAINED, RESOLVED, CLOSED
@@ -25,26 +27,26 @@ type SecurityIncident struct {
 
 // SIEMEvent represents raw or normalized security log telemetry.
 type SIEMEvent struct {
-	ID          string                 `json:"id"`
-	Timestamp   time.Time              `json:"timestamp"`
-	EventType   string                 `json:"event_type"`
-	SourceApp   string                 `json:"source_app"`
-	ActorID     string                 `json:"actor_id"`
-	SourceIP    string                 `json:"source_ip"`
-	Action      string                 `json:"action"`
-	Outcome     string                 `json:"outcome"` // SUCCESS, FAILURE, BLOCKED, FLAGGED
-	RiskScore   int                    `json:"risk_score"`
-	Details     map[string]interface{} `json:"details"`
+	ID        string                 `json:"id"`
+	Timestamp time.Time              `json:"timestamp"`
+	EventType string                 `json:"event_type"`
+	SourceApp string                 `json:"source_app"`
+	ActorID   string                 `json:"actor_id"`
+	SourceIP  string                 `json:"source_ip"`
+	Action    string                 `json:"action"`
+	Outcome   string                 `json:"outcome"` // SUCCESS, FAILURE, BLOCKED, FLAGGED
+	RiskScore int                    `json:"risk_score"`
+	Details   map[string]interface{} `json:"details"`
 }
 
 // DLPScanRequest defines the data submitted for real-time DLP inspection.
 type DLPScanRequest struct {
-	SourceApp   string                 `json:"source_app"`
-	DataType    string                 `json:"data_type"` // TEXT, JSON, FILE_METADATA, SQL
-	Content     string                 `json:"content"`
-	Metadata    map[string]interface{} `json:"metadata"`
-	Actor       string                 `json:"actor"`
-	Redact      bool                   `json:"redact"`
+	SourceApp string                 `json:"source_app"`
+	DataType  string                 `json:"data_type"` // TEXT, JSON, FILE_METADATA, SQL
+	Content   string                 `json:"content"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	Actor     string                 `json:"actor"`
+	Redact    bool                   `json:"redact"`
 }
 
 // DLPScanResult summarizes findings from the data leakage prevention engine.
@@ -53,7 +55,7 @@ type DLPScanResult struct {
 	ViolationsFound int      `json:"violations_found"`
 	MatchedRules    []string `json:"matched_rules"`
 	RedactedContent string   `json:"redacted_content,omitempty"`
-	RiskLevel       string   `json:"risk_level"` // NONE, LOW, MEDIUM, HIGH, CRITICAL
+	RiskLevel       string   `json:"risk_level"`   // NONE, LOW, MEDIUM, HIGH, CRITICAL
 	ActionTaken     string   `json:"action_taken"` // ALLOWED, REDACTED, BLOCKED, FLAGGED
 }
 
@@ -140,31 +142,36 @@ type DigitalSignature struct {
 
 // AuditLedgerBlock represents an immutable cryptographically linked ledger block.
 type AuditLedgerBlock struct {
-	Index        int64                  `json:"index"`
-	PrevHash     string                 `json:"prev_hash"`
-	RecordHash   string                 `json:"record_hash"`
-	MerkleRoot   string                 `json:"merkle_root"`
-	EventType    string                 `json:"event_type"`
-	SourceApp    string                 `json:"source_app"`
-	ActorID      string                 `json:"actor_id"`
-	Payload      map[string]interface{} `json:"payload"`
-	Timestamp    time.Time              `json:"timestamp"`
-	Nonce        int64                  `json:"nonce"`
+	StorageID   int64                  `json:"-"`
+	Index       int64                  `json:"index"`
+	TenantID    string                 `json:"tenant_id,omitempty"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
+	PrevHash    string                 `json:"prev_hash"`
+	RecordHash  string                 `json:"record_hash"`
+	MerkleRoot  string                 `json:"merkle_root"`
+	EventType   string                 `json:"event_type"`
+	SourceApp   string                 `json:"source_app"`
+	ActorID     string                 `json:"actor_id"`
+	Payload     map[string]interface{} `json:"payload"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Nonce       int64                  `json:"nonce"`
 }
 
 // ArtifactProvenance maintains the strict chain-of-custody for enterprise assets.
 type ArtifactProvenance struct {
-	ID             string          `json:"id"`
-	ArtifactID     string          `json:"artifact_id"`
-	ArtifactName   string          `json:"artifact_name"`
-	ArtifactType   string          `json:"artifact_type"` // RESEARCH_REPORT, CLINICAL_DATASET, SURVEY_EXTRACT, GIS_BOUNDARY, GRANT_BUDGET
-	OriginApp      string          `json:"origin_app"`
-	CurrentOwner   string          `json:"current_owner"`
-	Sha256Checksum string          `json:"sha256_checksum"`
-	TSATimestamp   time.Time       `json:"tsa_timestamp"`
-	CustodyChain   []CustodyEvent  `json:"custody_chain"`
-	IntegrityState string          `json:"integrity_state"` // VERIFIED, TAMPERED, UNVERIFIED
-	LedgerIndex    int64           `json:"ledger_index"`
+	ID             string         `json:"id"`
+	TenantID       string         `json:"tenant_id,omitempty"`
+	WorkspaceID    string         `json:"workspace_id,omitempty"`
+	ArtifactID     string         `json:"artifact_id"`
+	ArtifactName   string         `json:"artifact_name"`
+	ArtifactType   string         `json:"artifact_type"` // RESEARCH_REPORT, CLINICAL_DATASET, SURVEY_EXTRACT, GIS_BOUNDARY, GRANT_BUDGET
+	OriginApp      string         `json:"origin_app"`
+	CurrentOwner   string         `json:"current_owner"`
+	Sha256Checksum string         `json:"sha256_checksum"`
+	TSATimestamp   time.Time      `json:"tsa_timestamp"`
+	CustodyChain   []CustodyEvent `json:"custody_chain"`
+	IntegrityState string         `json:"integrity_state"` // VERIFIED, TAMPERED, UNVERIFIED
+	LedgerIndex    int64          `json:"ledger_index"`
 }
 
 // CustodyEvent tracks a single handoff, mutation or review in the provenance chain.
@@ -179,13 +186,13 @@ type CustodyEvent struct {
 
 // TrustRegistryEntry lists registered authorities, issuers, and verification endpoints.
 type TrustRegistryEntry struct {
-	DID               string    `json:"did"`
-	OrganizationName  string    `json:"organization_name"`
-	TrustLevel        string    `json:"trust_level"` // ROOT_AUTHORITY, ACCREDITED_PARTNER, VERIFIED_MINISTRY, RESEARCH_INSTITUTION
-	PublicKeys        []string  `json:"public_keys"`
-	AuthorizedScopes  []string  `json:"authorized_scopes"`
-	Status            string    `json:"status"` // ACTIVE, SUSPENDED, REVOKED
-	RegisteredAt      time.Time `json:"registered_at"`
+	DID              string    `json:"did"`
+	OrganizationName string    `json:"organization_name"`
+	TrustLevel       string    `json:"trust_level"` // ROOT_AUTHORITY, ACCREDITED_PARTNER, VERIFIED_MINISTRY, RESEARCH_INSTITUTION
+	PublicKeys       []string  `json:"public_keys"`
+	AuthorizedScopes []string  `json:"authorized_scopes"`
+	Status           string    `json:"status"` // ACTIVE, SUSPENDED, REVOKED
+	RegisteredAt     time.Time `json:"registered_at"`
 }
 
 // InterAppStatus represents the connectivity and security posture of peer applications.
@@ -207,19 +214,19 @@ type InterAppStatus struct {
 // EncryptionKeyStatus enumerates lifecycle states.
 // ACTIVE → ROTATING → RETIRED → COMPROMISED
 type EncryptionKey struct {
-	ID            string    `json:"id"`
-	TenantID      string    `json:"tenant_id"`
-	Algorithm     string    `json:"algorithm"`  // AES-256-GCM, ChaCha20-Poly1305, RSA-4096, Ed25519
-	Purpose       string    `json:"purpose"`    // DATA_ENCRYPTION, SIGNING, HMAC, TLS, KEY_WRAP
-	Status        string    `json:"status"`     // ACTIVE, ROTATING, RETIRED, COMPROMISED
-	KeyRef        string    `json:"key_ref"`    // opaque vault reference — never the raw key
-	RotationCycle string    `json:"rotation_cycle"` // DAILY, WEEKLY, MONTHLY, QUARTERLY
-	CreatedAt     time.Time `json:"created_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	ID            string     `json:"id"`
+	TenantID      string     `json:"tenant_id"`
+	Algorithm     string     `json:"algorithm"`      // AES-256-GCM, ChaCha20-Poly1305, RSA-4096, Ed25519
+	Purpose       string     `json:"purpose"`        // DATA_ENCRYPTION, SIGNING, HMAC, TLS, KEY_WRAP
+	Status        string     `json:"status"`         // ACTIVE, ROTATING, RETIRED, COMPROMISED
+	KeyRef        string     `json:"key_ref"`        // opaque vault reference — never the raw key
+	RotationCycle string     `json:"rotation_cycle"` // DAILY, WEEKLY, MONTHLY, QUARTERLY
+	CreatedAt     time.Time  `json:"created_at"`
+	ExpiresAt     time.Time  `json:"expires_at"`
 	RotatedAt     *time.Time `json:"rotated_at,omitempty"`
-	RotatedBy     string    `json:"rotated_by"`
-	PreviousKeyID string    `json:"previous_key_id,omitempty"`
-	LedgerIndex   int64     `json:"ledger_index"`
+	RotatedBy     string     `json:"rotated_by"`
+	PreviousKeyID string     `json:"previous_key_id,omitempty"`
+	LedgerIndex   int64      `json:"ledger_index"`
 }
 
 // ==========================================
@@ -228,24 +235,24 @@ type EncryptionKey struct {
 
 // PKICertificate represents a certificate issued by the StatGate internal CA.
 type PKICertificate struct {
-	ID              string    `json:"id"`
-	TenantID        string    `json:"tenant_id"`
-	CommonName      string    `json:"common_name"`
-	Organization    string    `json:"organization"`
-	OrganizationUnit string   `json:"organizational_unit"`
-	Country         string    `json:"country"`
-	SubjectDID      string    `json:"subject_did"`
-	CertificatePEM  string    `json:"certificate_pem"`   // X.509 PEM block
-	PublicKeyHex    string    `json:"public_key_hex"`
-	SerialNumber    string    `json:"serial_number"`
-	IssuedBy        string    `json:"issued_by"`         // CA DID
-	NotBefore       time.Time `json:"not_before"`
-	NotAfter        time.Time `json:"not_after"`
-	KeyUsage        []string  `json:"key_usage"`  // DIGITAL_SIGNATURE, KEY_ENCIPHERMENT, DATA_ENCIPHERMENT
-	Status          string    `json:"status"`     // VALID, REVOKED, EXPIRED
-	RevocationReason string   `json:"revocation_reason,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	LedgerIndex     int64     `json:"ledger_index"`
+	ID               string    `json:"id"`
+	TenantID         string    `json:"tenant_id"`
+	CommonName       string    `json:"common_name"`
+	Organization     string    `json:"organization"`
+	OrganizationUnit string    `json:"organizational_unit"`
+	Country          string    `json:"country"`
+	SubjectDID       string    `json:"subject_did"`
+	CertificatePEM   string    `json:"certificate_pem"` // X.509 PEM block
+	PublicKeyHex     string    `json:"public_key_hex"`
+	SerialNumber     string    `json:"serial_number"`
+	IssuedBy         string    `json:"issued_by"` // CA DID
+	NotBefore        time.Time `json:"not_before"`
+	NotAfter         time.Time `json:"not_after"`
+	KeyUsage         []string  `json:"key_usage"` // DIGITAL_SIGNATURE, KEY_ENCIPHERMENT, DATA_ENCIPHERMENT
+	Status           string    `json:"status"`    // VALID, REVOKED, EXPIRED
+	RevocationReason string    `json:"revocation_reason,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	LedgerIndex      int64     `json:"ledger_index"`
 }
 
 // CSRRequest is the inbound Certificate Signing Request payload.
@@ -269,11 +276,11 @@ type TimestampRecord struct {
 	TenantID        string    `json:"tenant_id"`
 	ArtifactID      string    `json:"artifact_id"`
 	ArtifactType    string    `json:"artifact_type"`
-	Sha256Hash      string    `json:"sha256_hash"`  // hash of the artifact at stamp time
+	Sha256Hash      string    `json:"sha256_hash"` // hash of the artifact at stamp time
 	IssuedAt        time.Time `json:"issued_at"`
 	TSASignatureHex string    `json:"tsa_signature_hex"` // TSA Ed25519 token
 	TSAPublicKey    string    `json:"tsa_public_key"`
-	PolicyOID       string    `json:"policy_oid"`   // e.g. 1.2.3.4.1.1
-	Status          string    `json:"status"`       // VALID, REVOKED
+	PolicyOID       string    `json:"policy_oid"` // e.g. 1.2.3.4.1.1
+	Status          string    `json:"status"`     // VALID, REVOKED
 	LedgerIndex     int64     `json:"ledger_index"`
 }

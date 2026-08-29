@@ -6,7 +6,11 @@ echo ============================================
 echo.
 
 set BASE=http://localhost:8080
-set API_KEY=changeme
+if "%STATCOLLECT_API_KEY%"=="" (
+  echo STATCOLLECT_API_KEY must be set
+  exit /b 1
+)
+set API_KEY=%STATCOLLECT_API_KEY%
 
 echo [1/8] Submitting Sample 1 - Kampala...
 curl -s -X POST -H "X-API-Key: %API_KEY%" -F "xml_submission_file=@%~dp0submissions\sample1_kampala.xml" %BASE%/submission

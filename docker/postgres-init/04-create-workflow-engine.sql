@@ -67,7 +67,7 @@ INSERT INTO workflow_templates (id, name, object_type, description, stages, init
         {"name": "archived", "label": "Archived", "roles": ["admin"], "actions": []}
     ]'::jsonb,
     'planning'
-) ON CONFLICT (id) DO NOTHING,
+),
 
 (
     'wf-report-approval',
@@ -82,7 +82,7 @@ INSERT INTO workflow_templates (id, name, object_type, description, stages, init
         {"name": "archived", "label": "Archived", "roles": ["admin"], "actions": []}
     ]'::jsonb,
     'draft'
-) ON CONFLICT (id) DO NOTHING,
+),
 
 (
     'wf-research-lifecycle',

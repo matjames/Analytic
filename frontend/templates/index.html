@@ -17,12 +17,15 @@
     </a>
     <nav class="nav-links">
       <a href="/" class="nav-item active">Home</a>
-      <a href="/datasets" class="nav-item">Dataset Catalog</a>
+      <a href="/datasets" class="nav-item">Datasets</a>
+      <a href="/tabulate" class="nav-item">Tabulation</a>
+      <a href="/sampling" class="nav-item">Sampling</a>
       <a href="/notebook" class="nav-item">Notebook</a>
-      <a href="/semantic" class="nav-item">Semantic Registry</a>
+      <a href="/semantic" class="nav-item">Semantic</a>
       {% include '_launcher.html' %}
       <a href="/abac" class="nav-item">ABAC</a>
       <a href="/executive" class="nav-item executive-link">Executive</a>
+      <a href="http://localhost:3017" class="nav-item" style="color:#38bdf8; font-weight:600;">🌐 Federation</a>
     </nav>
     <div class="header-actions"></div>
   </header>
@@ -67,10 +70,20 @@
         <h3>ABAC Security</h3>
         <p>Review policy-based access controls and tenant guardrails.</p>
       </a>
+      <a class="app-card" href="/tabulate">
+        <div class="app-card-icon">📊</div>
+        <h3>Tabulation & SDMX</h3>
+        <p>Generate contingency matrices and official SDMX-JSON tables.</p>
+      </a>
+      <a class="app-card" href="/sampling">
+        <div class="app-card-icon">📐</div>
+        <h3>Sampling Designer</h3>
+        <p>Design sample sizes and master frame EA allocations.</p>
+      </a>
       <a class="app-card" href="/executive">
         <div class="app-card-icon">🏛️</div>
         <h3>Executive Centre</h3>
-        <p>Access minister-grade decision support and high-level insights.</p>
+        <p>Access minister-grade decision support and institutional condition.</p>
       </a>
     </section>
 

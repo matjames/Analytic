@@ -229,15 +229,16 @@ export default function App() {
   }
 
   const apps3x3 = [
+    { name: 'All Apps', port: 3006, desc: 'Complete Catalogue', icon: 'SG' },
+    { name: 'Analytics', port: 5000, desc: 'BI & ML Dashboards', icon: '📊' },
+    { name: 'Registry', port: 3007, desc: 'Workforce Registry', icon: '🪪' },
+    { name: 'Helpdesk', port: 3005, desc: 'Support Operations', icon: '🎧' },
+    { name: 'StatChat', port: 3009, desc: 'Enterprise Messaging', icon: '💬' },
     { name: 'PMS', port: 3010, desc: 'Project Management', icon: '🏗️' },
     { name: 'RMS', port: 3011, desc: 'Research & Ethics', icon: '🔬' },
-    { name: 'StatTrust', port: 3013, desc: 'Security & Trust', icon: '🛡️' },
-    { name: 'StatOps', port: 3015, desc: 'Platform Ops (Current)', icon: '⚙️', active: true },
-    { name: 'StatGovernance', port: 3012, desc: 'Governance & COI', icon: '⚖️' },
-    { name: 'StatChat', port: 3009, desc: 'Enterprise Messaging', icon: '💬' },
-    { name: 'HelpDesk', port: 3005, desc: 'Support Operations', icon: '🎧' },
-    { name: 'StatSpatial', port: 3014, desc: 'GIS & Mapping', icon: '🗺️' },
-    { name: 'Analytics', port: 5000, desc: 'BI & ML Dashboards', icon: '📊' },
+    { name: 'Governance', port: 3012, desc: 'Governance & COI', icon: '⚖️' },
+    { name: 'Spatial', port: 3014, desc: 'GIS & Mapping', icon: '🗺️' },
+    { name: 'Report Builder', port: 8110, desc: 'Visual Report Builder', icon: '🧮' },
   ]
 
   return (
@@ -245,12 +246,7 @@ export default function App() {
       {/* Top Navigation Header */}
       <header className="border-b border-slate-800 bg-[#09111e]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 flex items-center justify-center shadow-lg shadow-emerald-500/20 ring-1 ring-white/20">
-            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
+          <img src="/logo.png" alt="StatGate" className="w-10 h-10 rounded-xl object-contain bg-white p-1 shadow-lg ring-1 ring-white/20" onError={(e) => { e.target.style.display='none'; }} />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
@@ -300,14 +296,15 @@ export default function App() {
           </button>
 
           <div className="relative">
-            <button
-              onClick={() => setShowAppSwitcher(!showAppSwitcher)}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-colors"
-              title="StatGate 3x3 App Launcher"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <button
+                onClick={() => setShowAppSwitcher(!showAppSwitcher)}
+                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-colors"
+                title="StatGate 3x3 App Launcher"
+                aria-label="Open 3 by 3 app launcher"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 18 18" aria-hidden="true">
+                  {[3, 9, 15].flatMap(y => [3, 9, 15].map(x => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.6" />))}
+                </svg>
             </button>
 
             {showAppSwitcher && (
@@ -330,6 +327,7 @@ export default function App() {
                     </a>
                   ))}
                 </div>
+                <a href="http://localhost:3006" className="block mt-2 text-center text-xs font-semibold text-cyan-400 hover:text-cyan-300">Open complete app catalogue →</a>
               </div>
             )}
           </div>
@@ -442,6 +440,7 @@ export default function App() {
                     <span>5xx Errors: {svc.error_rate_5xx}%</span>
                     <span>Scraped {new Date(svc.last_scraped_at).toLocaleTimeString()}</span>
                   </div>
+                  <a href="http://localhost:3006" className="block mt-2 text-center text-xs font-semibold text-cyan-400 hover:text-cyan-300">Open complete app catalogue →</a>
                 </div>
               ))}
             </div>

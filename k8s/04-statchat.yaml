@@ -1,0 +1,150 @@
+---
+# StatChat Backend (Go)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statchat-backend
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statchat-backend
+  template:
+    metadata:
+      labels:
+        app: statchat-backend
+    spec:
+      containers:
+      - name: backend
+        image: analytic-statchat-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4000
+          name: http
+        env:
+        - name: BACKEND_PORT
+          value: "4000"
+        - name: STATCHAT_DB_HOST
+          value: "postgres"
+        - name: STATCHAT_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: POSTGRES_PORT
+        - name: STATCHAT_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: STATCHAT_DB_USER
+        - name: STATCHAT_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATCHAT_DB_PASSWORD
+        - name: STATCHAT_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: statgate-env
+              key: STATCHAT_DB_NAME
+        - name: STATCHAT_AUTH_REQUIRED
+          value: "true"
+        - name: STATGATE_REGISTRY_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_REGISTRY_JWT_SECRET
+        - name: STATGATE_INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: statgate-secrets
+              key: STATGATE_INTERNAL_API_KEY
+        - name: STATGATE_REGISTRY_API_URL
+          value: "http://statgate-registry-api:9090/api"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /readyz
+            port: 4000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statchat-backend
+  namespace: statgate
+  labels:
+    app: statchat-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: statchat-backend
+  ports:
+  - port: 4000
+    targetPort: 4000
+    protocol: TCP
+    name: http
+
+---
+# StatChat Frontend (React)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statchat-frontend
+  namespace: statgate
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: statchat-frontend
+  template:
+    metadata:
+      labels:
+        app: statchat-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: analytic-statchat-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statchat-frontend
+  namespace: statgate
+  labels:
+    app: statchat-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: statchat-frontend
+  ports:
+  - port: 3009
+    targetPort: 80
+    protocol: TCP
+    name: http

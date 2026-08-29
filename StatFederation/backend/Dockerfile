@@ -1,7 +1,7 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
-COPY statgate-lib /statgate-lib
+COPY statgate-lib /app/statgate-lib
 COPY StatFederation/backend /app/StatFederation/backend
 
 WORKDIR /app/StatFederation/backend

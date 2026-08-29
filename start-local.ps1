@@ -53,36 +53,36 @@ function Start-Backend {
     $envs = @{}
     switch ($Name) {
         "knowledge-portal" {
-            $envs["KNOWLEDGE_PORT"]="8099"; $envs["KNOWLEDGE_DB_HOST"]="localhost"; $envs["KNOWLEDGE_DB_PORT"]="5432"
-            $envs["KNOWLEDGE_DB_USER"]="postgres"; $envs["KNOWLEDGE_DB_PASSWORD"]=$DbPassword; $envs["KNOWLEDGE_DB_NAME"]=$DbName; $envs["KNOWLEDGE_DB_SSLMODE"]="disable"
+            $envs["KNOWLEDGE_PORT"]="8099"; $envs["KNOWLEDGE_DB_HOST"]="127.0.0.1"; $envs["KNOWLEDGE_DB_PORT"]="5432"
+            $envs["KNOWLEDGE_DB_USER"]="Kaggle"; $envs["KNOWLEDGE_DB_PASSWORD"]=$DbPassword; $envs["KNOWLEDGE_DB_NAME"]=$DbName; $envs["KNOWLEDGE_DB_SSLMODE"]="disable"
         }
         "ai-autonomy" {
-            $envs["AIENG_PORT"]="8101"; $envs["AIENG_DB_HOST"]="localhost"; $envs["AIENG_DB_PORT"]="5432"
-            $envs["AIENG_DB_USER"]="postgres"; $envs["AIENG_DB_PASSWORD"]=$DbPassword; $envs["AIENG_DB_NAME"]=$DbName; $envs["AIENG_DB_SSLMODE"]="disable"
+            $envs["AIENG_PORT"]="8101"; $envs["AIENG_DB_HOST"]="127.0.0.1"; $envs["AIENG_DB_PORT"]="5432"
+            $envs["AIENG_DB_USER"]="Kaggle"; $envs["AIENG_DB_PASSWORD"]=$DbPassword; $envs["AIENG_DB_NAME"]=$DbName; $envs["AIENG_DB_SSLMODE"]="disable"
         }
         "learning-crm" {
-            $envs["LMS_PORT"]="8102"; $envs["LMS_DB_HOST"]="localhost"; $envs["LMS_DB_PORT"]="5432"
-            $envs["LMS_DB_USER"]="postgres"; $envs["LMS_DB_PASSWORD"]=$DbPassword; $envs["LMS_DB_NAME"]=$DbName; $envs["LMS_DB_SSLMODE"]="disable"
+            $envs["LMS_PORT"]="8102"; $envs["LMS_DB_HOST"]="127.0.0.1"; $envs["LMS_DB_PORT"]="5432"
+            $envs["LMS_DB_USER"]="Kaggle"; $envs["LMS_DB_PASSWORD"]=$DbPassword; $envs["LMS_DB_NAME"]=$DbName; $envs["LMS_DB_SSLMODE"]="disable"
         }
         "geointel" {
-            $envs["GIS_PORT"]="8103"; $envs["GIS_DB_HOST"]="localhost"; $envs["GIS_DB_PORT"]="5432"
-            $envs["GIS_DB_USER"]="postgres"; $envs["GIS_DB_PASSWORD"]=$DbPassword; $envs["GIS_DB_NAME"]=$DbName; $envs["GIS_DB_SSLMODE"]="disable"
+            $envs["GIS_PORT"]="8103"; $envs["GIS_DB_HOST"]="127.0.0.1"; $envs["GIS_DB_PORT"]="5432"
+            $envs["GIS_DB_USER"]="Kaggle"; $envs["GIS_DB_PASSWORD"]=$DbPassword; $envs["GIS_DB_NAME"]=$DbName; $envs["GIS_DB_SSLMODE"]="disable"
         }
         "bpm-hub" {
-            $envs["BPM_PORT"]="8104"; $envs["BPM_DB_HOST"]="localhost"; $envs["BPM_DB_PORT"]="5432"
-            $envs["BPM_DB_USER"]="postgres"; $envs["BPM_DB_PASSWORD"]=$DbPassword; $envs["BPM_DB_NAME"]=$DbName; $envs["BPM_DB_SSLMODE"]="disable"
+            $envs["BPM_PORT"]="8104"; $envs["BPM_DB_HOST"]="127.0.0.1"; $envs["BPM_DB_PORT"]="5432"
+            $envs["BPM_DB_USER"]="Kaggle"; $envs["BPM_DB_PASSWORD"]=$DbPassword; $envs["BPM_DB_NAME"]=$DbName; $envs["BPM_DB_SSLMODE"]="disable"
         }
         "statfederation" {
-            $envs["PORT"]="8105"; $envs["STATFEDERATION_DB_HOST"]="localhost"; $envs["STATFEDERATION_DB_PORT"]="5432"
-            $envs["STATFEDERATION_DB_USER"]="postgres"; $envs["STATFEDERATION_DB_PASSWORD"]=$DbPassword; $envs["STATFEDERATION_DB_NAME"]=$DbName; $envs["STATFEDERATION_DB_SSLMODE"]="disable"
+            $envs["PORT"]="8105"; $envs["STATFEDERATION_DB_HOST"]="127.0.0.1"; $envs["STATFEDERATION_DB_PORT"]="5432"
+            $envs["STATFEDERATION_DB_USER"]="Kaggle"; $envs["STATFEDERATION_DB_PASSWORD"]=$DbPassword; $envs["STATFEDERATION_DB_NAME"]=$DbName; $envs["STATFEDERATION_DB_SSLMODE"]="disable"
         }
         "statiot" {
-            $envs["STATIOT_PORT"]="8106"; $envs["STATIOT_DB_HOST"]="localhost"; $envs["STATIOT_DB_PORT"]="5432"
-            $envs["STATIOT_DB_USER"]="postgres"; $envs["STATIOT_DB_PASSWORD"]=$DbPassword; $envs["STATIOT_DB_NAME"]=$DbName; $envs["STATIOT_DB_SSLMODE"]="disable"
+            $envs["STATIOT_PORT"]="8106"; $envs["STATIOT_DB_HOST"]="127.0.0.1"; $envs["STATIOT_DB_PORT"]="5432"
+            $envs["STATIOT_DB_USER"]="Kaggle"; $envs["STATIOT_DB_PASSWORD"]=$DbPassword; $envs["STATIOT_DB_NAME"]=$DbName; $envs["STATIOT_DB_SSLMODE"]="disable"
         }
         "statdata" {
-            $envs["PORT"]="8107"; $envs["APP_ENV"]="development"; $envs["DB_HOST"]="localhost"; $envs["DB_PORT"]="5432"
-            $envs["DB_USER"]="postgres"; $envs["DB_PASSWORD"]=$DbPassword; $envs["DB_NAME"]=$DbName; $envs["DB_SSLMODE"]="disable"
+            $envs["PORT"]="8107"; $envs["APP_ENV"]="development"; $envs["DB_HOST"]="127.0.0.1"; $envs["DB_PORT"]="5432"
+            $envs["DB_USER"]="Kaggle"; $envs["DB_PASSWORD"]=$DbPassword; $envs["DB_NAME"]=$DbName; $envs["DB_SSLMODE"]="disable"
         }
     }
     # Common service env
@@ -91,7 +91,7 @@ function Start-Backend {
     $envs["STATGATE_JWT_ISSUER"]="statgate-registry"
     $envs["STATGATE_JWT_AUDIENCE"]="statgate"
     $envs["CORS_ALLOWED_ORIGIN"]="*"
-    if ($NoRedis) { $envs["REDIS_HOST"]=""; $envs["REDIS_ADDR"]="" } else { $envs["REDIS_HOST"]="localhost"; $envs["REDIS_ADDR"]="localhost:6379" }
+    if ($NoRedis) { $envs["REDIS_HOST"]=""; $envs["REDIS_ADDR"]="" } else { $envs["REDIS_HOST"]="127.0.0.1"; $envs["REDIS_ADDR"]="127.0.0.1:6379" }
 
     $inlineEnv = (($envs.GetEnumerator() | ForEach-Object { "`$env:{0}='{1}'" -f $_.Key, $_.Value }) -join "; ") + "; & '$exe'"
     $p = Start-Process -FilePath "powershell" -ArgumentList "-NoProfile -Command `"$inlineEnv`"" -WorkingDirectory $root -WindowStyle Hidden -PassThru

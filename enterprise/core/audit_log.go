@@ -88,14 +88,26 @@ func recordAuditFromContext(c *gin.Context, action, resource, resourceID string,
 // Returns paginated audit log from PostgreSQL when available.
 
 func handleAuditLog(c *gin.Context) {
+	if !requireRole(c, "admin", "superadmin", "platform_admin", "tenant_admin", "governance_officer") {
+		return
+	}
 	limit := parseIntDefault(c.Query("limit"), 100)
 	offset := parseIntDefault(c.Query("offset"), 0)
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	actor := c.Query("actor")
 	action := c.Query("action")
 	resource := c.Query("resource")
 
 	if dbPool != nil {
-		entries, total, err := queryAuditLog(limit, offset, actor, action, resource)
+		entries, total, err := queryAuditLog(limit, offset, actor, action, resource, getContextTenantID(c))
 		if err != nil {
 			log.Printf("audit: query failed: %v", err)
 			c.JSON(500, gin.H{"error": "audit log query failed"})
@@ -122,25 +134,28 @@ func handleAuditLog(c *gin.Context) {
 	})
 }
 
-func queryAuditLog(limit, offset int, actor, action, resource string) ([]AuditEntry, int, error) {
+func queryAuditLog(limit, offset int, actor, action, resource, tenantID string) ([]AuditEntry, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Build dynamic WHERE clause
-	where := "WHERE 1=1"
-	args := []interface{}{}
+	where := "WHERE tenant_id = $1"
+	args := []interface{}{tenantID}
 	argIdx := 1
 	if actor != "" {
+		argIdx++
 		where += fmt.Sprintf(" AND actor = $%d", argIdx)
 		args = append(args, actor)
 		argIdx++
 	}
 	if action != "" {
+		argIdx++
 		where += fmt.Sprintf(" AND action ILIKE $%d", argIdx)
 		args = append(args, "%"+action+"%")
 		argIdx++
 	}
 	if resource != "" {
+		argIdx++
 		where += fmt.Sprintf(" AND resource = $%d", argIdx)
 		args = append(args, resource)
 		argIdx++

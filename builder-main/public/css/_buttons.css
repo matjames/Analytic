@@ -1,0 +1,200 @@
+/**
+ * Shared Button System
+ * Consolidated button styles for consistent UI across the application
+ */
+
+/* ============== BASE BUTTON ============== */
+
+.btn {
+    cursor: pointer;
+    border-radius: 4px;
+    font-weight: 500;
+    font-family: inherit;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border-color, var(--color-border, #e6dfd5));
+    background: var(--bg-primary, var(--color-bg, #fefdfb));
+    color: var(--text-primary, var(--color-text, #2c3e50));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+    text-decoration: none;
+    padding: 8px 16px;
+}
+
+.btn:hover:not(:disabled) {
+    background: var(--accent-hover, var(--color-hover, #f5f0e8));
+    border-color: var(--border-dark, var(--color-border, #d8cfc2));
+}
+
+.btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--border-dark, var(--color-primary-light, rgba(52, 152, 219, 0.2)));
+}
+
+/* Apple-style tactile press effect */
+.btn:active:not(:disabled) {
+    transform: scale(0.96);
+    transition: transform 0.1s ease;
+}
+
+/* ============== SIZE VARIANTS ============== */
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.btn-md {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.btn-lg {
+    padding: 10px 20px;
+    font-size: 16px;
+    min-height: 44px;
+}
+
+/* ============== STYLE VARIANTS ============== */
+
+/* Primary - filled, prominent action */
+.btn-primary {
+    background: var(--color-primary, var(--accent-color, #165c92));
+    color: #ffffff;
+    border-color: var(--color-primary, var(--accent-color, #165c92));
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--color-primary-dark, #0d6560);
+    border-color: var(--color-primary-dark, #0d6560);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 118, 110, 0.4);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: scale(0.96);
+    box-shadow: 0 2px 4px rgba(15, 118, 110, 0.3);
+}
+
+/* Secondary - outlined, secondary action */
+.btn-secondary {
+    background: transparent;
+    color: var(--color-primary, var(--accent-color, #165c92));
+    border: 2px solid var(--color-primary, var(--accent-color, #165c92));
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--color-primary-light, rgba(15, 118, 110, 0.1));
+    border-color: var(--color-primary-dark, #0d6560);
+}
+
+/* Danger - destructive actions */
+.btn-danger {
+    background: var(--color-error, #e74c3c);
+    color: #ffffff;
+    border-color: var(--color-error, #e74c3c);
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #c0392b;
+    border-color: #c0392b;
+}
+
+/* Ghost - minimal, transparent */
+.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-secondary, var(--color-text-secondary, #5a6a7a));
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: var(--accent-hover, var(--color-hover, #f5f0e8));
+    color: var(--text-primary, var(--color-text, #2c3e50));
+}
+
+/* ============== STATES ============== */
+
+.btn:disabled,
+.btn.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn.loading {
+    opacity: 0.7;
+    cursor: wait;
+    pointer-events: none;
+}
+
+.btn.loading::after {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: btn-spin 0.8s linear infinite;
+    margin-left: 8px;
+}
+
+@keyframes btn-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ============== ICON BUTTONS ============== */
+
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.btn-icon.btn-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+}
+
+.btn-icon.btn-lg {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+}
+
+/* ============== BUTTON GROUPS ============== */
+
+.btn-group {
+    display: inline-flex;
+    gap: 0;
+}
+
+.btn-group .btn {
+    border-radius: 0;
+    margin-left: -1px;
+}
+
+.btn-group .btn:first-child {
+    border-radius: 4px 0 0 4px;
+    margin-left: 0;
+}
+
+.btn-group .btn:last-child {
+    border-radius: 0 4px 4px 0;
+}
+
+.btn-group .btn:only-child {
+    border-radius: 4px;
+}

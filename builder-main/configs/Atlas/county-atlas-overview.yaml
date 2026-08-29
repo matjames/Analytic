@@ -1,0 +1,109 @@
+id: county-atlas
+title: County Atlas
+description: Geographic and demographic snapshot of US counties from the county_statistics dataset
+category: Atlas
+sections:
+  - id: kpi-row
+    title: County Snapshot
+    layout: four-column
+    components:
+      - type: kpi
+        title: Counties Tracked
+        accentColor: "#165c92"
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: county
+              function: count
+              alias: county_count
+      - type: kpi
+        title: Total Cases
+        accentColor: "#1a7ab5"
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: cases
+              function: sum
+              alias: total_cases
+      - type: kpi
+        title: Total Deaths
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: deaths
+              function: sum
+              alias: total_deaths
+      - type: kpi
+        title: Avg Income
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: Income
+              function: avg
+              alias: avg_income
+
+  - id: section-map
+    title: County Map
+    layout: single
+    components:
+      - type: map
+        title: Total Cases by County
+        data:
+          center: [39.5, -98.35]
+          zoom: 4
+          value_label: "Cases"
+        sql: >
+          SELECT lat, "long", county, total_cases
+          FROM (
+            SELECT lat, "long" AS "long", county, SUM(cases) AS total_cases
+            FROM ml_staging.county_statistics
+            WHERE lat IS NOT NULL AND "long" IS NOT NULL
+            GROUP BY lat, "long", county
+            ORDER BY total_cases DESC
+            LIMIT 200
+          ) AS county_map_data
+
+  - id: section-charts
+    title: Demographics
+    layout: two-column
+    components:
+      - type: bar
+        title: Top 10 Counties by Cases
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: cases
+              function: sum
+              alias: total_cases
+          groupBy:
+            - field: county
+          orderBy:
+            - field: total_cases
+              direction: desc
+          limit: 10
+      - type: bar
+        title: Top 10 Counties by Income
+        query:
+          table: ml_staging.county_statistics
+          aggregations:
+            - column: Income
+              function: avg
+              alias: avg_income
+          groupBy:
+            - field: county
+          orderBy:
+            - field: avg_income
+              direction: desc
+          limit: 10
+
+  - id: section-linelist
+    title: County Line List
+    layout: single
+    components:
+      - type: table_advanced
+        title: County Line List (sample)
+        sql: >
+          SELECT county, state, cases, deaths, "Income", lat, long
+          FROM ml_staging.county_statistics
+          ORDER BY cases DESC
+          LIMIT 20

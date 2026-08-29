@@ -62,8 +62,11 @@ export const fullSidebarSections = [
     items: [
       { to: "/users", label: "All Users", iconClass: "bi bi-people" },
       { to: "/users/upload", label: "Upload Users", iconClass: "bi bi-upload" },
+      { to: "/invitations", label: "Invitations", iconClass: "bi bi-envelope-plus" },
       { to: "/roles", label: "User Roles", iconClass: "bi bi-shield-lock" },
-      { to: "/permissions", label: "Permissions", iconClass: "bi bi-key" }
+      { to: "/permissions", label: "Permissions", iconClass: "bi bi-key" },
+      { to: "/audit", label: "Audit Log", iconClass: "bi bi-journal-text" },
+      { to: "/workspaces", label: "Workspaces", iconClass: "bi bi-grid-3x3-gap" },
     ],
   },
   {

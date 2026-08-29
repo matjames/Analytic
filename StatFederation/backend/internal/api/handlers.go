@@ -23,6 +23,7 @@ type Handlers struct {
 	compliance   *diplomacy.ComplianceEvaluator
 	fedSearch    *diplomacy.FederatedSearchHub
 	eventWorker  *events.EventWorker
+	pushProtocol *engine.PushProtocol
 }
 
 // NewHandlers constructs API handlers
@@ -35,6 +36,7 @@ func NewHandlers(
 	ce *diplomacy.ComplianceEvaluator,
 	fs *diplomacy.FederatedSearchHub,
 	ew *events.EventWorker,
+	pp *engine.PushProtocol,
 ) *Handlers {
 	return &Handlers{
 		store:        s,
@@ -45,7 +47,18 @@ func NewHandlers(
 		compliance:   ce,
 		fedSearch:    fs,
 		eventWorker:  ew,
+		pushProtocol: pp,
 	}
+}
+
+func selectedWorkspace(c *gin.Context) string {
+	workspaceID, _ := c.Get("workspace_id")
+	value, _ := workspaceID.(string)
+	return value
+}
+
+func workspaceAllowed(recordWorkspace, selected string) bool {
+	return selected == "" || recordWorkspace == selected
 }
 
 // ─── NSS Node Handlers ───────────────────────────────────────────────────────
@@ -53,6 +66,8 @@ func NewHandlers(
 func (h *Handlers) ListNodes(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr, _ := tenantID.(string)
+	workspaceID, _ := c.Get("workspace_id")
+	workspaceIDStr, _ := workspaceID.(string)
 
 	nodeType := c.Query("type")
 	jurisdiction := c.Query("jurisdiction")
@@ -62,12 +77,23 @@ func (h *Handlers) ListNodes(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if workspaceIDStr != "" {
+		filtered := nodes[:0]
+		for _, node := range nodes {
+			if node.WorkspaceID == workspaceIDStr {
+				filtered = append(filtered, node)
+			}
+		}
+		nodes = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"nodes": nodes, "count": len(nodes)})
 }
 
 func (h *Handlers) RegisterNode(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr, _ := tenantID.(string)
+	workspaceID, _ := c.Get("workspace_id")
+	workspaceIDStr, _ := workspaceID.(string)
 
 	var node models.FederatedNode
 	if err := c.ShouldBindJSON(&node); err != nil {
@@ -77,6 +103,7 @@ func (h *Handlers) RegisterNode(c *gin.Context) {
 	if node.TenantID == "" {
 		node.TenantID = tenantIDStr
 	}
+	node.WorkspaceID = workspaceIDStr
 
 	if err := h.fedEngine.RegisterNSSNode(c.Request.Context(), &node); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -87,7 +114,7 @@ func (h *Handlers) RegisterNode(c *gin.Context) {
 	_ = h.eventWorker.PublishFederationEvent(
 		c.Request.Context(),
 		events.EventNodeRegistered, "federated_node", node.ID, node.TenantID, "",
-		map[string]interface{}{"node_name": node.Name, "code": node.Code, "type": node.NodeType},
+		map[string]interface{}{"node_name": node.Name, "code": node.Code, "type": node.NodeType, "workspace_id": workspaceIDStr},
 	)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Node registered successfully", "node": node})
@@ -97,6 +124,11 @@ func (h *Handlers) GetNode(c *gin.Context) {
 	id := c.Param("id")
 	node, err := h.store.GetNodeByID(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+		return
+	}
+	workspaceID, _ := c.Get("workspace_id")
+	if workspaceIDStr, _ := workspaceID.(string); workspaceIDStr != "" && node.WorkspaceID != workspaceIDStr {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
 		return
 	}
@@ -178,6 +210,16 @@ func (h *Handlers) ListQueries(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	workspaceID := selectedWorkspace(c)
+	if workspaceID != "" {
+		filtered := queries[:0]
+		for _, query := range queries {
+			if workspaceAllowed(query.WorkspaceID, workspaceID) {
+				filtered = append(filtered, query)
+			}
+		}
+		queries = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"queries": queries, "count": len(queries)})
 }
 
@@ -185,6 +227,10 @@ func (h *Handlers) GetQuery(c *gin.Context) {
 	id := c.Param("id")
 	q, err := h.store.GetQueryByID(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Query record not found"})
+		return
+	}
+	if !workspaceAllowed(q.WorkspaceID, selectedWorkspace(c)) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Query record not found"})
 		return
 	}
@@ -203,6 +249,16 @@ func (h *Handlers) ListDSAs(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	workspaceID := selectedWorkspace(c)
+	if workspaceID != "" {
+		filtered := dsas[:0]
+		for _, dsa := range dsas {
+			if workspaceAllowed(dsa.WorkspaceID, workspaceID) {
+				filtered = append(filtered, dsa)
+			}
+		}
+		dsas = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"data_sharing_agreements": dsas, "count": len(dsas)})
 }
 
@@ -218,6 +274,7 @@ func (h *Handlers) CreateDSA(c *gin.Context) {
 	if dsa.TenantID == "" {
 		dsa.TenantID = tenantIDStr
 	}
+	dsa.WorkspaceID = selectedWorkspace(c)
 	if dsa.ValidFrom.IsZero() {
 		dsa.ValidFrom = time.Now().UTC()
 	}
@@ -236,6 +293,10 @@ func (h *Handlers) GetDSA(c *gin.Context) {
 	id := c.Param("id")
 	dsa, err := h.store.GetDSAByID(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "DSA not found"})
+		return
+	}
+	if !workspaceAllowed(dsa.WorkspaceID, selectedWorkspace(c)) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "DSA not found"})
 		return
 	}
@@ -292,6 +353,16 @@ func (h *Handlers) ListIndicators(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	workspaceID := selectedWorkspace(c)
+	if workspaceID != "" {
+		filtered := inds[:0]
+		for _, indicator := range inds {
+			if workspaceAllowed(indicator.WorkspaceID, workspaceID) {
+				filtered = append(filtered, indicator)
+			}
+		}
+		inds = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"national_indicators": inds, "count": len(inds)})
 }
 
@@ -307,6 +378,7 @@ func (h *Handlers) CreateIndicator(c *gin.Context) {
 	if ind.TenantID == "" {
 		ind.TenantID = tenantIDStr
 	}
+	ind.WorkspaceID = selectedWorkspace(c)
 
 	if err := h.store.CreateIndicator(c.Request.Context(), &ind); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -319,6 +391,10 @@ func (h *Handlers) GetIndicator(c *gin.Context) {
 	id := c.Param("id")
 	ind, err := h.store.GetIndicatorByID(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Indicator not found"})
+		return
+	}
+	if !workspaceAllowed(ind.WorkspaceID, selectedWorkspace(c)) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Indicator not found"})
 		return
 	}
@@ -631,6 +707,16 @@ func (h *Handlers) ListObjectLinks(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	workspaceID := selectedWorkspace(c)
+	if workspaceID != "" {
+		filtered := links[:0]
+		for _, link := range links {
+			if workspaceAllowed(link.WorkspaceID, workspaceID) {
+				filtered = append(filtered, link)
+			}
+		}
+		links = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"object_links": links, "count": len(links)})
 }
 
@@ -648,6 +734,7 @@ func (h *Handlers) CreateObjectLink(c *gin.Context) {
 	if link.TenantID == "" {
 		link.TenantID = tenantIDStr
 	}
+	link.WorkspaceID = selectedWorkspace(c)
 	if link.CreatedBy == "" {
 		link.CreatedBy = userIDStr
 	}
@@ -657,4 +744,116 @@ func (h *Handlers) CreateObjectLink(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Object link created", "link": link})
+}
+
+// ─── Push Protocol Handlers ─────────────────────────────────────────────────
+
+// PushIndicators triggers an outbound push of indicators to a target federated hub
+func (h *Handlers) PushIndicators(c *gin.Context) {
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr, _ := tenantID.(string)
+	userID, _ := c.Get("user_id")
+	userIDStr, _ := userID.(string)
+
+	var req engine.IndicatorPushRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid push payload: " + err.Error()})
+		return
+	}
+
+	result, err := h.pushProtocol.PushIndicators(c.Request.Context(), req, "StatGate Hub ("+tenantIDStr+")", tenantIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "result": result})
+		return
+	}
+
+	// Publish federation event
+	_ = h.eventWorker.PublishFederationEvent(
+		c.Request.Context(),
+		events.EventIndicatorPushed,
+		"indicator_push",
+		result.PushID,
+		tenantIDStr,
+		userIDStr,
+		map[string]interface{}{
+			"push_id":         result.PushID,
+			"source_node_id":  result.SourceNodeID,
+			"target_node_id":  result.TargetNodeID,
+			"indicator_count": result.IndicatorCount,
+			"status":          result.Status,
+		},
+	)
+
+	c.JSON(http.StatusOK, result)
+}
+
+// IngestIndicators receives an incoming SDMX-JSON indicator dataset from a peer hub
+func (h *Handlers) IngestIndicators(c *gin.Context) {
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr, _ := tenantID.(string)
+	if tenantIDStr == "" {
+		tenantIDStr = "default"
+	}
+
+	var dataset engine.SDMXDataSet
+	if err := c.ShouldBindJSON(&dataset); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid SDMX payload: " + err.Error()})
+		return
+	}
+
+	sourceNodeID := dataset.Header.Sender.ID
+	if headerSource := c.GetHeader("X-Source-Node"); headerSource != "" {
+		sourceNodeID = headerSource
+	}
+
+	ingestedCount := 0
+	for _, indObs := range dataset.Indicators {
+		for code, obs := range indObs.Observations {
+			// Find or create local mirror of national indicator
+			existing, _ := h.store.GetIndicatorByCode(c.Request.Context(), code)
+			if existing != nil {
+				_ = h.store.UpdateIndicatorValues(c.Request.Context(), existing.ID, obs.Value)
+			} else {
+				newInd := &models.NationalIndicator{
+					Code:                code,
+					Title:               obs.Title,
+					Domain:              obs.Domain,
+					SDMXDimension:       obs.SDMXDimension,
+					CurrentValue:        obs.Value,
+					UnitOfMeasure:       obs.Unit,
+					Frequency:           obs.Frequency,
+					IsOfficialStatistic: true,
+					TenantID:            tenantIDStr,
+					LeadAgencyID:        sourceNodeID,
+				}
+				_ = h.store.CreateIndicator(c.Request.Context(), newInd)
+			}
+			ingestedCount++
+		}
+	}
+
+	// Publish federation ingest event
+	_ = h.eventWorker.PublishFederationEvent(
+		c.Request.Context(),
+		events.EventIndicatorIngestReceived,
+		"indicator_ingest",
+		dataset.Header.ID,
+		tenantIDStr,
+		"",
+		map[string]interface{}{
+			"push_id":        dataset.Header.ID,
+			"source_node_id": sourceNodeID,
+			"ingested_count": ingestedCount,
+			"sender_name":    dataset.Header.Sender.Name,
+		},
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Indicators ingested successfully",
+		"push_id":        dataset.Header.ID,
+		"source_node_id": sourceNodeID,
+		"ingested_count": ingestedCount,
+		"status":         "INGESTED",
+		"timestamp":      time.Now().UTC(),
+	})
 }

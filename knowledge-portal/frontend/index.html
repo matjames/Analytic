@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StatGate Open Data Portal</title>
+<meta name="description" content="Public open data portal — discover, preview and download official statistical datasets, publications and GIS collections." />
+<style>
+:root{
+  --bg:#070c18; --surface:#0d1527; --sur2:#111b30; --border:rgba(255,255,255,.08);
+  --text:#f8fafc; --muted:#94a3b8; --dim:#64748b;
+  --cyan:#06b6d4; --blue:#3b82f6; --emerald:#10b981; --amber:#f59e0b; --rose:#f43f5e; --violet:#8b5cf6;
+  --r-lg:16px; --r-md:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(at 0% 0%,rgba(6,182,212,.07) 0,transparent 50%),radial-gradient(at 100% 100%,rgba(139,92,246,.07) 0,transparent 50%);}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+header{position:sticky;top:0;z-index:10;backdrop-filter:blur(14px);background:rgba(7,12,24,.82);border-bottom:1px solid var(--border)}
+.hwrap{max-width:1200px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.15rem;letter-spacing:-.5px}
+.logo .dot{width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--violet));box-shadow:0 0 14px rgba(6,182,212,.6)}
+.hwrap nav{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+nav a{padding:7px 14px;border-radius:999px;font-size:.82rem;font-weight:600;color:var(--muted);border:1px solid transparent}
+nav a:hover,nav a.active{color:var(--text);border-color:var(--border);background:rgba(255,255,255,.04);text-decoration:none}
+main{max-width:1200px;margin:0 auto;padding:34px 22px 70px}
+.hero{padding:40px 0 10px}
+.eyebrow{color:var(--cyan);font-size:.78rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
+h1{font-size:2.4rem;font-weight:900;letter-spacing:-1.5px;line-height:1.1;margin:10px 0 12px}
+.hero p{color:var(--muted);max-width:640px;line-height:1.6;font-size:.98rem}
+.search{margin:26px 0 8px;display:flex;gap:10px;flex-wrap:wrap}
+.search input{flex:1;min-width:240px;background:var(--sur2);border:1px solid var(--border);color:var(--text);padding:14px 18px;border-radius:var(--r-md);font-size:.95rem;outline:none}
+.search input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(6,182,212,.15)}
+.btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:var(--r-md);padding:13px 22px;font-size:.9rem;font-weight:700;cursor:pointer;transition:.2s}
+.btn-primary{background:linear-gradient(135deg,var(--cyan),var(--blue));color:white}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,182,212,.4)}
+.btn-ghost{background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--border)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:26px 0 8px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:18px 20px}
+.stat b{display:block;font-size:1.7rem;font-weight:900;letter-spacing:-1px}
+.stat span{color:var(--muted);font-size:.8rem;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;transition:.2s}
+.card:hover{border-color:rgba(56,189,248,.35);transform:translateY(-2px)}
+.card .label{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:3px 10px;border-radius:999px}
+.chip-cyan{background:rgba(6,182,212,.14);color:#38bdf8;border:1px solid rgba(56,189,248,.3)}
+.chip-emerald{background:rgba(16,185,129,.14);color:#34d399;border:1px solid rgba(52,211,153,.3)}
+.chip-violet{background:rgba(139,92,246,.14);color:#c084fc;border:1px solid rgba(192,132,252,.3)}
+.chip-amber{background:rgba(245,158,11,.14);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.card h3{font-size:1.02rem;margin:10px 0 6px}
+.card p{color:var(--muted);font-size:.85rem;line-height:1.55;min-height:40px}
+.card .meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:.75rem;color:var(--dim)}
+.card .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.card .actions a,.card .actions button{flex:1;min-width:120px;text-align:center}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px}
+.panel h2{font-size:1.15rem;margin-bottom:14px}
+.panel input,.panel textarea{width:100%;background:var(--sur2);border:1px solid var(--border);color:var(--text);padding:12px 16px;border-radius:var(--r-md);font-size:.9rem;outline:none;margin-bottom:10px;font-family:inherit}
+.panel textarea{min-height:90px;resize:vertical}
+.panel label{display:block;font-size:.78rem;font-weight:700;color:var(--muted);margin:10px 0 5px}
+.toast{position:fixed;bottom:24px;right:24px;padding:14px 20px;border-radius:var(--r-md);font-size:.9rem;font-weight:600;z-index:99;opacity:0;transform:translateY(12px);transition:.25s}
+.toast.show{opacity:1;transform:none}
+.toast.ok{background:#0d3b2e;border:1px solid rgba(16,185,129,.4);color:#34d399}
+.toast.err{background:#451a2a;border:1px solid rgba(244,63,94,.4);color:#fb7185}
+.sdmx-pre{background:#0a1122;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:.72rem;max-height:260px;overflow:auto;white-space:pre-wrap;color:#7dd3fc;margin-top:12px}
+.empty{grid-column:1/-1;text-align:center;color:var(--dim);padding:40px 0;border:1px dashed var(--border);border-radius:var(--r-lg)}
+@media(max-width:760px){.two-col{grid-template-columns:1fr}.hwrap nav{margin-left:0;width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="hwrap">
+    <div class="logo"><span class="dot"></span>StatGate <span style="color:var(--muted);font-weight:500">Open Data</span></div>
+    <nav>
+      <a href="#datasets" class="active">Datasets</a>
+      <a href="#gis">GIS Collections</a>
+      <a href="#library">Library</a>
+      <a href="#api">API</a>
+      <a href="#subscribe">Stay Updated</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <section class="hero">
+    <div class="eyebrow">National Open Data · SDMX · CKAN · OGC</div>
+    <h1>Official statistics &amp;<br/>open data, for everyone.</h1>
+    <p>Discover, preview and download authoritative datasets, publications and GIS collections from the national statistical system — via human-friendly portal, CKAN, SDMX-REST, OGC API or RSS.</p>
+    <div class="search">
+      <input id="searchInput" type="search" placeholder="Search datasets, publications, indicators…" onkeydown="if(event.key==='Enter')doSearch()" />
+      <button class="btn btn-primary" onclick="doSearch()">Search</button>
+      <button class="btn btn-ghost" onclick="loadAll()">↻ Refresh</button>
+    </div>
+  </section>
+
+  <section class="stats" id="stats"></section>
+
+  <section id="datasets">
+    <h2 style="font-size:1.15rem;margin:24px 0 4px">📊 Open Datasets</h2>
+    <div class="grid" id="datasetGrid"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section id="gis" style="margin-top:34px">
+    <h2 style="font-size:1.15rem;margin-bottom:6px">🗺️ GIS Collections <span class="chip-cyan" style="font-size:.62rem">OGC API - Features</span></h2>
+    <p style="color:var(--muted);font-size:.85rem">Spatial catalog consumable by QGIS / ArcGIS / GeoServer clients.</p>
+    <div class="grid" id="ogcGrid"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section id="library" style="margin-top:34px">
+    <h2 style="font-size:1.15rem;margin-bottom:6px">📚 Digital Library</h2>
+    <div class="grid" id="repoGrid"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section id="api" style="margin-top:34px">
+    <h2 style="font-size:1.15rem;margin-bottom:4px">🔌 Integrate with open standards</h2>
+    <p style="color:var(--muted);font-size:.85rem">Machine-readable endpoints for developers and statistical systems.</p>
+    <div class="grid">
+      <div class="card"><span class="label chip-emerald">SDMX-REST</span><h3>Statistical data</h3><p>SDMX-JSON 1.0 indicator streams.</p><div class="actions"><button class="btn btn-ghost" onclick="previewSDMX()">Preview</button></div></div>
+      <div class="card"><span class="label chip-emerald">CKAN 3.0</span><h3>Package API</h3><p>CKAN-compatible package_list / package_show.</p><div class="actions"><a class="btn btn-ghost" href="/api/3/action/package_list" target="_blank">Open</a></div></div>
+      <div class="card"><span class="label chip-violet">OGC API</span><h3>GIS collections</h3><p>OGC API - Features collection catalogue.</p><div class="actions"><a class="btn btn-ghost" href="/api/ogc/collections" target="_blank">Open</a></div></div>
+      <div class="card"><span class="label chip-amber">RSS 2.0</span><h3>Release feed</h3><p>Subscribe to new dataset releases.</p><div class="actions"><a class="btn btn-ghost" href="/api/rss/datasets.xml" target="_blank">Open</a></div></div>
+    </div>
+    <div id="sdmxBox"></div>
+  </section>
+
+  <section class="two-col" id="subscribe">
+    <div class="panel">
+      <h2>✉️ Stay updated</h2>
+      <label>Email</label><input id="subEmail" type="email" placeholder="you@example.org" />
+      <label>Topics (comma separated)</label><input id="subTopics" type="text" placeholder="health, economy, sdg" />
+      <button class="btn btn-primary" onclick="subscribeEmail()" style="width:100%">Subscribe</button>
+<script>
+const el = id => document.getElementById(id);
+function toast(msg, ok=true){ const t=el('toast'); t.textContent=msg; t.className='toast show '+(ok?'ok':'err'); setTimeout(()=>t.className='toast', 3800); }
+async function api(path){ const r = await fetch(path); if(!r.ok) throw new Error(path+' -> '+r.status); return r.json(); }
+
+function fmtBytes(b){ if(!b) return ''; if(b>1e9) return (b/1e9).toFixed(1)+' GB'; if(b>1e6) return (b/1e6).toFixed(1)+' MB'; if(b>1e3) return (b/1e3).toFixed(1)+' KB'; return b+' B'; }
+
+function statCard(label, val, accent){ return '<div class="stat"><b style="color:var('+(accent||'--cyan')+')">'+val+'</b><span>'+label+'</span></div>'; }
+function chip(text, kind){ return '<span class="label chip-'+kind+'">'+text+'</span>'; }
+
+function datasetCard(d){
+  return '<div class="card">'+chip(d.format||'DATA','cyan')+
+    '<h3>'+escapeHtml(d.title)+'</h3><p>'+(d.description||'')+'</p>'+
+    '<div class="meta">'+(d.license?'<span>© '+escapeHtml(d.license)+'</span>':'')+(d.version?'<span>v'+escapeHtml(d.version)+'</span>':'')+
+    (d.size_bytes?'<span>'+fmtBytes(d.size_bytes)+'</span>':'')+(d.published_at?'<span>'+new Date(d.published_at).toLocaleDateString()+'</span>':'')+'</div>'+
+    '<div class="actions">'+(d.download_url?'<a class="btn btn-ghost" href="'+escapeHtml(d.download_url)+'" target="_blank">⬇ Download</a>':'')+
+    '<button class="btn btn-ghost" onclick="previewSDMX(\''+escapeJs(d.id)+'\')">SDMX</button>'+
+    '</div></div>';
+}
+function repoCard(r){
+  return '<div class="card">'+chip(r.kind||'ITEM','violet')+'<h3>'+escapeHtml(r.title)+'</h3><p>'+(r.abstract||r.title||'')+'</p>'+
+    '<div class="meta">'+(r.authors&&r.authors.length?'<span>✍ '+escapeHtml(r.authors.join(', '))+'</span>':'')+(r.doi?'<span>DOI '+escapeHtml(r.doi)+'</span>':'')+
+    (r.access?'<span>🔒 '+escapeHtml(r.access)+'</span>':'')+'</div></div>';
+}
+function ogcCard(c){
+  return '<div class="card">'+chip('GIS','cyan')+'<h3>'+escapeHtml(c.title)+'</h3><p>'+(c.description||'')+'</p>'+
+    '<div class="actions"><a class="btn btn-ghost" href="/api/ogc/collections/'+encodeURIComponent(c.id)+'/items" target="_blank">🗺 GeoJSON</a>'+
+    '<a class="btn btn-ghost" href="/api/ogc/collections/'+encodeURIComponent(c.id)+'" target="_blank">Metadata</a></div></div>';
+}
+
+function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeJs(s){ return String(s??'').replace(/'/g,"\\'"); }
+
+async function loadDatasets(){
+  try{
+    const data = await api('/api/public/datasets');
+    const list = Array.isArray(data)?data:(data.datasets||[]);
+    el('datasetGrid').innerHTML = list.length ? list.map(datasetCard).join('') : '<div class="empty">No published datasets yet. <a href="/api/3/action/package_list" target="_blank">Open CKAN package list</a></div>';
+    el('stats').innerHTML = statCard('Open datasets', list.length, '--cyan');
+  }catch(e){ el('datasetGrid').innerHTML = '<div class="empty">Portal API unreachable (backend offline).</div>'; }
+}
+async function loadOGC(){
+  try{
+    const data = await api('/api/ogc/collections');
+    const list = data.collections||[];
+    el('ogcGrid').innerHTML = list.length ? list.map(ogcCard).join('') : '<div class="empty">No spatial collections published yet. <a href="/api/ogc/collections" target="_blank">Inspect OGC catalogue</a></div>';
+  }catch(e){ el('ogcGrid').innerHTML = '<div class="empty">GIS collection endpoint unavailable.</div>'; }
+}
+async function loadRepo(){
+  try{
+    const data = await api('/api/public/repository');
+    const list = Array.isArray(data)?data:(data.items||[]);
+    el('repoGrid').innerHTML = list.length ? list.map(repoCard).join('') : '<div class="empty">Library empty.</div>';
+  }catch(e){ el('repoGrid').innerHTML = '<div class="empty">Library endpoint unavailable.</div>'; }
+}
+
+function doSearch(){
+  const q = el('searchInput').value.trim();
+  if(!q){ loadAll(); return; }
+  el('datasetGrid').innerHTML = '<div class="empty">Searching…</div>';
+  api('/api/public/search?q='+encodeURIComponent(q)).then(data=>{
+    const list = Array.isArray(data)?data:(data.results||[]);
+    el('datasetGrid').innerHTML = list.length ? list.map(r=>{
+      return '<div class="card">'+chip(r.type||'HIT','emerald')+'<h3>'+escapeHtml(r.title)+'</h3><p>'+(r.summary||'')+'</p>'+
+        '<div class="actions"><a class="btn btn-ghost" href="/api/public/'+(r.type||'search')+'/'+encodeURIComponent(r.id)+'" target="_blank">View</a></div></div>';
+    }).join('') : '<div class="empty">No results for “'+escapeHtml(q)+'”.</div>';
+  }).catch(()=>{ el('datasetGrid').innerHTML = '<div class="empty">Search unavailable.</div>'; });
+}
+    </div>
+    <div class="panel">
+      <h2>💬 Feedback / Data request</h2>
+      <label>Subject</label><input id="fbSubject" type="text" placeholder="I would like access to…" />
+      <label>Message</label><textarea id="fbBody" placeholder="Describe the data you need…"></textarea>
+      <button class="btn btn-primary" onclick="sendFeedback()" style="width:100%">Submit</button>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+async function previewSDMX(code){
+  if(!code){
+    try{ const d = await api('/api/public/datasets'); const list = Array.isArray(d)?d:(d.datasets||[]); if(list.length) code = list[0].id; }catch(e){}
+    if(!code){ toast('No dataset to preview', false); return; }
+  }
+  try{
+    const r = await fetch('/api/sdmx/data/'+encodeURIComponent(code));
+    const text = await r.text();
+    el('sdmxBox').innerHTML = '<h3 style="margin-top:16px">📈 SDMX-REST preview — <code style="font-size:.8rem">'+escapeHtml(code)+'</code></h3><pre class="sdmx-pre">'+escapeHtml(text.slice(0,1600))+'</pre>';
+  }catch(e){ toast('SDMX preview failed', false); }
+}
+
+function subscribeEmail(){
+  const email = el('subEmail').value.trim();
+  const topics = el('subTopics').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!email || !/.+@.+\..+/.test(email)){ toast('Enter a valid email', false); return; }
+  fetch('/api/public/subscriptions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,topics,frequency:'weekly'})})
+    .then(r=>{ if(r.ok){ toast('Subscription registered 🎉'); el('subEmail').value=''; el('subTopics').value=''; } else throw 0; })
+    .catch(()=>toast('Subscription failed', false));
+}
+function sendFeedback(){
+  const subject = el('fbSubject').value.trim();
+  const body = el('fbBody').value.trim();
+  if(!subject || !body){ toast('Subject and message required', false); return; }
+  fetch('/api/public/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'feedback',subject,body})})
+    .then(r=>{ if(r.ok){ toast('Thank you — feedback received'); el('fbSubject').value=''; el('fbBody').value=''; } else throw 0; })
+    .catch(()=>toast('Submission failed', false));
+}
+function loadAll(){ loadDatasets(); loadOGC(); loadRepo(); }
+document.addEventListener('DOMContentLoaded', loadAll);
+</script>
+</body>
+</html>

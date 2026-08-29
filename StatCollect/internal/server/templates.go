@@ -211,28 +211,23 @@ func GetTemplateLibrary() []TemplateLibraryEntry {
 		{ID: "school_enrollment_survey", Name: "School Enrollment Survey", Description: "School enrollment, attendance & infrastructure", Category: "Education", Tags: []string{"education", "school", "enrollment"}, FieldCount: 22, Version: "1.0"},
 		{ID: "nutrition_survey", Name: "Child Nutrition Survey", Description: "Under-5 anthropometric & dietary diversity assessment", Category: "Nutrition", Tags: []string{"nutrition", "MUAC", "anthropometry", "child"}, FieldCount: 30, Version: "1.0"},
 		{ID: "agriculture_survey", Name: "Agriculture & Livelihood Survey", Description: "Crop production, input use & market access", Category: "Agriculture", Tags: []string{"agriculture", "crops", "livestock", "livelihood"}, FieldCount: 32, Version: "1.0"},
-		{ID: "water_sanitation_survey", Name: "Water & Sanitation Survey", Description: "WASH infrastructure, access & hygiene practices", Category: "WASH", Tags: []string{"water", "sanitation", "hygiene", "WASH"}, FieldCount: 24, Version: "1.0"},
+		{ID: "water_sanitation_survey", Name: "Water & Sanitation (WASH) Survey", Description: "WASH infrastructure, access & hygiene practices", Category: "WASH", Tags: []string{"water", "sanitation", "hygiene", "WASH"}, FieldCount: 24, Version: "1.0"},
 		{ID: "market_inspection", Name: "Market Price Survey", Description: "Commodity prices, availability & market conditions", Category: "Markets", Tags: []string{"markets", "prices", "food security"}, FieldCount: 20, Version: "1.0"},
 		{ID: "facility_inspection", Name: "Facility Inspection", Description: "Infrastructure, asset condition & safety audit", Category: "Infrastructure", Tags: []string{"facility", "inspection", "infrastructure"}, FieldCount: 12, Version: "1.0"},
 		{ID: "population_census", Name: "Population Census", Description: "National population & demographic audit", Category: "Demographics", Tags: []string{"census", "population", "national"}, FieldCount: 8, Version: "1.0"},
+		{ID: "labor_force_survey", Name: "Labor Force & Employment Survey", Description: "Employment status, wages, informal sector & skills assessment", Category: "Economics", Tags: []string{"employment", "labor", "wages", "skills"}, FieldCount: 26, Version: "1.0"},
+		{ID: "business_establishment_survey", Name: "Business & MSME Registry Survey", Description: "Enterprise profiling, turnover, employees & digital adoption", Category: "Economics", Tags: []string{"business", "enterprise", "revenue", "msme"}, FieldCount: 25, Version: "1.0"},
+		{ID: "environmental_forestry_survey", Name: "Environmental & Forestry Monitoring", Description: "Forest cover, biodiversity, land degradation & conservation", Category: "Environment", Tags: []string{"environment", "forestry", "biodiversity", "conservation"}, FieldCount: 24, Version: "1.0"},
+		{ID: "disaster_resilience_survey", Name: "Disaster Risk & Resilience Assessment", Description: "Hazard vulnerability, early warning readiness & climate resilience", Category: "Resilience", Tags: []string{"disaster", "hazard", "climate", "resilience"}, FieldCount: 22, Version: "1.0"},
 	}
 }
 
-// SeedDefaultTemplates inserts the built-in questionnaire templates if they
-// don't already exist. This provides a starting point — templates are
-// fully manageable via the API — not hardcoded in the frontend.
+// SeedDefaultTemplates inserts and synchronizes all built-in questionnaire templates.
+// This ensures all 13 enterprise datasets are populated and updated in PostgreSQL.
 func SeedDefaultTemplates() error {
 	if dbPool == nil {
 		return nil
 	}
-	existing, err := ListTemplates("")
-	if err != nil {
-		return err
-	}
-	if len(existing) > 0 {
-		return nil
-	}
-
 	templates := buildEnterpriseTemplates()
 	for _, t := range templates {
 		if err := SaveTemplate(t); err != nil {
@@ -939,6 +934,210 @@ func buildEnterpriseTemplates() []Template {
   ]
 }`)
 
+	// ── 10. Labor Force & Employment Survey ─────────────────────
+	laborSchema := mustJSON(`{
+  "sections": [
+    {
+      "id": "worker_identification",
+      "title": "Individual Identification",
+      "fields": [
+        {"key":"worker_id","label":"Worker ID","type":"text","required":true},
+        {"key":"worker_name","label":"Full Name","type":"text","required":true},
+        {"key":"worker_age","label":"Age (years)","type":"number","required":true,"min":14,"max":99},
+        {"key":"worker_sex","label":"Sex","type":"select","required":true,"options":[{"value":"male","label":"Male"},{"value":"female","label":"Female"}]},
+        {"key":"district","label":"District of Residence","type":"select","required":true,"options":[
+          {"value":"kampala","label":"Kampala"},{"value":"wakiso","label":"Wakiso"},{"value":"jinja","label":"Jinja"},
+          {"value":"mbarara","label":"Mbarara"},{"value":"gulu","label":"Gulu"},{"value":"other","label":"Other"}
+        ]},
+        {"key":"gps_residence","label":"GPS Location","type":"gps","required":true}
+      ]
+    },
+    {
+      "id": "employment_activity",
+      "title": "Employment & Economic Activity",
+      "fields": [
+        {"key":"employment_status","label":"Current Employment Status","type":"select","required":true,"options":[
+          {"value":"wage_employed","label":"Wage / Salaried Employee"},
+          {"value":"self_employed","label":"Self-Employed (with employees)"},
+          {"value":"own_account","label":"Own-Account Worker (no employees)"},
+          {"value":"contributing_family","label":"Contributing Family Worker"},
+          {"value":"unemployed_seeking","label":"Unemployed (Actively Seeking)"},
+          {"value":"inactive","label":"Economically Inactive (Student / Retired)"}
+        ]},
+        {"key":"sector","label":"Primary Sector of Work","type":"select","options":[
+          {"value":"agriculture","label":"Agriculture / Forestry / Fishing"},
+          {"value":"manufacturing","label":"Manufacturing & Processing"},
+          {"value":"construction","label":"Construction & Engineering"},
+          {"value":"wholesale_retail","label":"Wholesale & Retail Trade"},
+          {"value":"transport","label":"Transportation & Logistics"},
+          {"value":"ict","label":"Information & Communications Tech (ICT)"},
+          {"value":"financial","label":"Financial & Insurance Services"},
+          {"value":"public_admin","label":"Public Administration & Defense"},
+          {"value":"education_health","label":"Education & Health Services"},
+          {"value":"hospitality","label":"Accommodation & Food Service"}
+        ]},
+        {"key":"hours_worked_weekly","label":"Average Hours Worked Per Week","type":"number","min":0,"max":100},
+        {"key":"monthly_earnings_ugx","label":"Estimated Monthly Earnings (UGX)","type":"number","min":0},
+        {"key":"has_written_contract","label":"Has Formal Written Contract?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"social_security","label":"Contributes to Pension/NSSF?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}
+      ]
+    },
+    {
+      "id": "skills_declaration",
+      "title": "Education & Skills Certification",
+      "fields": [
+        {"key":"highest_education","label":"Highest Education Level Completed","type":"select","required":true,"options":[
+          {"value":"none","label":"No Formal Education"},{"value":"primary","label":"Primary Leaving Examination (PLE)"},
+          {"value":"uce","label":"Uganda Certificate of Education (UCE / O-Level)"},
+          {"value":"uace","label":"Uganda Advanced Certificate (UACE / A-Level)"},
+          {"value":"certificate","label":"Vocational Certificate / Diploma"},
+          {"value":"degree","label":"Bachelor's Degree"},
+          {"value":"postgraduate","label":"Postgraduate / Master / PhD"}
+        ]},
+        {"key":"digital_literacy","label":"Digital Literacy Level","type":"rating","required":true},
+        {"key":"enumerator_signature","label":"Enumerator Signature","type":"signature","required":true}
+      ]
+    }
+  ]
+}`)
+
+	// ── 11. Business & MSME Registry Survey ──────────────────────
+	businessSchema := mustJSON(`{
+  "sections": [
+    {
+      "id": "enterprise_info",
+      "title": "Enterprise Identification",
+      "fields": [
+        {"key":"tin_number","label":"Tax Identification Number (TIN) / Reg No","type":"text"},
+        {"key":"business_name","label":"Trade / Enterprise Name","type":"text","required":true},
+        {"key":"legal_status","label":"Legal Status","type":"select","required":true,"options":[
+          {"value":"sole_proprietorship","label":"Sole Proprietorship"},
+          {"value":"partnership","label":"Partnership"},
+          {"value":"private_limited","label":"Private Limited Company"},
+          {"value":"cooperative","label":"Cooperative Society"},
+          {"value":"informal","label":"Informal / Unregistered Enterprise"}
+        ]},
+        {"key":"year_established","label":"Year Business Commenced","type":"number","min":1900,"max":2026},
+        {"key":"gps_premises","label":"Premises GPS Coordinates","type":"gps","required":true},
+        {"key":"storefront_photo","label":"Storefront / Facility Photo","type":"photo"}
+      ]
+    },
+    {
+      "id": "operations_revenue",
+      "title": "Operations & Revenue",
+      "fields": [
+        {"key":"full_time_staff","label":"Number of Full-Time Employees","type":"number","required":true,"min":0},
+        {"key":"female_staff","label":"Number of Female Employees","type":"number","min":0},
+        {"key":"annual_turnover_ugx","label":"Estimated Annual Revenue (UGX)","type":"number","min":0},
+        {"key":"accepts_digital_payment","label":"Accepts Mobile Money / Card Payments?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"has_bank_account","label":"Has Business Bank Account?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"major_business_challenge","label":"Primary Growth Barrier","type":"select","options":[
+          {"value":"access_to_finance","label":"High Cost / Access to Capital"},
+          {"value":"unreliable_power","label":"Electricity & Infrastructure Outages"},
+          {"value":"high_taxes","label":"Taxation & Regulatory Burden"},
+          {"value":"market_competition","label":"Low Customer Demand / Competition"},
+          {"value":"skilled_labor","label":"Lack of Skilled Workers"}
+        ]}
+      ]
+    },
+    {
+      "id": "business_signoff",
+      "title": "Verification & Consent",
+      "fields": [
+        {"key":"manager_name","label":"Respondent Name / Title","type":"text","required":true},
+        {"key":"enumerator_signature","label":"Enumerator Signature","type":"signature","required":true}
+      ]
+    }
+  ]
+}`)
+
+	// ── 12. Environmental & Forestry Monitoring ──────────────────
+	enviroSchema := mustJSON(`{
+  "sections": [
+    {
+      "id": "site_coordinates",
+      "title": "Ecological Plot Identification",
+      "fields": [
+        {"key":"plot_id","label":"Ecological Sample Plot ID","type":"text","required":true},
+        {"key":"ecosystem_type","label":"Ecosystem Type","type":"select","required":true,"options":[
+          {"value":"tropical_high_forest","label":"Tropical High Forest"},
+          {"value":"woodland_savanna","label":"Woodland / Tree Savanna"},
+          {"value":"wetland_swamp","label":"Wetland / Peatland / Swamp"},
+          {"value":"agroforestry_plantation","label":"Agroforestry & Plantation"},
+          {"value":"degraded_rangeland","label":"Degraded Rangeland / Scrub"}
+        ]},
+        {"key":"gps_plot_center","label":"Plot Centerpoint GPS","type":"gps","required":true},
+        {"key":"canopy_photo","label":"Canopy & Ground Photo","type":"photo"}
+      ]
+    },
+    {
+      "id": "forest_metrics",
+      "title": "Bio-Physical & Carbon Metrics",
+      "fields": [
+        {"key":"canopy_cover_pct","label":"Estimated Canopy Cover Percentage (%)","type":"number","min":0,"max":100,"required":true},
+        {"key":"dominant_tree_species","label":"Dominant Tree / Vegetation Species","type":"text"},
+        {"key":"average_dbh_cm","label":"Mean Diameter at Breast Height (DBH in cm)","type":"number","min":0},
+        {"key":"human_disturbance_observed","label":"Signs of Encroachment / Logging?","type":"select","required":true,"options":[
+          {"value":"none","label":"Pristine (No Disturbance)"},
+          {"value":"charcoal_burning","label":"Charcoal Burning & Timber Felling"},
+          {"value":"agricultural_clearing","label":"Agricultural Encroachment"},
+          {"value":"overgrazing","label":"Overgrazing & Soil Trampling"},
+          {"value":"bushfires","label":"Recent Wildfire / Controlled Burn"}
+        ]},
+        {"key":"biodiversity_score","label":"Faunal & Biodiversity Health Score (1-5)","type":"rating","required":true}
+      ]
+    },
+    {
+      "id": "ranger_signoff",
+      "title": "Ranger & Environmental Officer Sign-Off",
+      "fields": [
+        {"key":"ranger_id","label":"Ranger / Warden ID","type":"text","required":true},
+        {"key":"enumerator_signature","label":"Field Officer Signature","type":"signature","required":true}
+      ]
+    }
+  ]
+}`)
+
+	// ── 13. Disaster Risk & Resilience Assessment ────────────────
+	disasterSchema := mustJSON(`{
+  "sections": [
+    {
+      "id": "community_hazard_profile",
+      "title": "Hazard & Geographic Profile",
+      "fields": [
+        {"key":"settlement_id","label":"Community / Settlement ID","type":"text","required":true},
+        {"key":"primary_hazard_exposure","label":"Primary Hazard Exposure","type":"select","required":true,"options":[
+          {"value":"floods","label":"Riverine / Flash Floods"},
+          {"value":"landslides","label":"Landslides / Mudslides"},
+          {"value":"drought","label":"Prolonged Drought & Heatwaves"},
+          {"value":"locusts_pests","label":"Pest Outbreaks / Locust Swarms"},
+          {"value":"earthquake","label":"Seismic / Earthquake Zone"}
+        ]},
+        {"key":"gps_vulnerable_zone","label":"Vulnerable Asset GPS","type":"gps","required":true},
+        {"key":"damage_evidence_photo","label":"Hazard / Risk Area Photo","type":"photo"}
+      ]
+    },
+    {
+      "id": "preparedness_infrastructure",
+      "title": "Early Warning & Emergency Preparedness",
+      "fields": [
+        {"key":"early_warning_system_functional","label":"Early Warning System Functional?","type":"select","required":true,"options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"evacuation_route_accessible","label":"Designated Evacuation Shelters Accessible?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"disaster_committee_trained","label":"Local Disaster Management Committee Active?","type":"select","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},
+        {"key":"vulnerability_score","label":"Overall Vulnerability Index (1=Low, 5=Severe)","type":"rating","required":true}
+      ]
+    },
+    {
+      "id": "resilience_signoff",
+      "title": "Assessment Officer Sign-off",
+      "fields": [
+        {"key":"assessor_name","label":"Emergency Response Officer","type":"text","required":true},
+        {"key":"enumerator_signature","label":"Signature","type":"signature","required":true}
+      ]
+    }
+  ]
+}`)
+
 	return []Template{
 		{ID: "community_health_survey", Name: "Community Health Survey", Description: "Household health, water & sanitation assessment", Version: "1.0", Category: "Health", Rating: 5, DownloadCount: 156, Schema: json.RawMessage(healthSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
 		{ID: "household_census", Name: "Household Census", Description: "Full household demographic & socioeconomic census", Version: "1.0", Category: "Demographics", Rating: 5, DownloadCount: 412, Schema: json.RawMessage(censusSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
@@ -949,6 +1148,10 @@ func buildEnterpriseTemplates() []Template {
 		{ID: "market_inspection", Name: "Market Price Survey", Description: "Commodity prices, availability & market conditions", Version: "1.0", Category: "Markets", Rating: 4, DownloadCount: 45, Schema: json.RawMessage(marketSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
 		{ID: "facility_inspection", Name: "Facility Inspection", Description: "Infrastructure, asset condition & safety audit", Version: "1.0", Category: "Infrastructure", Rating: 4, DownloadCount: 30, Schema: json.RawMessage(facilitySchema), Status: "active", CreatedBy: "system", TenantID: "default"},
 		{ID: "population_census", Name: "Population Census", Description: "National population & demographic audit", Version: "1.0", Category: "Demographics", Rating: 5, DownloadCount: 520, Schema: json.RawMessage(popCensusSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
+		{ID: "labor_force_survey", Name: "Labor Force & Employment Survey", Description: "Employment status, wages, informal sector & skills assessment", Version: "1.0", Category: "Economics", Rating: 5, DownloadCount: 140, Schema: json.RawMessage(laborSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
+		{ID: "business_establishment_survey", Name: "Business & MSME Registry Survey", Description: "Enterprise profiling, turnover, employees & digital adoption", Version: "1.0", Category: "Economics", Rating: 4, DownloadCount: 115, Schema: json.RawMessage(businessSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
+		{ID: "environmental_forestry_survey", Name: "Environmental & Forestry Monitoring", Description: "Forest cover, biodiversity, land degradation & conservation", Version: "1.0", Category: "Environment", Rating: 5, DownloadCount: 68, Schema: json.RawMessage(enviroSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
+		{ID: "disaster_resilience_survey", Name: "Disaster Risk & Resilience Assessment", Description: "Hazard vulnerability, early warning readiness & climate resilience", Version: "1.0", Category: "Resilience", Rating: 4, DownloadCount: 82, Schema: json.RawMessage(disasterSchema), Status: "active", CreatedBy: "system", TenantID: "default"},
 	}
 }
 

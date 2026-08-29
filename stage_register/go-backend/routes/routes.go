@@ -3,6 +3,7 @@ package routes
 import (
 	"go-backend/handlers"
 	"go-backend/middleware"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +14,13 @@ func Register(r *gin.Engine) {
 	{
 		// Public user endpoints (no auth required)
 		api.POST("/users/register", handlers.RegisterUser)
-		api.POST("/users/login", handlers.LoginUser)
+		api.GET("/users/verify-email", handlers.VerifyEmail)
+		api.POST("/users/resend-verification", middleware.RateLimit("resend_verification", 5, time.Minute), handlers.ResendVerification)
+		api.POST("/users/login", middleware.RateLimit("login", 10, time.Minute), handlers.LoginUser)
+		api.GET("/auth/oidc/login", middleware.RateLimit("oidc_login", 20, time.Minute), handlers.OIDCLogin)
+		api.GET("/auth/oidc/callback", middleware.RateLimit("oidc_callback", 20, time.Minute), handlers.OIDCCallback)
+		api.POST("/users/refresh", middleware.RateLimit("refresh", 30, time.Minute), handlers.RefreshUserToken)
+		api.POST("/users/invitations/accept", middleware.RateLimit("invitation_accept", 10, time.Minute), handlers.AcceptInvitation)
 		api.POST("/users/change-password", handlers.ChangePassword)
 		// Directory consumers such as StatChat use a service credential, never a
 		// public browser request, to synchronize the authoritative user list.
@@ -78,9 +85,22 @@ func Register(r *gin.Engine) {
 		{
 			// User endpoints (require auth)
 			auth.GET("/users/me", handlers.GetCurrentUser)
+			auth.POST("/users/me/mfa/setup", handlers.SetupMFA)
+			auth.POST("/users/me/mfa/enable", handlers.EnableMFA)
+			auth.POST("/users/me/mfa/disable", handlers.DisableMFA)
+			auth.POST("/users/me/logout", handlers.LogoutUser)
+			auth.GET("/users/me/sessions", handlers.ListSessions)
+			auth.DELETE("/users/me/sessions/:id", handlers.RevokeSession)
+			auth.GET("/users/me/preferences", handlers.GetPreferences)
+			auth.PUT("/users/me/preferences", handlers.UpdatePreferences)
+			auth.GET("/organisation/branding", handlers.GetBranding)
+			auth.PUT("/organisation/branding", handlers.UpdateBranding)
 			auth.GET("/users", handlers.ListUsers)
 			auth.POST("/users", handlers.CreateUser)
 			auth.POST("/users/upload", handlers.UploadUsersCSV)
+			auth.GET("/users/invitations", handlers.ListInvitations)
+			auth.POST("/users/invitations", handlers.CreateInvitation)
+			auth.DELETE("/users/invitations/:id", handlers.RevokeInvitation)
 			auth.GET("/users/:id", handlers.GetUser)
 			auth.PUT("/users/:id", handlers.UpdateUser)
 			auth.POST("/users/:id/reset-password", handlers.ResetPassword)

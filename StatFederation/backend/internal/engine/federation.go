@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
+	"time"
 
 	"statfederation-backend/internal/models"
 	"statfederation-backend/internal/store"
@@ -13,15 +15,38 @@ import (
 
 // FederationEngine manages NSS node lifecycle, heartbeats, and data exchange boundaries
 type FederationEngine struct {
-	store store.Store
-	mu    sync.RWMutex
+	store      store.Store
+	mu         sync.RWMutex
+	httpClient *http.Client
 }
 
 // NewFederationEngine initializes the NSS engine
 func NewFederationEngine(s store.Store) *FederationEngine {
 	return &FederationEngine{
 		store: s,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// StartProbeLoop runs a background goroutine that probes all registered nodes
+// every 60 seconds. Call this once after initialisation.
+func (fe *FederationEngine) StartProbeLoop(ctx context.Context, tenantID string) {
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_, err := fe.ProbeAllNodes(ctx, tenantID)
+				if err != nil {
+					log.Printf("[FederationEngine:ProbeLoop] error: %v", err)
+				}
+			case <-ctx.Done():
+				log.Println("[FederationEngine:ProbeLoop] stopping")
+				return
+			}
+		}
+	}()
 }
 
 // RegisterNSSNode validates and persists a new participating statistical node
@@ -88,7 +113,8 @@ func (fe *FederationEngine) RevokeDSA(ctx context.Context, dsaID, revokedBy stri
 	return fe.store.UpdateDSAStatus(ctx, dsaID, models.DSAStatusRevoked, revokedBy)
 }
 
-// CheckNodeHealth probes all registered nodes and updates their status
+// ProbeAllNodes performs real HTTP GET /health calls on every registered node,
+// measures latency, and updates stored health status accordingly.
 func (fe *FederationEngine) ProbeAllNodes(ctx context.Context, tenantID string) ([]*models.FederatedNode, error) {
 	nodes, err := fe.store.ListNodes(ctx, tenantID, "", "")
 	if err != nil {
@@ -96,15 +122,44 @@ func (fe *FederationEngine) ProbeAllNodes(ctx context.Context, tenantID string) 
 	}
 
 	for _, n := range nodes {
-		// Mocked probe for simulation / unit tests
-		status := models.HealthStatusHealthy
-		latency := 25
-		if n.Jurisdiction == "GLOBAL" {
-			latency = 180
+		if n.EndpointURL == "" {
+			continue
 		}
+		status, latency := fe.probeNode(ctx, n.EndpointURL)
 		_ = fe.store.UpdateNodeStatus(ctx, n.ID, status, latency)
-		log.Printf("[FederationEngine:Probe] Node %s (%s) healthy, latency: %dms", n.Name, n.Code, latency)
+		log.Printf("[FederationEngine:Probe] Node %s (%s) → %s, latency: %dms",
+			n.Name, n.Code, status, latency)
 	}
 
 	return fe.store.ListNodes(ctx, tenantID, "", "")
+}
+
+// probeNode does a single HTTP GET /health and returns status + latency in ms.
+func (fe *FederationEngine) probeNode(ctx context.Context, endpointURL string) (models.HealthStatus, int) {
+	start := time.Now()
+	healthURL := endpointURL + "/health"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return models.HealthStatusUnreachable, 0
+	}
+
+	resp, err := fe.httpClient.Do(req)
+	latencyMs := int(time.Since(start).Milliseconds())
+	if err != nil {
+		return models.HealthStatusUnreachable, latencyMs
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		if latencyMs > 2000 {
+			return models.HealthStatusDegraded, latencyMs
+		}
+		return models.HealthStatusHealthy, latencyMs
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return models.HealthStatusDegraded, latencyMs
+	default:
+		return models.HealthStatusUnreachable, latencyMs
+	}
 }

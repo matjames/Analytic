@@ -1,0 +1,72 @@
+id: energy-markets-overview
+title: Energy Markets Overview
+description: Fossil fuel price trends 1989-2019 from the local dataset
+category: Economy
+sections:
+  - id: kpi-row
+    title: Price Benchmarks
+    layout: three-column
+    components:
+      - type: kpi
+        title: Avg Crude Oil ($/bbl)
+        accentColor: "#165c92"
+        query:
+          table: ml_staging.fossil_fuel_prices_1989_2019
+          aggregations:
+            - column: Crude_Oil_per_US_dollars_per_barrel
+              function: avg
+              alias: avg_oil
+      - type: kpi
+        title: Avg Natural Gas ($/MMBtu)
+        accentColor: "#1a7ab5"
+        query:
+          table: ml_staging.fossil_fuel_prices_1989_2019
+          aggregations:
+            - column: Natural_Gas_(Henry_Hub)_per_US_dollars_per_million_Btu
+              function: avg
+              alias: avg_gas
+      - type: kpi
+        title: Avg Coal ($/tonne)
+        query:
+          table: ml_staging.fossil_fuel_prices_1989_2019
+          aggregations:
+            - column: Coal_(Northwest_Europe_Marker_Price)_per_US_dollars_per_tonne
+              function: avg
+              alias: avg_coal
+
+  - id: section-trend
+    title: Prices Over Time
+    layout: single
+    components:
+      - type: line
+        title: Commodity Price Trends
+        query:
+          table: ml_staging.fossil_fuel_prices_1989_2019
+          aggregations:
+            - column: Crude_Oil_per_US_dollars_per_barrel
+              function: avg
+              alias: oil_price
+            - column: Natural_Gas_(Henry_Hub)_per_US_dollars_per_million_Btu
+              function: avg
+              alias: gas_price
+          groupBy:
+            - field: Year
+              format: year
+          orderBy:
+            - field: Year
+              direction: asc
+
+  - id: section-linelist
+    title: Annual Price Line List
+    layout: single
+    components:
+      - type: table_advanced
+        title: Annual Fossil Fuel Prices
+        sql: >
+          SELECT "Year",
+                 "Crude_Oil_per_US_dollars_per_barrel" AS Oil,
+                 "Natural_Gas_(Henry_Hub)_per_US_dollars_per_million_Btu" AS Gas,
+                 "Coal_(Northwest_Europe_Marker_Price)_per_US_dollars_per_tonne" AS Coal
+          FROM ml_staging.fossil_fuel_prices_1989_2019
+          ORDER BY "Year" DESC
+          LIMIT 20

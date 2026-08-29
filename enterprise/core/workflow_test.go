@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -679,6 +681,37 @@ func TestWorkflowActionDispatch(t *testing.T) {
 		inst := WorkflowInstance{ID: "test-inst", WorkflowID: "test-wf", Assignee: "test-user"}
 		def := WorkflowDefinition{ID: "test-wf", Name: "Test Workflow"}
 		_ = performWorkflowAction(inst, def, step)
+	}
+}
+
+func TestOpenStatChatForWorkflowUsesObjectConversationContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/conversations/object" {
+			t.Fatalf("unexpected StatChat request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("X-Internal-API-Key") != "internal-key" || r.Header.Get("X-StatGate-User-ID") != "enterprise-workflow" || r.Header.Get("X-Tenant-ID") != "tenant-1" {
+			t.Fatalf("missing service identity headers")
+		}
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("invalid payload: %v", err)
+		}
+		if payload["objectRef"] != "obj:enterprise:workflow:instance-1" {
+			t.Fatalf("unexpected object reference: %v", payload["objectRef"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "conversation-1"})
+	}))
+	defer server.Close()
+	t.Setenv("STATCHAT_API_URL", server.URL)
+	t.Setenv("STATGATE_INTERNAL_API_KEY", "internal-key")
+
+	err := openStatChatForWorkflow(
+		WorkflowInstance{ID: "instance-1", OrgID: "tenant-1", Assignee: "user-1"},
+		WorkflowDefinition{ID: "workflow-1", Name: "Approval"},
+		WorkflowStep{Name: "Coordinate", Params: map[string]interface{}{}},
+	)
+	if err != nil {
+		t.Fatalf("expected object conversation creation to succeed: %v", err)
 	}
 }
 

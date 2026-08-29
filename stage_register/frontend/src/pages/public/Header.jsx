@@ -1,17 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { getValidToken } from "../../utils/auth";
-
-const launcherApps = [
-    { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bi bi-house', description: 'Open StatGate Analytics dashboard' },
-    { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bi bi-table', description: 'Open the analytics dataset catalog' },
-    { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bi bi-journal-bookmark', description: 'Open the analytics notebook workspace' },
-    { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bi bi-brain', description: 'Open the semantic indicator registry' },
-    { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bi bi-shield-lock', description: 'Open ABAC security controls' },
-    { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bi bi-bank', description: 'Open executive decision support' },
-    { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', description: 'Open the StatGate launcher' },
-    { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bi bi-journal', description: 'Open the Field Operations Registry' },
-];
+import launcherApps from "../../config/launcherApps";
 
 const Header = () => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -63,7 +53,7 @@ const Header = () => {
         <header className="public-header">
             <div className="header-content">
                 <div className="brand-section">
-                    <img src="/statgate-logo.svg" alt="StatGate logo" className="brand-logo" />
+                    <img src="/statgate-logo.png" alt="StatGate logo" className="brand-logo" />
                     <div className="brand-text">
                         <h1>StatGate</h1>
                         <p>Field Operations & Agent Workforce Registry</p>

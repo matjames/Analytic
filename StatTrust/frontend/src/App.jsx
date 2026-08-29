@@ -38,8 +38,8 @@ const AlertTriangleIcon = ({ style = {} }) => (
 );
 
 const GridIcon = ({ style = {} }) => (
-  <svg style={{ width: '18px', height: '18px', ...style }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+  <svg style={{ width: '18px', height: '18px', ...style }} fill="currentColor" viewBox="0 0 18 18" aria-hidden="true">
+    {[3, 9, 15].flatMap(y => [3, 9, 15].map(x => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.6" />))}
   </svg>
 );
 
@@ -212,8 +212,8 @@ export default function App() {
     { name: 'PMS', port: 3010, url: 'http://localhost:3010', icon: '🏗️', desc: 'Project Portfolio' },
     { name: 'RMS', port: 3011, url: 'http://localhost:3011', icon: '🔬', desc: 'Research & Ethics' },
     { name: 'StatGovernance', port: 3012, url: 'http://localhost:3012', icon: '⚖️', desc: 'Audit & Compliance' },
-    { name: 'StatSpatial', port: 4200, url: 'http://localhost:4200', icon: '🗺️', desc: 'Geospatial Intelligence' },
-    { name: 'StatTrust', port: 3013, url: 'http://localhost:3013', icon: '🛡️', desc: 'Security, Trust & ID' },
+    { name: 'StatSpatial', port: 3014, url: 'http://localhost:3014', icon: '🗺️', desc: 'Geospatial Intelligence' },
+{ name: 'Report Builder', port: 8110, url: 'http://localhost:8110/builder.html', icon: '🧮', desc: 'Visual YAML Reports & Maps' },
   ];
 
   return (
@@ -232,18 +232,20 @@ export default function App() {
         zIndex: 50
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #06b6d4, #6366f1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 16px rgba(6, 182, 212, 0.4)'
-          }}>
-            <ShieldIcon style={{ color: '#ffffff' }} />
-          </div>
+          <img
+            src="/logo.png"
+            alt="StatGate"
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              objectFit: 'contain',
+              background: '#ffffff',
+              padding: '3px',
+              boxShadow: '0 0 16px rgba(6, 182, 212, 0.25)'
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px', fontWeight: 800, letterSpacing: '-0.5px', color: '#f3f4f6' }}>StatTrust</span>
@@ -307,9 +309,9 @@ export default function App() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>StatGate Unified Ecosystem</span>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>10 Connected Apps</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>9 Connected Apps</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
             {statGateApps.map(app => (
               <a
                 key={app.name}
@@ -318,7 +320,10 @@ export default function App() {
                 rel="noreferrer"
                 style={{
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
                   gap: '10px',
                   padding: '10px',
                   borderRadius: '10px',

@@ -1,0 +1,12 @@
+{
+  "admin": [
+    "__builder",
+    "__admin"
+  ],
+  "analyst": [
+    "__builder"
+  ],
+  "viewer": [
+    "__builder"
+  ]
+}

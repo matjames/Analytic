@@ -481,6 +481,21 @@ export const MOCK_APPLICATIONS: Application[] = [
     documentation: 'http://localhost:8025',
     tags: ['email', 'testing', 'dev'],
   },
+  {
+    id: 'app-report-builder',
+    name: 'StatGate Report Builder',
+    description: 'Visual YAML report builder & explorer — schema introspection, KPIs, charts, maps and tables over the analytics data warehouse',
+    icon: '🧮',
+    url: 'http://localhost:8110/builder.html',
+    category: AppCategory.REPORTING,
+    status: AppStatus.OPERATIONAL,
+    requiredRoles: [UserRole.VIEWER, UserRole.ANALYST, UserRole.MANAGER, UserRole.ADMIN],
+    version: '1.0.0',
+    lastUpdated: new Date('2026-08-22'),
+    healthEndpoint: 'http://localhost:8110/health',
+    documentation: 'http://localhost:8110/',
+    tags: ['builder', 'reports', 'yaml', 'dashboard', 'explorer', 'moH'],
+  },
 ];
 
 // Application categories

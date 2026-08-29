@@ -1,0 +1,183 @@
+/**
+ * AimaraJS Tree Styles - Customized for DWH Visualization
+ * dTree-style (Windows Explorer) look: dotted connector lines,
+ * boxed +/- toggles on the line, folder/page icons, compact rows.
+ * Recreated in CSS/SVG (no image assets), themed via CSS variables.
+ */
+
+/* Tree Container */
+.aimara-tree-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Main tree list — 18px cell grid, compact Explorer density */
+ul.aimara-tree,
+ul.aimara-tree ul.tree-children {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    cursor: default;
+    white-space: nowrap;
+}
+
+ul.aimara-tree {
+    font-size: var(--text-xs, 11px);
+    color: var(--text-primary, #333);
+    padding: 4px 0;
+}
+
+/* Each depth indents by one 18px cell */
+ul.aimara-tree ul.tree-children {
+    padding-left: 18px;
+}
+
+/* Tree node (li) */
+li.tree-node {
+    margin: 0;
+    padding: 0;
+    position: relative;
+}
+
+/* Vertical dotted connector through the toggle column */
+ul.tree-children > li.tree-node::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 1px dotted var(--tree-line-color, #999);
+}
+
+/* Last sibling: line stops at the elbow */
+ul.tree-children > li.tree-node.last::before {
+    bottom: auto;
+    height: 9px;
+}
+
+/* Horizontal dotted elbow into the node */
+ul.tree-children > li.tree-node::after {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    width: 9px;
+    height: 0;
+    border-top: 1px dotted var(--tree-line-color, #999);
+}
+
+/* Toggle cell (18x18) */
+.tree-toggle {
+    position: relative;
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: top;
+    cursor: pointer;
+    flex-shrink: 0;
+    z-index: 1;
+}
+
+/* Boxed +/- toggle sitting on the connector line */
+.tree-toggle.collapsed::before,
+.tree-toggle.expanded::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 9px;
+    height: 9px;
+    background-color: var(--bg-tertiary, #eeeae2);
+    border: 1px solid var(--border-dark, #8a8a8a);
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+/* Minus bar (expanded) */
+.tree-toggle.expanded::before {
+    background-image: linear-gradient(var(--ink, #333), var(--ink, #333));
+    background-size: 5px 1px;
+}
+
+/* Plus crosshair (collapsed) */
+.tree-toggle.collapsed::before {
+    background-image: linear-gradient(var(--ink, #333), var(--ink, #333)),
+                      linear-gradient(var(--ink, #333), var(--ink, #333));
+    background-size: 5px 1px, 1px 5px;
+}
+
+/* Node content wrapper: icon cell + label */
+.tree-content {
+    display: inline-flex;
+    align-items: flex-start;
+    max-width: calc(100% - 18px);
+    padding: 0;
+    cursor: pointer;
+    vertical-align: top;
+    line-height: 18px;
+    color: var(--text-primary, #333);
+}
+
+/* Icon cell — page (leaf) by default */
+.tree-content::before {
+    content: "";
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 1.5h6l3 3v10h-9z' fill='%23fff' stroke='%237d8fa0'/%3E%3Cpath d='M9.5 1.5v3h3' fill='none' stroke='%237d8fa0'/%3E%3Cpath d='M5.5 7.5h5M5.5 9.5h5M5.5 11.5h3.5' fill='none' stroke='%23b9c6d1'/%3E%3C/svg%3E") center / 15px 15px no-repeat;
+}
+
+/* Closed folder (branch, collapsed) */
+.tree-toggle.collapsed + .tree-content::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1.5 3.5h4.6l1.4 1.6h7v7.4h-13z' fill='%23fcd95c' stroke='%23a07a1f'/%3E%3C/svg%3E");
+}
+
+/* Open folder (branch, expanded) */
+.tree-toggle.expanded + .tree-content::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1.5 3.5h4.6l1.4 1.6h5v2h-9l-1.5 4.4z' fill='%23e3b64c' stroke='%23a07a1f'/%3E%3Cpath d='M3.6 7.1h10.9l-2.1 5.4H1.6z' fill='%23fcd95c' stroke='%23a07a1f'/%3E%3C/svg%3E");
+}
+
+/* Node label — wraps long report names instead of clipping them */
+.tree-text {
+    margin-left: 2px;
+    padding: 1px 3px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.tree-content:hover .tree-text {
+    text-decoration: underline;
+}
+
+/* Selected / active report: steel-blue label highlight (dTree nodeSel) */
+.tree-content.selected .tree-text,
+.tree-content.active .tree-text {
+    background-color: var(--tree-selected-bg, #c0d2ec);
+}
+
+.tree-content.active .tree-text {
+    font-weight: 600;
+}
+
+/* Icon (optional, set via createNode p_icon) */
+.tree-icon {
+    flex-shrink: 0;
+    font-size: 1em;
+}
+
+/* Active ancestor — the parent category of the active report */
+li.tree-node.active-ancestor > .tree-content .tree-text {
+    color: var(--accent-color, #2980b9);
+    font-weight: 600;
+}
+
+/* Hidden state for search filtering */
+li.tree-node.search-hidden {
+    display: none !important;
+}

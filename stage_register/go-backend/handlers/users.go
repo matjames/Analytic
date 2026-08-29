@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go-backend/configs"
 	"go-backend/models"
@@ -128,11 +129,11 @@ func RegisterUser(c *gin.Context) {
 
 	var user models.User
 	err = configs.DB.QueryRow(
-		`INSERT INTO users (role, first_name, last_name, email, username, password, organisation, phoneno, district_id, "createdAt", "updatedAt")
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-		 RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`,
+		`INSERT INTO users (role, first_name, last_name, email, username, password, organisation, phoneno, district_id, email_verified, "createdAt", "updatedAt")
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, NOW(), NOW())
+		 RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, email_verified, "createdAt", "updatedAt"`,
 		role, req.FirstName, req.LastName, req.Email, req.Username, string(hashed), req.Organisation, req.Phoneno, req.DistrictID,
-	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.EmailVerified, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Check for duplicate key error (PostgreSQL error code 23505)
@@ -144,14 +145,12 @@ func RegisterUser(c *gin.Context) {
 		return
 	}
 
-	user = toSafeUser(user)
-	token, err := utils.SignUserToken(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+	verificationURL, deliveryErr := createAndSendVerification(user.ID, user.Email)
+	if deliveryErr != nil && isProduction() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "verification email could not be delivered"})
 		return
 	}
-
-	c.JSON(http.StatusCreated, gin.H{"user": user, "token": token})
+	c.JSON(http.StatusCreated, gin.H{"user": toSafeUser(user), "verification_required": true, "verification_url": verificationURL})
 }
 
 // LoginUser - POST /users/login - Login with email or username
@@ -159,6 +158,7 @@ func LoginUser(c *gin.Context) {
 	var req struct {
 		EmailOrUsername string `json:"emailOrUsername" binding:"required"`
 		Password        string `json:"password" binding:"required"`
+		MFACode         string `json:"mfa_code"`
 	}
 
 	if err := c.BindJSON(&req); err != nil {
@@ -168,10 +168,10 @@ func LoginUser(c *gin.Context) {
 
 	var user models.User
 	err := configs.DB.QueryRow(
-		`SELECT id, first_name, last_name, username, email, role, password, organisation, phoneno, district_id, "createdAt", "updatedAt"
+		`SELECT id, first_name, last_name, username, email, role, password, organisation, phoneno, district_id, COALESCE(mfa_enabled, false), COALESCE(mfa_secret, ''), COALESCE(email_verified, true), "createdAt", "updatedAt"
 		 FROM users WHERE email = $1 OR username = $1 LIMIT 1`,
 		req.EmailOrUsername,
-	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.PasswordHash, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.PasswordHash, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.MFAEnabled, &user.MFASecret, &user.EmailVerified, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
@@ -181,10 +181,18 @@ func LoginUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if !user.EmailVerified {
+		c.JSON(http.StatusForbidden, gin.H{"error": "email address must be verified", "email_verification_required": true})
+		return
+	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+	if user.MFAEnabled && !utils.VerifyTOTP(user.MFASecret, req.MFACode, time.Now()) && !consumeRecoveryCode(user.ID, strings.ToUpper(strings.TrimSpace(req.MFACode))) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "MFA code required or invalid", "mfa_required": true})
 		return
 	}
 
@@ -198,7 +206,148 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"user": user, "token": token})
+	refreshToken, err := utils.SignRefreshToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate refresh token"})
+		return
+	}
+	if err := storeRefreshSession(c, refreshToken, user.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist refresh session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user": user, "token": token, "refresh_token": refreshToken})
+}
+
+// SetupMFA creates a pending TOTP secret. It is not enabled until the caller
+// proves possession of the authenticator code through EnableMFA.
+func SetupMFA(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	var email string
+	if err := configs.DB.QueryRow(`SELECT email FROM users WHERE id = $1`, userID).Scan(&email); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	secret, err := utils.GenerateTOTPSecret()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate MFA secret"})
+		return
+	}
+	if _, err := configs.DB.Exec(`UPDATE users SET mfa_secret = $1, mfa_enabled = false, "updatedAt" = NOW() WHERE id = $2`, secret, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save MFA secret"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"secret": secret, "otpauth_uri": utils.TOTPURI(secret, "StatGate", email), "enabled": false})
+}
+
+func EnableMFA(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
+		return
+	}
+	var secret string
+	if err := configs.DB.QueryRow(`SELECT COALESCE(mfa_secret, '') FROM users WHERE id = $1`, userID).Scan(&secret); err != nil || secret == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "MFA setup is required first"})
+		return
+	}
+	if !utils.VerifyTOTP(secret, req.Code, time.Now()) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid MFA code"})
+		return
+	}
+	if _, err := configs.DB.Exec(`UPDATE users SET mfa_enabled = true, "updatedAt" = NOW() WHERE id = $1`, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to enable MFA"})
+		return
+	}
+	recoveryCodes, err := replaceRecoveryCodes(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate recovery codes"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enabled": true, "recovery_codes": recoveryCodes})
+}
+
+func DisableMFA(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
+		return
+	}
+	var secret string
+	if err := configs.DB.QueryRow(`SELECT COALESCE(mfa_secret, '') FROM users WHERE id = $1`, userID).Scan(&secret); err != nil || !utils.VerifyTOTP(secret, req.Code, time.Now()) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid MFA code"})
+		return
+	}
+	if _, err := configs.DB.Exec(`UPDATE users SET mfa_enabled = false, mfa_secret = '', "updatedAt" = NOW() WHERE id = $1`, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to disable MFA"})
+		return
+	}
+	if _, err := configs.DB.Exec(`DELETE FROM mfa_recovery_codes WHERE user_id=$1`, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear recovery codes"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enabled": false})
+}
+
+// RefreshUserToken exchanges a valid Registry refresh token for a new access
+// token. The user is reloaded so role and tenant changes take effect without
+// waiting for the old access token to expire.
+func RefreshUserToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token is required"})
+		return
+	}
+
+	userID, err := utils.RefreshSubject(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
+		return
+	}
+	if !consumeRefreshSession(req.RefreshToken, userID) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token has been revoked or already used"})
+		return
+	}
+
+	var user models.User
+	err = configs.DB.QueryRow(
+		`SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"
+		 FROM users WHERE id = $1 LIMIT 1`, userID,
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User no longer exists"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user"})
+		return
+	}
+
+	user = toSafeUser(user)
+	accessToken, err := utils.SignUserToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+	newRefreshToken, err := utils.SignRefreshToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate refresh token"})
+		return
+	}
+	if err := storeRefreshSession(c, newRefreshToken, user.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist refresh session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user": user, "token": accessToken, "refresh_token": newRefreshToken})
 }
 
 // GetCurrentUser - GET /users/me - Get current user
@@ -207,10 +356,10 @@ func GetCurrentUser(c *gin.Context) {
 
 	var user models.User
 	err := configs.DB.QueryRow(
-		`SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, COALESCE(must_change_password, false), "createdAt", "updatedAt"
-		 FROM users WHERE id = $1 LIMIT 1`,
+		`SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, COALESCE(must_change_password, false), COALESCE(mfa_enabled, false), "createdAt", "updatedAt"
+			 FROM users WHERE id = $1 LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.MustChangePassword, &user.MFAEnabled, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -227,10 +376,19 @@ func GetCurrentUser(c *gin.Context) {
 
 // ListUsers - GET /users - List all users
 func ListUsers(c *gin.Context) {
-	rows, err := configs.DB.Query(
-		`SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"
-		 FROM users ORDER BY id ASC`,
-	)
+	if !requireDirectoryAccess(c) {
+		return
+	}
+	where, values, idx := []string{}, []interface{}{}, 1
+	var ok bool
+	where, values, idx, ok = appendAuthenticatedUserScope(c, where, values, idx)
+	if !ok {
+		return
+	}
+
+	query := `SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"
+		 FROM users` + combineWhere(where) + ` ORDER BY id ASC`
+	rows, err := configs.DB.Query(query, values...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -258,6 +416,9 @@ func ListUsers(c *gin.Context) {
 
 // GetUser - GET /users/:id - Get user by id
 func GetUser(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -265,10 +426,18 @@ func GetUser(c *gin.Context) {
 	}
 
 	var user models.User
+	where, values, idx := []string{"id = $1"}, []interface{}{id}, 2
+	var ok bool
+	where, values, idx, ok = appendAuthenticatedUserScope(c, where, values, idx)
+	if !ok {
+		return
+	}
+	_ = idx
+
 	err = configs.DB.QueryRow(
 		`SELECT id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"
-		 FROM users WHERE id = $1`,
-		id,
+		 FROM users`+combineWhere(where),
+		values...,
 	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -286,6 +455,9 @@ func GetUser(c *gin.Context) {
 
 // UpdateUser - PUT /users/:id - Update user
 func UpdateUser(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -315,6 +487,10 @@ func UpdateUser(c *gin.Context) {
 	idx := 1
 
 	if req.Role != nil {
+		if !roleAllowedForAuthenticatedAdmin(c, req.Role) {
+			return
+		}
+		*req.Role = strings.ToLower(strings.TrimSpace(*req.Role))
 		fields = append(fields, "role = $"+strconv.Itoa(idx))
 		if *req.Role == "" {
 			values = append(values, nil)
@@ -375,13 +551,11 @@ func UpdateUser(c *gin.Context) {
 		idx++
 	}
 
-	if req.Organisation != nil {
+	if org, ok := scopedOrganisationForWrite(c, req.Organisation); !ok {
+		return
+	} else if req.Organisation != nil || org != nil {
 		fields = append(fields, "organisation = $"+strconv.Itoa(idx))
-		if *req.Organisation == "" {
-			values = append(values, nil)
-		} else {
-			values = append(values, *req.Organisation)
-		}
+		values = append(values, org)
 		idx++
 	}
 
@@ -395,9 +569,9 @@ func UpdateUser(c *gin.Context) {
 		idx++
 	}
 
-	if req.DistrictID != nil {
+	if districtID := scopedDistrictForWrite(c, req.DistrictID); req.DistrictID != nil || (!isPlatformAdmin(c) && districtID != nil) {
 		fields = append(fields, "district_id = $"+strconv.Itoa(idx))
-		values = append(values, *req.DistrictID)
+		values = append(values, districtID)
 		idx++
 	}
 
@@ -407,9 +581,16 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	fields = append(fields, `"updatedAt" = NOW()`)
+	where := []string{"id = $" + strconv.Itoa(idx)}
 	values = append(values, id)
+	idx++
+	var ok bool
+	where, values, idx, ok = appendAuthenticatedUserScope(c, where, values, idx)
+	if !ok {
+		return
+	}
 
-	query := `UPDATE users SET ` + strings.Join(fields, ", ") + ` WHERE id = $` + strconv.Itoa(idx) + ` RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`
+	query := `UPDATE users SET ` + strings.Join(fields, ", ") + combineWhere(where) + ` RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`
 
 	var user models.User
 	err = configs.DB.QueryRow(query, values...).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
@@ -498,6 +679,9 @@ func ChangePassword(c *gin.Context) {
 
 // ResetPassword - POST /users/:id/reset-password - Reset user password
 func ResetPassword(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -513,8 +697,8 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
-	if len(req.NewPassword) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters long"})
+	if !passwordMeetsPolicy(req.NewPassword) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 10 characters and include upper/lower case and a digit"})
 		return
 	}
 
@@ -525,10 +709,17 @@ func ResetPassword(c *gin.Context) {
 	}
 
 	var user models.User
+	where, values, idx := []string{"id = $2"}, []interface{}{string(hashed), id}, 3
+	var ok bool
+	where, values, idx, ok = appendAuthenticatedUserScope(c, where, values, idx)
+	if !ok {
+		return
+	}
+	_ = idx
 	err = configs.DB.QueryRow(
-		`UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2
+		`UPDATE users SET password = $1, "updatedAt" = NOW()`+combineWhere(where)+`
 		 RETURNING id, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`,
-		string(hashed), id,
+		values...,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -546,13 +737,23 @@ func ResetPassword(c *gin.Context) {
 
 // DeleteUser - DELETE /users/:id - Delete user
 func DeleteUser(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	result, err := configs.DB.Exec("DELETE FROM users WHERE id = $1", id)
+	where, values, idx := []string{"id = $1"}, []interface{}{id}, 2
+	var ok bool
+	where, values, idx, ok = appendAuthenticatedUserScope(c, where, values, idx)
+	if !ok {
+		return
+	}
+	_ = idx
+	result, err := configs.DB.Exec("DELETE FROM users"+combineWhere(where), values...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -569,6 +770,9 @@ func DeleteUser(c *gin.Context) {
 
 // CreateUser - POST /users - Create a new user (authenticated users)
 func CreateUser(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
 	var req struct {
 		Role         *string `json:"role"`
 		FirstName    *string `json:"first_name"`
@@ -595,6 +799,17 @@ func CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 10 characters and include upper/lower case and a digit"})
 		return
 	}
+	if !roleAllowedForAuthenticatedAdmin(c, req.Role) {
+		return
+	}
+	if req.Role != nil {
+		*req.Role = strings.ToLower(strings.TrimSpace(*req.Role))
+	}
+	organisation, ok := scopedOrganisationForWrite(c, req.Organisation)
+	if !ok {
+		return
+	}
+	districtID := scopedDistrictForWrite(c, req.DistrictID)
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
 	if err != nil {
@@ -607,7 +822,7 @@ func CreateUser(c *gin.Context) {
 		`INSERT INTO users (role, first_name, last_name, email, username, password, organisation, phoneno, district_id, "createdAt", "updatedAt")
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
 		 RETURNING id, first_name, last_name, username, email, role, organisation, phoneno, district_id, "createdAt", "updatedAt"`,
-		req.Role, req.FirstName, req.LastName, req.Email, req.Username, string(hashed), req.Organisation, req.Phoneno, req.DistrictID,
+		req.Role, req.FirstName, req.LastName, req.Email, req.Username, string(hashed), organisation, req.Phoneno, districtID,
 	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.Role, &user.Organisation, &user.Phoneno, &user.DistrictID, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
@@ -627,6 +842,14 @@ func CreateUser(c *gin.Context) {
 
 // UploadUsersCSV - POST /users/upload - Bulk upload users from CSV with default password
 func UploadUsersCSV(c *gin.Context) {
+	if !requireInvitationAdmin(c) {
+		return
+	}
+	requestScopedOrg, ok := scopedOrganisationForWrite(c, nil)
+	if !ok {
+		return
+	}
+	requestScopedDistrict := scopedDistrictForWrite(c, nil)
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file is required"})
@@ -702,9 +925,9 @@ func UploadUsersCSV(c *gin.Context) {
 	}
 
 	var (
-		totalRows   int
-		created     int
-		failed      []failure
+		totalRows       int
+		created         int
+		failed          []failure
 		tempCredentials []gin.H
 	)
 
@@ -790,6 +1013,13 @@ func UploadUsersCSV(c *gin.Context) {
 				districtID = &val
 			}
 		}
+		if !isPlatformAdmin(c) {
+			org = requestScopedOrg
+			districtID = requestScopedDistrict
+		} else {
+			org = trimOptionalString(org)
+			districtID = trimOptionalString(districtID)
+		}
 
 		// Role allowlist enforcement for bulk-provisioned accounts
 		if role != nil {
@@ -803,6 +1033,16 @@ func UploadUsersCSV(c *gin.Context) {
 				})
 				continue
 			}
+			if !canAuthenticatedAdminManageRole(c, &roleName) {
+				failed = append(failed, failure{
+					Row:      totalRows + 1,
+					Email:    email,
+					Username: username,
+					Error:    "role is not permitted for tenant administration",
+				})
+				continue
+			}
+			role = &roleName
 		}
 
 		// Every provisioned account receives a unique one-time password and

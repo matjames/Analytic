@@ -5,7 +5,7 @@
 -- data sovereignty, fail-closed access controls, and cross-module linkage.
 -- ══════════════════════════════════════════════════════════════════════════
 
-CREATE DATABASE statfederation;
+SELECT 'CREATE DATABASE statfederation' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'statfederation') \gexec
 
 \getenv statfederation_pw STATFEDERATION_DB_PASSWORD
 SELECT format('CREATE ROLE "StatFederation" WITH LOGIN PASSWORD %L', :'statfederation_pw')
@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS data_sharing_agreements (
     id VARCHAR(64) PRIMARY KEY,
     dsa_number VARCHAR(64) NOT NULL UNIQUE,
     title VARCHAR(255) NOT NULL,
-    provider_node_id VARCHAR(64) NOT NULL REFERENCES federated_nodes(id) ON DELETE RESTRICTED,
-    consumer_node_id VARCHAR(64) NOT NULL REFERENCES federated_nodes(id) ON DELETE RESTRICTED,
+    provider_node_id VARCHAR(64) NOT NULL REFERENCES federated_nodes(id) ON DELETE RESTRICT,
+    consumer_node_id VARCHAR(64) NOT NULL REFERENCES federated_nodes(id) ON DELETE RESTRICT,
     status VARCHAR(32) NOT NULL DEFAULT 'DRAFT', -- 'DRAFT', 'UNDER_REVIEW', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'REVOKED'
     access_tier VARCHAR(32) NOT NULL DEFAULT 'RESTRICTED', -- 'PUBLIC_OPEN', 'INTER_AGENCY', 'DIPLOMATIC_CONFIDENTIAL', 'STRICT_SOVEREIGN'
     permitted_domains JSONB NOT NULL DEFAULT '[]'::jsonb, -- e.g. ["agriculture", "health", "demographics", "sdg"]

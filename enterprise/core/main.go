@@ -110,6 +110,7 @@ type WidgetLayout struct {
 
 type FileRecord struct {
 	ID           string                 `json:"id"`
+	TenantID     string                 `json:"tenant_id,omitempty"`
 	Name         string                 `json:"name"`
 	OriginalName string                 `json:"original_name"`
 	Path         string                 `json:"path"`

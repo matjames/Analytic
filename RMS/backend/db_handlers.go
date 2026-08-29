@@ -48,10 +48,10 @@ func dbGetResearchProjects(c *gin.Context) {
 		COALESCE(start_date::TEXT,''), COALESCE(end_date::TEXT,''),
 		COALESCE(target_geo,''), budget_total, spent_total,
 		COALESCE(tags, '{}'), COALESCE(pms_project_id,''), COALESCE(statchat_room_id,''),
-		created_time, updated_time
-		FROM rms.research_projects ORDER BY created_time DESC`
+		created_time, updated_time, COALESCE(workspace_id, '')
+		FROM rms.research_projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) ORDER BY created_time DESC`
 
-	rows, err := DB.Query(q)
+	rows, err := DB.Query(q, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -65,7 +65,7 @@ func dbGetResearchProjects(c *gin.Context) {
 		err := rows.Scan(&r.ID, &r.Code, &r.Name, &r.Description, &r.Type, &r.Stage, &r.Progress,
 			&r.PrincipalInvestigator, &r.Owner, &r.Organisation, &r.Portfolio, &r.Programme,
 			&r.StartDate, &r.EndDate, &r.TargetGeo, &r.BudgetTotal, &r.SpentTotal,
-			&tags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime)
+			&tags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime, &r.WorkspaceID)
 		if err != nil {
 			continue
 		}
@@ -95,13 +95,13 @@ func dbCreateResearch(c *gin.Context) {
 		INSERT INTO rms.research_projects
 		(id, code, name, description, type, stage, principal_investigator, owner,
 		organisation, portfolio, programme, start_date, end_date, target_geo,
-		budget_total, tags, pms_project_id)
-		VALUES ($1,$2,$3,$4,$5,'Research Idea',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		budget_total, tags, pms_project_id, workspace_id)
+		VALUES ($1,$2,$3,$4,$5,'Research Idea',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULLIF($17,''))`,
 		id, req.Code, req.Name, req.Description, req.Type,
 		req.PrincipalInvestigator, req.Owner, req.Organisation,
 		req.Portfolio, req.Programme,
 		nullDate(req.StartDate), nullDate(req.EndDate),
-		req.TargetGeo, req.BudgetTotal, tags, nullStr(req.PmsProjectID))
+		req.TargetGeo, req.BudgetTotal, tags, nullStr(req.PmsProjectID), workspaceIDContext(c))
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -123,11 +123,11 @@ func dbCreateResearch(c *gin.Context) {
 		COALESCE(start_date::TEXT,''), COALESCE(end_date::TEXT,''),
 		COALESCE(target_geo,''), budget_total, spent_total,
 		COALESCE(tags, '{}'), COALESCE(pms_project_id,''), COALESCE(statchat_room_id,''),
-		created_time, updated_time FROM rms.research_projects WHERE id=$1`, id).Scan(
+		created_time, updated_time, COALESCE(workspace_id, '') FROM rms.research_projects WHERE id=$1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, id, workspaceIDContext(c)).Scan(
 		&r.ID, &r.Code, &r.Name, &r.Description, &r.Type, &r.Stage, &r.Progress,
 		&r.PrincipalInvestigator, &r.Owner, &r.Organisation, &r.Portfolio, &r.Programme,
 		&r.StartDate, &r.EndDate, &r.TargetGeo, &r.BudgetTotal, &r.SpentTotal,
-		&rtags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime)
+		&rtags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime, &r.WorkspaceID)
 	r.Tags = rtags
 	c.JSON(201, r)
 }
@@ -142,11 +142,11 @@ func dbGetResearchWorkspace(c *gin.Context) {
 		COALESCE(start_date::TEXT,''), COALESCE(end_date::TEXT,''),
 		COALESCE(target_geo,''), budget_total, spent_total,
 		COALESCE(tags, '{}'), COALESCE(pms_project_id,''), COALESCE(statchat_room_id,''),
-		created_time, updated_time FROM rms.research_projects WHERE id=$1`, id).Scan(
+		created_time, updated_time, COALESCE(workspace_id, '') FROM rms.research_projects WHERE id=$1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, id, workspaceIDContext(c)).Scan(
 		&r.ID, &r.Code, &r.Name, &r.Description, &r.Type, &r.Stage, &r.Progress,
 		&r.PrincipalInvestigator, &r.Owner, &r.Organisation, &r.Portfolio, &r.Programme,
 		&r.StartDate, &r.EndDate, &r.TargetGeo, &r.BudgetTotal, &r.SpentTotal,
-		&tags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime)
+		&tags, &r.PmsProjectID, &r.StatchatRoomID, &r.CreatedTime, &r.UpdatedTime, &r.WorkspaceID)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Research study not found"})
 		return
@@ -164,7 +164,11 @@ func dbGetResearchWorkspace(c *gin.Context) {
 	workspace.Tasks = fetchTasks(id)
 	workspace.Meetings = fetchMeetings(id)
 	workspace.Risks = fetchRisks(id)
-	workspace.ChatMessages = fetchChatMessages(id)
+	workspace.ChatMessages, err = loadResearchDiscussion(c, r)
+	workspace.ChatIntegrationReady = err == nil
+	if workspace.ChatMessages == nil {
+		workspace.ChatMessages = []ChatMessage{}
+	}
 	workspace.AuditLogs = fetchAuditLogs(id)
 
 	c.JSON(200, workspace)
@@ -184,11 +188,11 @@ func dbUpdateResearch(c *gin.Context) {
 		organisation=$6, portfolio=$7, programme=$8,
 		start_date=$9, end_date=$10, target_geo=$11,
 		budget_total=$12, progress=$13, tags=$14, updated_time=NOW()
-		WHERE id=$15`,
+		WHERE id=$15 AND (workspace_id = NULLIF($16, '') OR NULLIF($16, '') IS NULL)`,
 		req.Name, req.Description, req.Type, req.PrincipalInvestigator, req.Owner,
 		req.Organisation, req.Portfolio, req.Programme,
 		nullDate(req.StartDate), nullDate(req.EndDate), req.TargetGeo,
-		req.BudgetTotal, req.Progress, tags, id)
+		req.BudgetTotal, req.Progress, tags, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -199,7 +203,7 @@ func dbUpdateResearch(c *gin.Context) {
 
 func dbDeleteResearch(c *gin.Context) {
 	id := c.Param("id")
-	_, err := DB.Exec(`DELETE FROM rms.research_projects WHERE id=$1`, id)
+	_, err := DB.Exec(`DELETE FROM rms.research_projects WHERE id=$1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -231,8 +235,8 @@ func dbUpdateResearchStage(c *gin.Context) {
 		}
 	}
 
-	_, err := DB.Exec(`UPDATE rms.research_projects SET stage=$1, progress=$2, updated_time=NOW() WHERE id=$3`,
-		req.Stage, progress, id)
+	_, err := DB.Exec(`UPDATE rms.research_projects SET stage=$1, progress=$2, updated_time=NOW() WHERE id=$3 AND (workspace_id = NULLIF($4, '') OR NULLIF($4, '') IS NULL)`,
+		req.Stage, progress, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -290,19 +294,20 @@ func dbGetResearchDashboard(c *gin.Context) {
 
 func dbGetDashboard(c *gin.Context) {
 	var summary DashboardSummary
+	workspaceID := workspaceIDContext(c)
 
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.research_projects`).Scan(&summary.TotalResearch)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.research_projects WHERE stage NOT IN ('Archive','Knowledge Repository')`).Scan(&summary.ActiveStudies)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.proposals WHERE status IN ('Draft','Under Review','Submitted')`).Scan(&summary.ProposalsPending)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.ethics_applications WHERE status IN ('Pending','Under Review')`).Scan(&summary.EthicsPending)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.publications`).Scan(&summary.TotalPublications)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.datasets`).Scan(&summary.TotalDatasets)
-	DB.QueryRow(`SELECT COUNT(*) FROM rms.literature`).Scan(&summary.TotalLiterature)
-	DB.QueryRow(`SELECT COALESCE(SUM(budget_total),0), COALESCE(SUM(spent_total),0), COALESCE(AVG(progress),0) FROM rms.research_projects`).
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.research_projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.TotalResearch)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.research_projects WHERE stage NOT IN ('Archive','Knowledge Repository') AND (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.ActiveStudies)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.proposals x JOIN rms.research_projects p ON p.id=x.research_id WHERE x.status IN ('Draft','Under Review','Submitted') AND (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.ProposalsPending)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.ethics_applications x JOIN rms.research_projects p ON p.id=x.research_id WHERE x.status IN ('Pending','Under Review') AND (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.EthicsPending)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.publications x JOIN rms.research_projects p ON p.id=x.research_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.TotalPublications)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.datasets x JOIN rms.research_projects p ON p.id=x.research_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.TotalDatasets)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.literature x JOIN rms.research_projects p ON p.id=x.research_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).Scan(&summary.TotalLiterature)
+	DB.QueryRow(`SELECT COALESCE(SUM(budget_total),0), COALESCE(SUM(spent_total),0), COALESCE(AVG(progress),0) FROM rms.research_projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)`, workspaceID).
 		Scan(&summary.TotalBudget, &summary.TotalSpent, &summary.AvgProgress)
 
 	// By stage breakdown
-	rows, _ := DB.Query(`SELECT stage, COUNT(*) FROM rms.research_projects GROUP BY stage ORDER BY COUNT(*) DESC`)
+	rows, _ := DB.Query(`SELECT stage, COUNT(*) FROM rms.research_projects WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) GROUP BY stage ORDER BY COUNT(*) DESC`, workspaceID)
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -317,7 +322,7 @@ func dbGetDashboard(c *gin.Context) {
 
 	// Recent activity
 	summary.RecentActivity = []AuditLog{}
-	arows, _ := DB.Query(`SELECT id, research_id, action, performed_by, COALESCE(details,''), created_time FROM rms.audit_logs ORDER BY created_time DESC LIMIT 10`)
+	arows, _ := DB.Query(`SELECT a.id, a.research_id, a.action, a.performed_by, COALESCE(a.details,''), a.created_time FROM rms.audit_logs a JOIN rms.research_projects p ON p.id=a.research_id WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) ORDER BY a.created_time DESC LIMIT 10`, workspaceID)
 	if arows != nil {
 		defer arows.Close()
 		for arows.Next() {
@@ -1651,15 +1656,12 @@ func dbPostChatMessage(c *gin.Context) {
 	if req.Channel == "" {
 		req.Channel = "general"
 	}
-	id := newID() + "ch"
-	_, err := DB.Exec(`INSERT INTO rms.chat_messages (id, research_id, sender, channel, message)
-		VALUES ($1,$2,$3,$4,$5)`,
-		id, req.ResearchID, req.Sender, req.Channel, req.Message)
+	message, err := sendResearchDiscussionMessage(c, req.ResearchID, req.Channel, req.Message)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		writeResearchDiscussionError(c, err)
 		return
 	}
-	c.JSON(201, gin.H{"id": id, "success": true})
+	c.JSON(http.StatusCreated, message)
 }
 
 // ─────────────────────────────────────────────────────────
@@ -1705,7 +1707,7 @@ func dbSearch(c *gin.Context) {
 
 	var results []SearchResult
 
-	rows, _ := DB.Query(`SELECT id, name, COALESCE(description,'') FROM rms.research_projects WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 LIMIT 10`, q)
+	rows, _ := DB.Query(`SELECT id, name, COALESCE(description,'') FROM rms.research_projects WHERE (LOWER(name) LIKE $1 OR LOWER(description) LIKE $1) AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL) LIMIT 10`, q, workspaceIDContext(c))
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -1716,7 +1718,7 @@ func dbSearch(c *gin.Context) {
 		}
 	}
 
-	rows2, _ := DB.Query(`SELECT id, title, COALESCE(authors,'') FROM rms.literature WHERE LOWER(title) LIKE $1 OR LOWER(authors) LIKE $1 LIMIT 10`, q)
+	rows2, _ := DB.Query(`SELECT l.id, l.title, COALESCE(l.authors,'') FROM rms.literature l JOIN rms.research_projects p ON p.id=l.research_id WHERE (LOWER(l.title) LIKE $1 OR LOWER(l.authors) LIKE $1) AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL) LIMIT 10`, q, workspaceIDContext(c))
 	if rows2 != nil {
 		defer rows2.Close()
 		for rows2.Next() {
@@ -1727,7 +1729,7 @@ func dbSearch(c *gin.Context) {
 		}
 	}
 
-	rows3, _ := DB.Query(`SELECT id, title, COALESCE(authors,'') FROM rms.publications WHERE LOWER(title) LIKE $1 LIMIT 10`, q)
+	rows3, _ := DB.Query(`SELECT r.id, r.title, COALESCE(r.authors,'') FROM rms.publications r JOIN rms.research_projects p ON p.id=r.research_id WHERE LOWER(r.title) LIKE $1 AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL) LIMIT 10`, q, workspaceIDContext(c))
 	if rows3 != nil {
 		defer rows3.Close()
 		for rows3.Next() {
@@ -1919,4 +1921,3 @@ func dbCreateOpenAccessRepo(c *gin.Context) {
 	}
 	c.JSON(201, item)
 }
-

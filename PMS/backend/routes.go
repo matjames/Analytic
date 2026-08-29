@@ -6,6 +6,9 @@ import (
 
 func RegisterRoutes(r *gin.Engine) {
 	r.Use(registryAuthMiddleware())
+	r.Use(workspaceProjectMiddleware())
+	r.Use(workspaceProjectBodyMiddleware())
+	r.Use(workspaceProjectChildIDMiddleware())
 	// API routes
 	api := r.Group("/api")
 	{
@@ -119,6 +122,9 @@ func RegisterRoutes(r *gin.Engine) {
 		// ─── Dashboard / Analytics ───────────────────────────────
 		api.GET("/dashboard", dbGetDashboard)
 		api.GET("/projects/:id/dashboard", dbGetProjectDashboard)
+
+		// ─── Open Standards: IATI 2.03 Development Partner Export ─
+		api.GET("/iati/activities.xml", dbExportIATIActivities)
 
 		// ─── Enterprise Activity Timeline ────────────────────────
 		api.GET("/activity", dbGetActivityTimeline)

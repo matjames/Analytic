@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CallParticipant, CallSession, CallRecording } from '../types';
+import { CallParticipant, CallSession, CallRecording, type CallConnectionState, type CallQuality, type CallQualitySample } from '../types';
 import { fetchCallRecordings, uploadCallRecording } from '../api/client';
 import RecordingPlayer from './RecordingPlayer';
 
@@ -7,13 +7,28 @@ interface Props {
   session: CallSession;
   participants: CallParticipant[];
   localStream: MediaStream | null;
+  screenStream: MediaStream | null;
   remoteStreams: Record<string, MediaStream>;
+  remoteScreenSharers: Record<string, string>;
   micMuted: boolean;
   cameraOff: boolean;
+  isScreenSharing: boolean;
+  screenShareSupported: boolean;
   connecting: boolean;
+  callError?: string | null;
+  connectionState: CallConnectionState;
+  quality: CallQuality;
+  qualityMetrics: Pick<CallQualitySample, 'rttMs' | 'jitterMs' | 'packetLossPct' | 'bitrateKbps'> | null;
+  currentUserId?: string;
   currentUserName?: string;
   onToggleMute: () => void;
   onToggleCamera: () => void;
+  onToggleScreenShare: () => void;
+  onRemoveParticipant?: (userId: string) => void;
+  onRequestMute?: (userId: string) => void;
+  onChangeParticipantRole?: (userId: string, role: 'moderator' | 'participant') => void;
+  pendingMuteRequest?: { fromId: string; fromName: string } | null;
+  onRespondToMuteRequest?: (accept: boolean) => void;
   onHangUp: () => void;
   onEndCall?: () => void;
 }
@@ -28,13 +43,28 @@ export default function CallOverlay({
   session,
   participants,
   localStream,
+  screenStream,
   remoteStreams,
+  remoteScreenSharers,
   micMuted,
   cameraOff,
+  isScreenSharing,
+  screenShareSupported,
   connecting,
+  callError,
+  connectionState,
+  quality,
+  qualityMetrics,
+  currentUserId,
   currentUserName,
   onToggleMute,
   onToggleCamera,
+  onToggleScreenShare,
+  onRemoveParticipant,
+  onRequestMute,
+  onChangeParticipantRole,
+  pendingMuteRequest,
+  onRespondToMuteRequest,
   onHangUp,
   onEndCall,
 }: Props) {
@@ -48,9 +78,9 @@ export default function CallOverlay({
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
 
-  const isHost = participants.some(
-    (p) => p.role === 'host' && p.userId === participants[0]?.userId
-  );
+  const isHost = currentUserId === session.hostId;
+  const isModerator = participants.some((participant) => participant.userId === currentUserId && participant.role === 'moderator');
+  const canModerate = isHost || isModerator;
 
   // Timer
   useEffect(() => {
@@ -60,10 +90,10 @@ export default function CallOverlay({
 
   // Attach local stream
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = screenStream ?? localStream;
     }
-  }, [localStream]);
+  }, [localStream, screenStream]);
 
   // Attach remote streams
   useEffect(() => {
@@ -80,6 +110,7 @@ export default function CallOverlay({
     const streamToRecord = new MediaStream();
     // Add local audio to recording
     localStream.getAudioTracks().forEach((track) => streamToRecord.addTrack(track));
+    (screenStream ?? localStream).getVideoTracks().forEach((track) => streamToRecord.addTrack(track));
     // Add all remote audio/video
     Object.values(remoteStreams).forEach((rs) => {
       rs.getTracks().forEach((track) => streamToRecord.addTrack(track));
@@ -163,6 +194,9 @@ export default function CallOverlay({
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span title={qualityMetrics ? `RTT ${qualityMetrics.rttMs} ms | jitter ${qualityMetrics.jitterMs} ms | loss ${qualityMetrics.packetLossPct}% | ${qualityMetrics.bitrateKbps} kbps` : 'Quality appears after another participant connects'} style={{ padding: '4px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'capitalize', background: quality === 'excellent' || quality === 'good' ? '#166534' : quality === 'fair' ? '#a16207' : quality === 'poor' || quality === 'offline' ? '#991b1b' : '#334155' }}>
+            {connectionState === 'reconnecting' ? 'Recovering' : connectionState === 'offline' ? 'Offline' : `${quality} quality`}
+          </span>
           <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 16 }}>
             {formatDuration(timer)}
           </span>
@@ -182,6 +216,24 @@ export default function CallOverlay({
           opacity: 0.7,
         }}>
           Connecting to call...
+        </div>
+      )}
+
+      {callError && !connecting && (
+        <div role="alert" style={{ padding: '9px 18px', background: '#7f1d1d', textAlign: 'center', fontSize: 13 }}>{callError}</div>
+      )}
+
+      {pendingMuteRequest && onRespondToMuteRequest && (
+        <div role="status" style={{ padding: '10px 18px', background: '#1d4ed8', textAlign: 'center', fontSize: 13 }}>
+          {pendingMuteRequest.fromName} requested that you mute your microphone.
+          <button type="button" onClick={() => onRespondToMuteRequest(true)} style={{ marginLeft: 12 }}>Mute me</button>
+          <button type="button" onClick={() => onRespondToMuteRequest(false)} style={{ marginLeft: 6 }}>Decline</button>
+        </div>
+      )}
+
+      {(connectionState === 'reconnecting' || connectionState === 'offline') && !connecting && (
+        <div role="status" aria-live="polite" style={{ padding: '9px 18px', background: connectionState === 'offline' ? '#7f1d1d' : '#854d0e', textAlign: 'center', fontSize: 13 }}>
+          {connectionState === 'offline' ? 'Network unavailable. Media recovery will resume when you are online.' : 'Connection interrupted. Rejoining signaling and restarting media routes...'}
         </div>
       )}
 
@@ -215,12 +267,12 @@ export default function CallOverlay({
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover',
-                transform: 'scaleX(-1)',
-                display: cameraOff || !localStream ? 'none' : 'block',
+                objectFit: isScreenSharing ? 'contain' : 'cover',
+                transform: isScreenSharing ? 'none' : 'scaleX(-1)',
+                display: (!isScreenSharing && cameraOff) || (!screenStream && !localStream) ? 'none' : 'block',
               }}
             />
-            {(!localStream || cameraOff) && (
+            {(!isScreenSharing && (!localStream || cameraOff)) && (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -241,7 +293,7 @@ export default function CallOverlay({
               padding: '2px 8px',
               borderRadius: 6,
             }}>
-              You {micMuted ? '🔇' : ''}
+              You {isScreenSharing ? '(presenting)' : ''} {micMuted ? '🔇' : ''}
             </div>
           </div>
 
@@ -249,8 +301,8 @@ export default function CallOverlay({
           {hasRemoteVideo ? (
             remoteUserIds.map((userId) => (
               <div key={userId} style={{
-                width: 240,
-                maxHeight: 180,
+                width: remoteScreenSharers[userId] ? 'min(720px, 72vw)' : 240,
+                maxHeight: remoteScreenSharers[userId] ? 'min(68vh, 560px)' : 180,
                 borderRadius: 12,
                 overflow: 'hidden',
                 background: '#1a1f2e',
@@ -262,7 +314,7 @@ export default function CallOverlay({
                   ref={(el) => { remoteVideoRefs.current[userId] = el; }}
                   autoPlay
                   playsInline
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: remoteScreenSharers[userId] ? 'contain' : 'cover' }}
                 />
                 <div style={{
                   position: 'absolute',
@@ -273,8 +325,11 @@ export default function CallOverlay({
                   padding: '2px 8px',
                   borderRadius: 6,
                 }}>
-                  {participants.find((p) => p.userId === userId)?.userName ?? userId}
+                  {participants.find((p) => p.userId === userId)?.userName ?? userId}{remoteScreenSharers[userId] ? ' (presenting)' : ''}
                 </div>
+                {canModerate && onRequestMute && participants.find((p) => p.userId === userId)?.role === 'participant' && <button type="button" onClick={() => onRequestMute(userId)} style={{ position: 'absolute', top: 7, left: 7, border: 0, borderRadius: 6, padding: '4px 7px', background: 'rgba(30,64,175,.9)', color: '#fff', cursor: 'pointer', fontSize: 11 }}>Ask mute</button>}
+                {canModerate && onRemoveParticipant && participants.find((p) => p.userId === userId)?.role === 'participant' && <button type="button" onClick={() => { if (window.confirm('Remove this participant from the call?')) onRemoveParticipant(userId); }} style={{ position: 'absolute', top: 7, right: 7, border: 0, borderRadius: 6, padding: '4px 7px', background: 'rgba(127,29,29,.88)', color: '#fff', cursor: 'pointer', fontSize: 11 }}>Remove</button>}
+                {isHost && onChangeParticipantRole && <select aria-label={`Role for ${userId}`} value={participants.find((p) => p.userId === userId)?.role === 'moderator' ? 'moderator' : 'participant'} onChange={(event) => onChangeParticipantRole(userId, event.target.value as 'moderator' | 'participant')} style={{ position: 'absolute', bottom: 7, right: 7, fontSize: 11 }}><option value="participant">Participant</option><option value="moderator">Moderator</option></select>}
               </div>
             ))
           ) : (
@@ -303,6 +358,7 @@ export default function CallOverlay({
         justifyContent: 'center',
         alignItems: 'center',
         gap: 16,
+        flexWrap: 'wrap',
         flexShrink: 0,
       }}>
         <button
@@ -350,29 +406,54 @@ export default function CallOverlay({
           </button>
         )}
 
+        {isHost && (
+          <button
+            type="button"
+            onClick={isRecording ? stopRecording : async () => {
+              if (!isRecording) {
+                await startRecording();
+              }
+            }}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              border: 'none',
+              background: isRecording ? '#ef4444' : '#ffffff22',
+              color: '#fff',
+              fontSize: 24,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title={isRecording ? 'Stop recording' : 'Record'}
+          >
+            {isRecording ? '⏹️' : '⏺️'}
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={isRecording ? stopRecording : async () => {
-            if (!isRecording) {
-              await startRecording();
-            }
-          }}
+          onClick={onToggleScreenShare}
+          disabled={!screenShareSupported}
+          aria-pressed={isScreenSharing}
           style={{
-            width: 56,
+            minWidth: 70,
             height: 56,
-            borderRadius: '50%',
+            borderRadius: 28,
             border: 'none',
-            background: isRecording ? '#ef4444' : '#ffffff22',
+            padding: '0 15px',
+            background: isScreenSharing ? '#f59e0b' : '#ffffff22',
             color: '#fff',
-            fontSize: 24,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: screenShareSupported ? 'pointer' : 'not-allowed',
+            opacity: screenShareSupported ? 1 : .45,
           }}
-          title={isRecording ? 'Stop recording' : 'Record'}
+          title={screenShareSupported ? (isScreenSharing ? 'Stop sharing' : 'Share screen') : 'Screen sharing is not supported by this browser'}
         >
-          {isRecording ? '⏹️' : '⏺️'}
+          {isScreenSharing ? 'Stop share' : 'Share screen'}
         </button>
 
         <button
@@ -420,7 +501,7 @@ export default function CallOverlay({
           🎬
         </button>
 
-        {onEndCall && (
+        {onEndCall && isHost && (
           <button
             type="button"
             onClick={onEndCall}

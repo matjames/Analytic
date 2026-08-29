@@ -2,7 +2,7 @@
 -- P17 (Public Portals / CMS / Dissemination), P40 (National Digital Library),
 -- P41 (Open Data / Public Evidence Portal).
 -- Password injected from environment (KNOWLEDGE_DB_PASSWORD), never hardcoded.
-CREATE DATABASE knowledge_portal;
+SELECT 'CREATE DATABASE knowledge_portal' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'knowledge_portal') \gexec
 
 \getenv knowledge_pw KNOWLEDGE_DB_PASSWORD
 SELECT format('CREATE ROLE "KnowledgePortal" WITH LOGIN PASSWORD %L', :'knowledge_pw')

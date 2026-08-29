@@ -64,28 +64,30 @@ type ResearchProject struct {
 	StatchatRoomID        string    `json:"statchatRoomId,omitempty"`
 	CreatedTime           time.Time `json:"createdTime"`
 	UpdatedTime           time.Time `json:"updatedTime"`
+	WorkspaceID           string    `json:"workspaceId,omitempty"`
 }
 
 // ─── Research Workspace (all related data) ────────────────
 type ResearchWorkspace struct {
-	Research       *ResearchProject `json:"research"`
-	Members        []ResearchMember `json:"members"`
-	Proposals      []Proposal       `json:"proposals"`
-	Ethics         []EthicsApp      `json:"ethics"`
-	Grants         []Grant          `json:"grants"`
-	Literature     []LiteratureItem `json:"literature"`
-	Datasets       []Dataset        `json:"datasets"`
-	Publications   []Publication    `json:"publications"`
-	Tasks          []ResearchTask   `json:"tasks"`
-	Meetings       []Meeting        `json:"meetings"`
-	Risks          []Risk           `json:"risks"`
-	Issues         []Issue          `json:"issues"`
-	Documents      []Document       `json:"documents"`
-	Surveys        []Survey         `json:"surveys"`
-	Reports        []Report         `json:"reports"`
-	ChatMessages   []ChatMessage    `json:"chatMessages"`
-	AuditLogs      []AuditLog       `json:"auditLogs"`
-	CalendarEvents []CalendarEvent  `json:"calendarEvents"`
+	Research             *ResearchProject `json:"research"`
+	Members              []ResearchMember `json:"members"`
+	Proposals            []Proposal       `json:"proposals"`
+	Ethics               []EthicsApp      `json:"ethics"`
+	Grants               []Grant          `json:"grants"`
+	Literature           []LiteratureItem `json:"literature"`
+	Datasets             []Dataset        `json:"datasets"`
+	Publications         []Publication    `json:"publications"`
+	Tasks                []ResearchTask   `json:"tasks"`
+	Meetings             []Meeting        `json:"meetings"`
+	Risks                []Risk           `json:"risks"`
+	Issues               []Issue          `json:"issues"`
+	Documents            []Document       `json:"documents"`
+	Surveys              []Survey         `json:"surveys"`
+	Reports              []Report         `json:"reports"`
+	ChatMessages         []ChatMessage    `json:"chatMessages"`
+	ChatIntegrationReady bool             `json:"chatIntegrationReady"`
+	AuditLogs            []AuditLog       `json:"auditLogs"`
+	CalendarEvents       []CalendarEvent  `json:"calendarEvents"`
 }
 
 // ─── Research Member ──────────────────────────────────────
@@ -468,4 +470,3 @@ type OpenAccessRepoItem struct {
 	Downloads   int       `json:"downloads"`
 	CreatedTime time.Time `json:"createdTime"`
 }
-

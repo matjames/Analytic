@@ -1,26 +1,21 @@
 import React, { useState, useRef, useEffect } from "react";
+import { UsersApi } from "../../../helpers/api/users";
 import { useHistory } from "react-router-dom";
-
-const launcherApps = [
-  { name: 'Dashboard', url: 'http://localhost:5000', icon: 'bi bi-house', description: 'Open StatGate Analytics dashboard' },
-  { name: 'Dataset Catalog', url: 'http://localhost:5000/datasets', icon: 'bi bi-table', description: 'Open the analytics dataset catalog' },
-  { name: 'Notebook', url: 'http://localhost:5000/notebook', icon: 'bi bi-journal-bookmark', description: 'Open the analytics notebook workspace' },
-  { name: 'Semantic Registry', url: 'http://localhost:5000/semantic', icon: 'bi bi-brain', description: 'Open the semantic indicator registry' },
-  { name: 'ABAC Security', url: 'http://localhost:5000/abac', icon: 'bi bi-shield-lock', description: 'Open ABAC security controls' },
-  { name: 'Executive Centre', url: 'http://localhost:5000/executive', icon: 'bi bi-bank', description: 'Open executive decision support' },
-  { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill', description: 'Open the StatGate launcher' },
-  { name: 'Register Portal', url: 'http://localhost:3000', icon: 'bi bi-journal', description: 'Open the Field Operations Registry' },
-];
+import launcherApps from "../../../config/launcherApps";
+import useOrganisationBranding from "../../../hooks/useOrganisationBranding";
 
 export default function InitiatorHeader({ user, userDisplay }) {
   const history = useHistory();
+  const branding = useOrganisationBranding();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLauncherMenu, setShowLauncherMenu] = useState(false);
   const dropdownRef = useRef(null);
   const launcherRef = useRef(null);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await UsersApi.logout(); } catch { /* local logout still clears the session */ }
     localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
     window.location.href = "/";
   };
@@ -55,7 +50,13 @@ export default function InitiatorHeader({ user, userDisplay }) {
   };
 
   return (
-    <div className="header">
+    <div
+      className="header"
+      style={{
+        "--primary-color": branding.primary_color,
+        "--primary-dark": branding.secondary_color,
+      }}
+    >
       <div className="header-content">
         <div
           className="header-left"
@@ -63,13 +64,13 @@ export default function InitiatorHeader({ user, userDisplay }) {
           style={{ cursor: "pointer" }}
         >
           <img
-            src="/statgate-logo.svg"
-            alt="StatGate logo"
+            src={branding.logo_url || "/statgate-logo.svg"}
+            alt={`${branding.display_name} logo`}
             className="logo-badge"
           />
           <div className="header-title">
             <div className="header-title-line">
-              <span className="header-country">STATGATE</span>
+              <span className="header-country">{branding.display_name}</span>
             </div>
             <div className="header-title-line">
               <span className="header-ministry">FIELD OPERATIONS</span>

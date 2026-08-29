@@ -127,6 +127,7 @@ type Project struct {
 	IssuesCount int            `json:"issuesCount"`
 	CreatedTime time.Time      `json:"createdTime"`
 	UpdatedTime time.Time      `json:"updatedTime"`
+	WorkspaceID string         `json:"workspaceId,omitempty"`
 }
 
 type ProjectMember struct {
@@ -521,18 +522,18 @@ type LogFrameItem struct {
 }
 
 type TheoryOfChange struct {
-	ID                 string      `json:"id"`
-	ProjectID          string      `json:"projectId"`
-	Title              string      `json:"title"`
-	Narrative          string      `json:"narrative"`
-	Inputs             StringArray `json:"inputs"`
-	Activities         StringArray `json:"activities"`
-	Outputs            StringArray `json:"outputs"`
-	ShortTermOutcomes  StringArray `json:"shortTermOutcomes"`
-	LongTermOutcomes   StringArray `json:"longTermOutcomes"`
-	Impact             StringArray `json:"impact"`
-	Assumptions        StringArray `json:"assumptions"`
-	CreatedTime        time.Time   `json:"createdTime"`
+	ID                string      `json:"id"`
+	ProjectID         string      `json:"projectId"`
+	Title             string      `json:"title"`
+	Narrative         string      `json:"narrative"`
+	Inputs            StringArray `json:"inputs"`
+	Activities        StringArray `json:"activities"`
+	Outputs           StringArray `json:"outputs"`
+	ShortTermOutcomes StringArray `json:"shortTermOutcomes"`
+	LongTermOutcomes  StringArray `json:"longTermOutcomes"`
+	Impact            StringArray `json:"impact"`
+	Assumptions       StringArray `json:"assumptions"`
+	CreatedTime       time.Time   `json:"createdTime"`
 }
 
 type Donor struct {
@@ -549,4 +550,3 @@ type Donor struct {
 	Status        string    `json:"status"`
 	CreatedTime   time.Time `json:"createdTime"`
 }
-

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>StatGate Report Builder</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#165c92">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/Aimara.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" defer></script>
+    <!-- Leaflet.js for maps -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+    <!-- html2canvas for map to PNG conversion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+
+<!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-CTQVGVQ426"></script>
+        <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'G-CTQVGVQ426');
+        </script>
+
+
+</head>
+<body>
+    <!-- WhatsApp-style progress bar -->
+    <div class="progress-bar-container" id="progress-bar-container">
+        <div class="progress-bar indeterminate" id="progress-bar"></div>
+    </div>
+
+    <header class="header" role="banner">
+        <div class="header-left">
+            <button class="sidebar-menu-toggle" id="sidebar-menu-toggle" title="Toggle navigation" aria-label="Toggle sidebar menu">
+                <span class="hamburger-icon"></span>
+            </button>
+            <a href="index.html" class="header-brand" onclick="goHome(event)">
+                <img src="assets/logo.png" alt="StatGate Report Builder" class="header-logo" loading="lazy">
+                <span class="header-title">StatGate Report Builder</span>
+            </a>
+        </div>
+        <div class="header-right">
+            <div class="header-controls">
+                <!-- Main Menu (3 vertical dots) -->
+                <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle menu" aria-label="Toggle navigation menu">
+                    <svg focusable="false" preserveAspectRatio="xMidYMid meet" fill="currentColor" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M27,16.76c0-.25,0-.5,0-.76s0-.51,0-.77l1.92-1.68A2,2,0,0,0,29.3,11L26.94,7a2,2,0,0,0-1.73-1,2,2,0,0,0-.64.1l-2.43.82a11.35,11.35,0,0,0-1.31-.75l-.51-2.52a2,2,0,0,0-2-1.61H13.64a2,2,0,0,0-2,1.61l-.51,2.52a11.48,11.48,0,0,0-1.32.75L7.43,6.06A2,2,0,0,0,6.79,6,2,2,0,0,0,5.06,7L2.7,11a2,2,0,0,0,.41,2.51L5,15.24c0,.25,0,.5,0,.76s0,.51,0,.77L3.11,18.45A2,2,0,0,0,2.7,21L5.06,25a2,2,0,0,0,1.73,1,2,2,0,0,0,.64-.1l2.43-.82a11.35,11.35,0,0,0,1.31.75l.51,2.52a2,2,0,0,0,2,1.61h4.72a2,2,0,0,0,2-1.61l.51-2.52a11.48,11.48,0,0,0,1.32-.75l2.42.82a2,2,0,0,0,.64.1,2,2,0,0,0,1.73-1L29.3,21a2,2,0,0,0-.41-2.51ZM25.21,24l-3.43-1.16a8.86,8.86,0,0,1-2.71,1.57L18.36,28H13.64l-.71-3.55a9.36,9.36,0,0,1-2.7-1.57L6.79,24,4.43,20l2.72-2.4a8.9,8.9,0,0,1,0-3.13L4.43,12,6.79,8l3.43,1.16a8.86,8.86,0,0,1,2.71-1.57L13.64,4h4.72l.71,3.55a9.36,9.36,0,0,1,2.7,1.57L25.21,8,27.57,12l-2.72,2.4a8.9,8.9,0,0,1,0,3.13L27.57,20Z"></path><path d="M16,22a6,6,0,1,1,6-6A5.94,5.94,0,0,1,16,22Zm0-10a3.91,3.91,0,0,0-4,4,3.91,3.91,0,0,0,4,4,3.91,3.91,0,0,0,4-4A3.91,3.91,0,0,0,16,12Z"></path></svg>
+                </button>
+                <button
+                    id="menuIconBtn"
+                    class="sidebar-toggle"
+                    title="Applications"
+                    aria-label="Open application menu"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="app_menu_container">
+                    <svg focusable="false" preserveAspectRatio="xMidYMid meet" fill="currentColor" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M14 4H18V8H14zM4 4H8V8H4zM24 4H28V8H24zM14 14H18V18H14zM4 14H8V18H4zM24 14H28V18H24zM14 24H18V28H14zM4 24H8V28H4zM24 24H28V28H24z"></path></svg>
+                </button>
+                <button id="userIconBtn" class="sidebar-toggle">
+                    <svg focusable="false" preserveAspectRatio="xMidYMid meet" fill="currentColor" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="none" d="M8.0071,24.93A4.9958,4.9958,0,0,1,13,20h6a4.9959,4.9959,0,0,1,4.9929,4.93,11.94,11.94,0,0,1-15.9858,0ZM20.5,12.5A4.5,4.5,0,1,1,16,8,4.5,4.5,0,0,1,20.5,12.5Z"></path><path d="M26.7489,24.93A13.9893,13.9893,0,1,0,2,16a13.899,13.899,0,0,0,3.2511,8.93l-.02.0166c.07.0845.15.1567.2222.2392.09.1036.1864.2.28.3008.28.3033.5674.5952.87.87.0915.0831.1864.1612.28.2417.32.2759.6484.5372.99.7813.0441.0312.0832.0693.1276.1006v-.0127a13.9011,13.9011,0,0,0,16,0V27.48c.0444-.0313.0835-.0694.1276-.1006.3412-.2441.67-.5054.99-.7813.0936-.08.1885-.1586.28-.2417.3025-.2749.59-.5668.87-.87.0933-.1006.1894-.1972.28-.3008.0719-.0825.1522-.1547.2222-.2392ZM16,8a4.5,4.5,0,1,1-4.5,4.5A4.5,4.5,0,0,1,16,8ZM8.0071,24.93A4.9957,4.9957,0,0,1,13,20h6a4.9958,4.9958,0,0,1,4.9929,4.93,11.94,11.94,0,0,1-15.9858,0Z"></path></svg>
+                </button>
+                <button id="logoutBtn" class="sidebar-toggle" style="display:none;">
+                    <svg focusable="false" preserveAspectRatio="xMidYMid meet" fill="currentColor" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M6,30H18a2.0023,2.0023,0,0,0,2-2V25H18v3H6V4H18V7h2V4a2.0023,2.0023,0,0,0-2-2H6A2.0023,2.0023,0,0,0,4,4V28A2.0023,2.0023,0,0,0,6,30Z"></path><path d="M20.586 20.586L24.172 17 10 17 10 15 24.172 15 20.586 11.414 22 10 28 16 22 22 20.586 20.586z"></path></svg>
+                </button>
+                <!-- Main Menu Dropdown -->
+                <div class="header-menu" id="header-menu">
+                    <a id="yaml-builder" href="builder.html" class="menu-item hide" title="Open YAML report builder" aria-label="YAML report builder">
+                        <span class="menu-text">Builder</span>
+                    </a>
+                    <a id="requirements-spec-link" href="requirements" class="menu-item" title="View requirements documents" aria-label="Requirements documents">
+                        <span class="menu-text">Requirements Docs</span>
+                    </a>
+                    <a id="user-management" href="user-management.html" class="menu-item" title="User management" aria-label="User management" style="display:none;">
+                        <span class="menu-text">User Management</span>
+                    </a>
+                    <button class="menu-item" id="menu-sign-out" title="Sign out" aria-label="Sign out" style="display:none;">
+                        <span class="menu-text">Sign Out</span>
+                    </button>
+                </div>
+                <div id="app_menu_container" class="app-menu-panel hidden" role="dialog" aria-label="Application menu" tabindex="-1">
+                    <div class="app-menu-panel__header">
+                        <div>
+                            <h4 class="app-menu-panel__title">Applications</h4>
+                            <p class="app-menu-panel__subtitle">Select a service to continue.</p>
+                        </div>
+                    </div>
+                    <div id="app_menu_content" class="app-grid-state" aria-live="polite">
+                        <span>Loading applications...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Filter feedback banner (Phase 2) -->
+    <div id="filter-feedback-banner" class="filter-feedback-banner" style="display:none;">
+        ✓ Filters applied
+    </div>
+
+    <!-- Offline banner (PWA) -->
+    <div id="offline-banner" class="offline-banner" style="display:none;">
+        You are offline — showing cached data where available.
+    </div>
+
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="main-layout">
+        <!-- Sidebar with Report Categories -->
+        <aside class="sidebar" id="sidebar" role="navigation" aria-label="Reports navigation">
+            <button class="sidebar-collapse-toggle" id="sidebar-collapse-toggle" type="button"
+                    title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </button>
+            <div class="sidebar-content">
+                <div class="sidebar-search-container">
+                    <input type="search"
+                           id="sidebar-search"
+                           class="sidebar-search-input"
+                           placeholder="Search..."
+                           autocomplete="off">
+                    <button class="sidebar-search-clear" id="sidebar-search-clear" type="button" style="display:none;" aria-label="Clear search">×</button>
+                </div>
+                <div id="sidebar-no-results" class="sidebar-no-results" style="display:none;">
+                        <p class="empty-state-title">No reports match your search</p>
+                        <p class="empty-state-hint">Try different keywords</p>
+                    </div>
+                <!-- Favorites Section (PWA) -->
+                <div id="favorites-section" class="favorites-section" style="display:none;">
+                    <div class="favorites-header"><h3>Favorites</h3></div>
+                    <div id="favorites-list"></div>
+                </div>
+                <!-- Recently Viewed Section (Phase 2) -->
+                <div id="recently-viewed-section" class="recently-viewed-section">
+                    <div class="recently-viewed-header">
+                        <h3>Recently Viewed</h3>
+                    </div>
+                    <div id="recently-viewed-list"></div>
+                </div>
+                <div id="aimara-tree-container" class="aimara-tree-container">
+                    <!-- Tree will be populated here by AimaraJS -->
+                </div>
+                <!-- External Dashboards Section -->
+                <div id="dashboards-section" class="dashboards-section">
+                    <div class="dashboards-header" id="dashboards-toggle">
+                        <h3>Dashboards</h3>
+                        <span class="dashboards-toggle-icon">+</span>
+                    </div>
+                    <div id="dashboards-list" class="dashboards-list" style="display:none;"></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content" role="main">
+            <!-- Breadcrumb Navigation -->
+            <nav id="breadcrumb" class="breadcrumb" style="display: none;" aria-label="Report location">
+                <span id="breadcrumb-content"></span>
+            </nav>
+
+            <!-- Filter Bar (outside scrolling container) -->
+            <div id="filter-bar" class="filter-bar" style="display: none;">
+                <!-- Mobile toggle (inline with filters) -->
+                <div class="filter-bar-mobile-header" id="filter-bar-toggle">
+                    <span class="filter-label">Filters</span>
+                    <span id="filter-count-badge" class="filter-count-badge" style="display: none;"></span>
+                    <span class="filter-toggle-icon">▼</span>
+                </div>
+                <div class="filter-bar-content" id="filter-bar-content">
+                    <span class="filter-label filter-label-desktop">Filters:</span>
+                    <div id="active-filters" class="active-filters"></div>
+                    <div class="filter-bar-buttons">
+                        <button id="clear-all-filters" class="clear-all-link" style="display:none;">Clear</button>
+                        <button id="apply-filters-btn" class="btn-apply-filters">Apply</button>
+                        <button id="feedback-btn" type="button" class="btn-feedback" title="Give feedback on this report" aria-label="Give feedback" style="display:none;" onclick="openFeedbackModal();">
+                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            <span>Feedback</span>
+                        </button>
+                        <div class="share-dropdown">
+                            <button id="share-btn" type="button" class="btn-share" data-tooltip="Share" aria-label="Share" onclick="var menu=document.getElementById('share-menu'); var rect=this.getBoundingClientRect(); menu.style.top=(rect.bottom+4)+'px'; menu.style.right=(window.innerWidth-rect.right)+'px'; menu.classList.toggle('active'); event.stopPropagation();"><svg class="btn-share-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+                            <div id="share-menu" class="share-menu">
+                                <button id="download-pdf-btn" class="share-menu-item" onclick="downloadReportAsPDF(); document.getElementById('share-menu').classList.remove('active');">
+                                    <span class="share-icon">PDF</span>
+                                    <span>Download PDF</span>
+                                </button>
+                                <button class="share-menu-item" onclick="copyReportLink();">
+                                    <span class="share-icon">Link</span>
+                                    <span>Copy Link</span>
+                                </button>
+                                <button class="share-menu-item" onclick="shareViaEmail();">
+                                    <span class="share-icon">Mail</span>
+                                    <span>Email</span>
+                                </button>
+                                <button class="share-menu-item" onclick="shareViaWhatsApp();">
+                                    <span class="share-icon">Chat</span>
+                                    <span>WhatsApp</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="external-dashboard-embed" class="external-dashboard-embed" style="display:none;">
+                <div class="external-dashboard-embed-toolbar">
+                    <div id="external-dashboard-embed-title" class="external-dashboard-embed-title"></div>
+                    <button id="external-dashboard-embed-close" type="button" class="external-dashboard-embed-close" aria-label="Close embedded dashboard">×</button>
+                </div>
+                <div class="external-dashboard-embed-frame-wrapper">
+                    <iframe id="external-dashboard-embed-frame" class="external-dashboard-embed-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" loading="lazy"></iframe>
+                </div>
+                <div id="external-dashboard-embed-error" class="external-dashboard-embed-error" style="display:none;">
+                    This dashboard could not be embedded. It may require a different browser session or the remote site may prevent iframe embedding. <a id="external-dashboard-embed-open-link" href="#" target="_blank" rel="noopener noreferrer">Open in a new tab instead</a>.
+                </div>
+            </div>
+
+            <div id="report-container" class="report-container">
+                <!-- Empty state will be rendered by JavaScript with popular reports -->
+                <div id="empty-state" class="empty-state">
+                    <p class="empty-state-title">Loading reports...</p>
+                </div>
+
+                <!-- Loading Spinner Overlay -->
+                <div id="loading-overlay" class="loading-overlay" style="display:none;">
+                    <div class="loading-spinner">
+                        <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+                            <circle class="spinner-circle" cx="25" cy="25" r="20" fill="none" stroke-width="3"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Report Header -->
+                <div id="report-header" class="report-header" style="display:none;">
+                    <div class="report-header-brand">
+                        <img src="assets/logo.png" alt="StatGate" class="report-header-logo" loading="lazy">
+                        <span class="report-header-ministry">StatGate</span>
+                    </div>
+                    <div id="report-header-title" class="report-header-title"></div>
+                    <div id="report-header-filters" class="report-header-filters"></div>
+                </div>
+
+                <div id="sections-container"></div>
+
+                <!-- Report footer: category siblings + timestamp -->
+                <div id="report-footer" class="report-footer" style="display:none;">
+                    <div id="also-in-category" class="also-in-category"></div>
+                    <div id="report-generated-at" class="report-generated-at"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Chat Container (hidden by default, replaces main content when active) -->
+        <div id="chat-container" class="chat-container" style="display:none;">
+            <div id="chat-disclaimer" class="chat-disclaimer" style="display:none;">
+                <p><strong>AI-assisted queries — always verify results.</strong> This module uses AI to translate your questions into database queries. It may select the wrong table, misinterpret column names, or apply incorrect aggregations. Results should be treated as exploratory, not authoritative. Always validate the data against known sources before using it for reporting or decision-making.</p>
+                <button class="chat-disclaimer-close" onclick="dismissChatDisclaimer()" title="Dismiss">&times;</button>
+            </div>
+            <div id="chat-empty-state" class="chat-empty-state">
+                <h2>Ask me about the data</h2>
+                <p>Type a question in plain English and I'll query the data warehouse for you.</p>
+                <div class="chat-examples">
+                    <button class="chat-example-pill" onclick="handleExampleClick('Total emergency cases by district')">Total emergency cases by district</button>
+                    <button class="chat-example-pill" onclick="handleExampleClick('Average DPT3 coverage by district')">Average DPT3 coverage by district</button>
+                    <button class="chat-example-pill" onclick="handleExampleClick('HIV positive cases by district')">HIV positive cases by district</button>
+                    <button class="chat-example-pill" onclick="handleExampleClick('Households registered by FieldWorkers by district')">Households registered by FieldWorkers by district</button>
+                </div>
+                <p class="chat-caveat">Results are AI-generated and may be inaccurate. Verify against official reports before use.</p>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input-bar">
+                <input type="text" id="chat-input" class="chat-input" placeholder="Ask a data question..." maxlength="500" autocomplete="off">
+                <button id="chat-send-btn" class="chat-send-btn" title="Send">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="app-footer">
+        <nav class="footer-nav">
+            <button class="nav-pill active" data-view="home">Home</button>
+            <button class="nav-pill" data-view="chat">Ask</button>
+        </nav>
+    </footer>
+
+    <!-- Install banner (PWA) -->
+    <div id="install-banner" class="install-banner" style="display:none;"></div>
+
+    <!-- Feedback modal -->
+    <div id="feedback-modal" class="feedback-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+        <div class="feedback-modal-backdrop" onclick="closeFeedbackModal();"></div>
+        <div class="feedback-modal-panel">
+            <div class="feedback-modal-header">
+                <h3 id="feedback-modal-title">Feedback</h3>
+                <button type="button" class="feedback-modal-close" aria-label="Close" onclick="closeFeedbackModal();">×</button>
+            </div>
+            <div class="feedback-modal-body">
+                <div id="feedback-modal-report" class="feedback-modal-report"></div>
+                <form id="feedback-form" onsubmit="submitFeedback(event);">
+                    <label for="feedback-comment" class="feedback-label">Your comment</label>
+                    <textarea id="feedback-comment" name="comment" rows="4" maxlength="4000" required
+                              placeholder="What works? What's wrong? What's missing?"></textarea>
+                    <div class="feedback-form-footer">
+                        <span id="feedback-counter" class="feedback-counter">0 / 4000</span>
+                        <div class="feedback-form-actions">
+                            <span id="feedback-form-error" class="feedback-form-error" role="alert"></span>
+                            <button type="submit" id="feedback-submit" class="btn-apply-filters">Submit</button>
+                        </div>
+                    </div>
+                </form>
+                <div class="feedback-list-header">
+                    <h4>Previous feedback</h4>
+                    <span id="feedback-list-count" class="feedback-list-count"></span>
+                </div>
+                <div id="feedback-list" class="feedback-list"></div>
+                <button type="button" id="feedback-load-more" class="feedback-load-more" style="display:none;" onclick="loadMoreFeedback();">Load more</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="lib/Aimara.js" defer></script>
+    <script src="js/apiCache.js" defer></script>
+    <script src="js/telemetry.js" defer></script>
+    <script src="js/components.js" defer></script>
+    <script src="js/filterManager.js" defer></script>
+    <script src="js/pwa.js" defer></script>
+    <script src="js/app.js" defer></script>
+    <script src="js/chat.js" defer></script>
+
+    <script type="module">
+        import { initAuth } from './js/auth.js';
+        // Expose auth promise globally so app.js can wait for it
+        window.authReady = initAuth();
+    </script>
+</body>
+</html>

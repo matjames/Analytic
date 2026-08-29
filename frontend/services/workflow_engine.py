@@ -48,6 +48,7 @@ def _ensure_tables(conn):
                 stages          JSONB NOT NULL,
                 initial_stage   VARCHAR(64) NOT NULL,
                 tenant_id       VARCHAR(64) NOT NULL DEFAULT 'tenant-alpha',
+                workspace_id    VARCHAR(128),
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -78,6 +79,8 @@ def _ensure_tables(conn):
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_workflow_instances_scope ON workflow_instances(tenant_id, workspace_id)")
     conn.commit()
 
 
@@ -121,7 +124,7 @@ def list_templates():
 
 # ── Instance Management ──
 
-def start_workflow(object_type, object_id, initiated_by=None, tenant_id='tenant-alpha'):
+def start_workflow(object_type, object_id, initiated_by=None, tenant_id='tenant-alpha', workspace_id=None):
     """Start a workflow for an object. Returns the instance or None."""
     template = get_template_for_object(object_type)
     if template is None:
@@ -136,12 +139,12 @@ def start_workflow(object_type, object_id, initiated_by=None, tenant_id='tenant-
         instance_id = f"wf-inst-{uuid.uuid4().hex[:12]}"
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                INSERT INTO workflow_instances (id, template_id, object_type, object_id, current_stage, tenant_id, initiated_by)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO workflow_instances (id, template_id, object_type, object_id, current_stage, tenant_id, workspace_id, initiated_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (object_type, object_id) DO NOTHING
                 RETURNING *
             """, (instance_id, template['id'], object_type, object_id,
-                  template['initial_stage'], tenant_id, initiated_by))
+                  template['initial_stage'], tenant_id, workspace_id, initiated_by))
             row = cur.fetchone()
         conn.commit()
         return dict(row) if row else None
@@ -152,7 +155,7 @@ def start_workflow(object_type, object_id, initiated_by=None, tenant_id='tenant-
         conn.close()
 
 
-def get_workflow_instance(object_type, object_id):
+def get_workflow_instance(object_type, object_id, tenant_id=None, workspace_id=None):
     """Get the workflow instance for an object."""
     conn = _get_conn()
     if conn is None:
@@ -160,9 +163,15 @@ def get_workflow_instance(object_type, object_id):
     try:
         _ensure_tables(conn)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
-                SELECT * FROM workflow_instances WHERE object_type = %s AND object_id = %s
-            """, (object_type, object_id))
+            query = "SELECT * FROM workflow_instances WHERE object_type = %s AND object_id = %s"
+            args = [object_type, object_id]
+            if tenant_id is not None:
+                query += " AND tenant_id = %s"
+                args.append(tenant_id)
+            if workspace_id:
+                query += " AND workspace_id = %s"
+                args.append(workspace_id)
+            cur.execute(query, args)
             row = cur.fetchone()
         return dict(row) if row else None
     except Exception as exc:
@@ -172,12 +181,12 @@ def get_workflow_instance(object_type, object_id):
         conn.close()
 
 
-def get_available_actions(object_type, object_id, user_role='analyst'):
+def get_available_actions(object_type, object_id, user_role='analyst', tenant_id=None, workspace_id=None):
     """
     Return the actions available for the current stage of the object's workflow,
     filtered by the user's role.
     """
-    instance = get_workflow_instance(object_type, object_id)
+    instance = get_workflow_instance(object_type, object_id, tenant_id=tenant_id, workspace_id=workspace_id)
     if instance is None:
         return []
 
@@ -199,12 +208,12 @@ def get_available_actions(object_type, object_id, user_role='analyst'):
     return []
 
 
-def transition(object_type, object_id, action, performed_by=None, comment='', tenant_id='tenant-alpha'):
+def transition(object_type, object_id, action, performed_by=None, comment='', tenant_id='tenant-alpha', workspace_id=None):
     """
     Execute a workflow transition. Returns the updated instance or None.
     Also publishes a workflow.transition event.
     """
-    instance = get_workflow_instance(object_type, object_id)
+    instance = get_workflow_instance(object_type, object_id, tenant_id=tenant_id, workspace_id=workspace_id)
     if instance is None:
         return None
 
@@ -285,9 +294,9 @@ def transition(object_type, object_id, action, performed_by=None, comment='', te
         conn.close()
 
 
-def get_transition_history(object_type, object_id):
+def get_transition_history(object_type, object_id, tenant_id=None, workspace_id=None):
     """Return the full transition history for an object's workflow."""
-    instance = get_workflow_instance(object_type, object_id)
+    instance = get_workflow_instance(object_type, object_id, tenant_id=tenant_id, workspace_id=workspace_id)
     if instance is None:
         return []
     conn = _get_conn()

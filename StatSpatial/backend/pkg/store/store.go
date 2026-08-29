@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"statspatial/pkg/model"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/matjames/statgate-lib/auth"
 )
 
 var db *sql.DB
@@ -32,6 +34,43 @@ func IsReady() bool {
 		return false
 	}
 	return true
+}
+
+func tenantFromContext(ctx context.Context) string {
+	tenantID, _ := ctx.Value(auth.ContextKeyTenant).(string)
+	return strings.TrimSpace(tenantID)
+}
+
+func workspaceFromContext(ctx context.Context) string {
+	workspaceID, _ := ctx.Value("workspace_id").(string)
+	return strings.TrimSpace(workspaceID)
+}
+
+func nullableString(value string) interface{} {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return strings.TrimSpace(value)
+}
+
+func ownershipValues(ctx context.Context) (string, string) {
+	return tenantFromContext(ctx), workspaceFromContext(ctx)
+}
+
+func appendOwnershipScope(ctx context.Context, q *string, args *[]interface{}, tableAlias string) {
+	tenantID, workspaceID := ownershipValues(ctx)
+	prefix := ""
+	if tableAlias != "" {
+		prefix = tableAlias + "."
+	}
+	if tenantID != "" {
+		*args = append(*args, tenantID)
+		*q += fmt.Sprintf(" AND (%stenant_id IS NULL OR %stenant_id = $%d)", prefix, prefix, len(*args))
+	}
+	if workspaceID != "" {
+		*args = append(*args, workspaceID)
+		*q += fmt.Sprintf(" AND (%sworkspace_id IS NULL OR %sworkspace_id = $%d)", prefix, prefix, len(*args))
+	}
 }
 
 func Init(dsn string) error {
@@ -177,6 +216,72 @@ func ensureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			UNIQUE (source_type, source_id, target_type, target_id)
 		)`,
+		`ALTER TABLE geo_layers ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE geo_layers ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE geo_features ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE geo_features ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE spatial_index ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE spatial_index ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE federated_nodes ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE federated_nodes ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE data_sharing_agreements ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE data_sharing_agreements ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE federated_datasets ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE federated_datasets ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE sync_logs ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE sync_logs ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`ALTER TABLE node_links ADD COLUMN IF NOT EXISTS tenant_id TEXT`,
+		`ALTER TABLE node_links ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`DO $$
+		DECLARE
+			legacy_constraint_name TEXT;
+		BEGIN
+			SELECT c.conname
+			INTO legacy_constraint_name
+			FROM pg_constraint c
+			JOIN pg_class t ON t.oid = c.conrelid
+			WHERE t.relname = 'spatial_index'
+			  AND c.contype = 'u'
+			  AND (
+				  SELECT ARRAY_AGG(a.attname ORDER BY keys.ordinality)
+				  FROM UNNEST(c.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+				  JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = keys.attnum
+			  ) = ARRAY['admin_unit_id', 'target_type', 'target_id']::name[];
+
+			IF legacy_constraint_name IS NOT NULL THEN
+				EXECUTE FORMAT('ALTER TABLE spatial_index DROP CONSTRAINT %I', legacy_constraint_name);
+			END IF;
+		END $$`,
+		`DO $$
+		DECLARE
+			legacy_constraint_name TEXT;
+		BEGIN
+			SELECT c.conname
+			INTO legacy_constraint_name
+			FROM pg_constraint c
+			JOIN pg_class t ON t.oid = c.conrelid
+			WHERE t.relname = 'node_links'
+			  AND c.contype = 'u'
+			  AND (
+				  SELECT ARRAY_AGG(a.attname ORDER BY keys.ordinality)
+				  FROM UNNEST(c.conkey) WITH ORDINALITY AS keys(attnum, ordinality)
+				  JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = keys.attnum
+			  ) = ARRAY['source_type', 'source_id', 'target_type', 'target_id']::name[];
+
+			IF legacy_constraint_name IS NOT NULL THEN
+				EXECUTE FORMAT('ALTER TABLE node_links DROP CONSTRAINT %I', legacy_constraint_name);
+			END IF;
+		END $$`,
+		`CREATE INDEX IF NOT EXISTS idx_geo_layers_owner ON geo_layers(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_geo_features_owner ON geo_features(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_spatial_index_owner ON spatial_index(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_federated_nodes_owner ON federated_nodes(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_data_sharing_agreements_owner ON data_sharing_agreements(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_federated_datasets_owner ON federated_datasets(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sync_logs_owner ON sync_logs(tenant_id, workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_links_owner ON node_links(tenant_id, workspace_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_spatial_index_owner_unique ON spatial_index(admin_unit_id, target_type, target_id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''))`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_node_links_owner_unique ON node_links(source_type, source_id, target_type, target_id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''))`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -470,8 +575,11 @@ func CreateClassification(ctx context.Context, c model.Classification) (*model.C
 // ─── GIS: Layers & Features ─────────────────────────────────────────────────
 
 func ListGeoLayers(ctx context.Context) ([]model.GeoLayer, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, name, description, geometry_type, source, admin_unit_id, created_at, updated_at FROM geo_layers ORDER BY name`)
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), name, description, geometry_type, source, admin_unit_id, created_at, updated_at FROM geo_layers WHERE 1=1`
+	args := []interface{}{}
+	appendOwnershipScope(ctx, &q, &args, "")
+	q += ` ORDER BY name`
+	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +587,7 @@ func ListGeoLayers(ctx context.Context) ([]model.GeoLayer, error) {
 	var layers []model.GeoLayer
 	for rows.Next() {
 		var l model.GeoLayer
-		if err := rows.Scan(&l.ID, &l.Name, &l.Description, &l.GeometryType, &l.Source, &l.AdminUnitID, &l.CreatedAt, &l.UpdatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.Name, &l.Description, &l.GeometryType, &l.Source, &l.AdminUnitID, &l.CreatedAt, &l.UpdatedAt); err != nil {
 			return nil, err
 		}
 		layers = append(layers, l)
@@ -491,9 +599,10 @@ func CreateGeoLayer(ctx context.Context, l model.GeoLayer) (*model.GeoLayer, err
 	if l.ID == "" {
 		l.ID = "layer-" + uuid.NewString()[:8]
 	}
+	l.TenantID, l.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO geo_layers (id, name, description, geometry_type, source, admin_unit_id) VALUES ($1,$2,$3,$4,$5,$6)`,
-		l.ID, l.Name, l.Description, l.GeometryType, l.Source, l.AdminUnitID)
+		`INSERT INTO geo_layers (id, tenant_id, workspace_id, name, description, geometry_type, source, admin_unit_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		l.ID, nullableString(l.TenantID), nullableString(l.WorkspaceID), l.Name, l.Description, l.GeometryType, l.Source, l.AdminUnitID)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +610,7 @@ func CreateGeoLayer(ctx context.Context, l model.GeoLayer) (*model.GeoLayer, err
 }
 
 func ListGeoFeatures(ctx context.Context, layerID string, adminUnitID string) ([]model.GeoFeature, error) {
-	q := `SELECT id, layer_id, admin_unit_id, name, geometry, properties, created_at FROM geo_features WHERE 1=1`
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), layer_id, admin_unit_id, name, geometry, properties, created_at FROM geo_features WHERE 1=1`
 	args := []interface{}{}
 	if layerID != "" {
 		args = append(args, layerID)
@@ -511,6 +620,7 @@ func ListGeoFeatures(ctx context.Context, layerID string, adminUnitID string) ([
 		args = append(args, adminUnitID)
 		q += fmt.Sprintf(" AND admin_unit_id = $%d", len(args))
 	}
+	appendOwnershipScope(ctx, &q, &args, "")
 	q += ` ORDER BY name`
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -521,7 +631,7 @@ func ListGeoFeatures(ctx context.Context, layerID string, adminUnitID string) ([
 	for rows.Next() {
 		var f model.GeoFeature
 		var props []byte
-		if err := rows.Scan(&f.ID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.TenantID, &f.WorkspaceID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(props, &f.Properties)
@@ -537,10 +647,11 @@ func CreateGeoFeature(ctx context.Context, f model.GeoFeature) (*model.GeoFeatur
 	if f.Properties == nil {
 		f.Properties = map[string]interface{}{}
 	}
+	f.TenantID, f.WorkspaceID = ownershipValues(ctx)
 	props, _ := json.Marshal(f.Properties)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO geo_features (id, layer_id, admin_unit_id, name, geometry, properties) VALUES ($1,$2,$3,$4,$5,$6)`,
-		f.ID, f.LayerID, f.AdminUnitID, f.Name, f.Geometry, string(props))
+		`INSERT INTO geo_features (id, tenant_id, workspace_id, layer_id, admin_unit_id, name, geometry, properties) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		f.ID, nullableString(f.TenantID), nullableString(f.WorkspaceID), f.LayerID, f.AdminUnitID, f.Name, f.Geometry, string(props))
 	if err != nil {
 		return nil, err
 	}
@@ -550,14 +661,15 @@ func CreateGeoFeature(ctx context.Context, f model.GeoFeature) (*model.GeoFeatur
 // ─── GIS: Spatial Index ─────────────────────────────────────────────────────
 
 func CreateSpatialIndex(ctx context.Context, si model.SpatialIndex) error {
+	si.TenantID, si.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO spatial_index (id, admin_unit_id, target_type, target_id, lat, lng) VALUES ($1,$2,$3,$4,$5,$6)`,
-		"si-"+uuid.NewString()[:8], si.AdminUnitID, si.TargetType, si.TargetID, si.Lat, si.Lng)
+		`INSERT INTO spatial_index (id, tenant_id, workspace_id, admin_unit_id, target_type, target_id, lat, lng) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		"si-"+uuid.NewString()[:8], nullableString(si.TenantID), nullableString(si.WorkspaceID), si.AdminUnitID, si.TargetType, si.TargetID, si.Lat, si.Lng)
 	return err
 }
 
 func ListSpatialIndex(ctx context.Context, adminUnitID string, targetType string) ([]model.SpatialIndex, error) {
-	q := `SELECT id, admin_unit_id, target_type, target_id, lat, lng, created_at FROM spatial_index WHERE 1=1`
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), admin_unit_id, target_type, target_id, lat, lng, created_at FROM spatial_index WHERE 1=1`
 	args := []interface{}{}
 	if adminUnitID != "" {
 		args = append(args, adminUnitID)
@@ -567,6 +679,7 @@ func ListSpatialIndex(ctx context.Context, adminUnitID string, targetType string
 		args = append(args, targetType)
 		q += fmt.Sprintf(" AND target_type = $%d", len(args))
 	}
+	appendOwnershipScope(ctx, &q, &args, "")
 	q += ` ORDER BY created_at DESC`
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -576,7 +689,7 @@ func ListSpatialIndex(ctx context.Context, adminUnitID string, targetType string
 	var items []model.SpatialIndex
 	for rows.Next() {
 		var si model.SpatialIndex
-		if err := rows.Scan(&si.ID, &si.AdminUnitID, &si.TargetType, &si.TargetID, &si.Lat, &si.Lng, &si.CreatedAt); err != nil {
+		if err := rows.Scan(&si.ID, &si.TenantID, &si.WorkspaceID, &si.AdminUnitID, &si.TargetType, &si.TargetID, &si.Lat, &si.Lng, &si.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, si)
@@ -587,12 +700,13 @@ func ListSpatialIndex(ctx context.Context, adminUnitID string, targetType string
 // ─── Federation: Nodes ──────────────────────────────────────────────────────
 
 func ListFederatedNodes(ctx context.Context, nodeType string) ([]model.FederatedNode, error) {
-	q := `SELECT id, name, node_type, url, api_key_ref, status, contact_email, admin_unit_id, last_synced_at, created_at, updated_at FROM federated_nodes WHERE 1=1`
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), name, node_type, url, api_key_ref, status, contact_email, admin_unit_id, last_synced_at, created_at, updated_at FROM federated_nodes WHERE 1=1`
 	args := []interface{}{}
 	if nodeType != "" {
 		args = append(args, nodeType)
 		q += fmt.Sprintf(" AND node_type = $%d", len(args))
 	}
+	appendOwnershipScope(ctx, &q, &args, "")
 	q += ` ORDER BY name`
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -603,8 +717,10 @@ func ListFederatedNodes(ctx context.Context, nodeType string) ([]model.Federated
 }
 
 func GetFederatedNode(ctx context.Context, id string) (*model.FederatedNode, error) {
-	row := db.QueryRowContext(ctx,
-		`SELECT id, name, node_type, url, api_key_ref, status, contact_email, admin_unit_id, last_synced_at, created_at, updated_at FROM federated_nodes WHERE id = $1`, id)
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), name, node_type, url, api_key_ref, status, contact_email, admin_unit_id, last_synced_at, created_at, updated_at FROM federated_nodes WHERE id = $1`
+	args := []interface{}{id}
+	appendOwnershipScope(ctx, &q, &args, "")
+	row := db.QueryRowContext(ctx, q, args...)
 	n, err := scanFederatedNode(row)
 	if err == sql.ErrNoRows {
 		return nil, errors.New("federated node not found")
@@ -616,9 +732,10 @@ func CreateFederatedNode(ctx context.Context, n model.FederatedNode) (*model.Fed
 	if n.ID == "" {
 		n.ID = "node-" + uuid.NewString()[:8]
 	}
+	n.TenantID, n.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO federated_nodes (id, name, node_type, url, api_key_ref, status, contact_email, admin_unit_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		n.ID, n.Name, n.NodeType, n.URL, n.APIKeyRef, n.Status, n.ContactEmail, n.AdminUnitID)
+		`INSERT INTO federated_nodes (id, tenant_id, workspace_id, name, node_type, url, api_key_ref, status, contact_email, admin_unit_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		n.ID, nullableString(n.TenantID), nullableString(n.WorkspaceID), n.Name, n.NodeType, n.URL, n.APIKeyRef, n.Status, n.ContactEmail, n.AdminUnitID)
 	if err != nil {
 		return nil, err
 	}
@@ -626,9 +743,10 @@ func CreateFederatedNode(ctx context.Context, n model.FederatedNode) (*model.Fed
 }
 
 func UpdateFederatedNode(ctx context.Context, id string, n model.FederatedNode) (*model.FederatedNode, error) {
-	_, err := db.ExecContext(ctx,
-		`UPDATE federated_nodes SET name=$1, node_type=$2, url=$3, status=$4, contact_email=$5, admin_unit_id=$6, updated_at=now() WHERE id=$7`,
-		n.Name, n.NodeType, n.URL, n.Status, n.ContactEmail, n.AdminUnitID, id)
+	q := `UPDATE federated_nodes SET name=$1, node_type=$2, url=$3, status=$4, contact_email=$5, admin_unit_id=$6, updated_at=now() WHERE id=$7`
+	args := []interface{}{n.Name, n.NodeType, n.URL, n.Status, n.ContactEmail, n.AdminUnitID, id}
+	appendOwnershipScope(ctx, &q, &args, "")
+	_, err := db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +754,10 @@ func UpdateFederatedNode(ctx context.Context, id string, n model.FederatedNode) 
 }
 
 func DeleteFederatedNode(ctx context.Context, id string) error {
-	res, err := db.ExecContext(ctx, `DELETE FROM federated_nodes WHERE id=$1`, id)
+	q := `DELETE FROM federated_nodes WHERE id=$1`
+	args := []interface{}{id}
+	appendOwnershipScope(ctx, &q, &args, "")
+	res, err := db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}
@@ -650,8 +771,11 @@ func DeleteFederatedNode(ctx context.Context, id string) error {
 // ─── Federation: Data Sharing Agreements ───────────────────────────────────
 
 func ListAgreements(ctx context.Context) ([]model.DataSharingAgreement, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, title, source_node_id, target_node_id, data_types, frequency, status, start_date, end_date, created_at, updated_at FROM data_sharing_agreements ORDER BY created_at DESC`)
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), title, source_node_id, target_node_id, data_types, frequency, status, start_date, end_date, created_at, updated_at FROM data_sharing_agreements WHERE 1=1`
+	args := []interface{}{}
+	appendOwnershipScope(ctx, &q, &args, "")
+	q += ` ORDER BY created_at DESC`
+	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +784,7 @@ func ListAgreements(ctx context.Context) ([]model.DataSharingAgreement, error) {
 	for rows.Next() {
 		var a model.DataSharingAgreement
 		var dt []byte
-		if err := rows.Scan(&a.ID, &a.Title, &a.SourceNodeID, &a.TargetNodeID, &dt, &a.Frequency, &a.Status, &a.StartDate, &a.EndDate, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.TenantID, &a.WorkspaceID, &a.Title, &a.SourceNodeID, &a.TargetNodeID, &dt, &a.Frequency, &a.Status, &a.StartDate, &a.EndDate, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(dt, &a.DataTypes)
@@ -673,10 +797,11 @@ func CreateAgreement(ctx context.Context, a model.DataSharingAgreement) (*model.
 	if a.ID == "" {
 		a.ID = "agree-" + uuid.NewString()[:8]
 	}
+	a.TenantID, a.WorkspaceID = ownershipValues(ctx)
 	dt, _ := json.Marshal(a.DataTypes)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO data_sharing_agreements (id, title, source_node_id, target_node_id, data_types, frequency, status, start_date, end_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		a.ID, a.Title, a.SourceNodeID, a.TargetNodeID, string(dt), a.Frequency, a.Status, a.StartDate, a.EndDate)
+		`INSERT INTO data_sharing_agreements (id, tenant_id, workspace_id, title, source_node_id, target_node_id, data_types, frequency, status, start_date, end_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		a.ID, nullableString(a.TenantID), nullableString(a.WorkspaceID), a.Title, a.SourceNodeID, a.TargetNodeID, string(dt), a.Frequency, a.Status, a.StartDate, a.EndDate)
 	if err != nil {
 		return nil, err
 	}
@@ -684,8 +809,10 @@ func CreateAgreement(ctx context.Context, a model.DataSharingAgreement) (*model.
 }
 
 func UpdateAgreementStatus(ctx context.Context, id string, status string) error {
-	res, err := db.ExecContext(ctx,
-		`UPDATE data_sharing_agreements SET status=$1, updated_at=now() WHERE id=$2`, status, id)
+	q := `UPDATE data_sharing_agreements SET status=$1, updated_at=now() WHERE id=$2`
+	args := []interface{}{status, id}
+	appendOwnershipScope(ctx, &q, &args, "")
+	res, err := db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}
@@ -699,12 +826,13 @@ func UpdateAgreementStatus(ctx context.Context, id string, status string) error 
 // ─── Federation: Federated Datasets & Sync Logs ────────────────────────────
 
 func ListFederatedDatasets(ctx context.Context, nodeID string) ([]model.FederatedDataset, error) {
-	q := `SELECT id, node_id, external_id, name, description, status, last_sync_at, record_count, created_at, updated_at FROM federated_datasets WHERE 1=1`
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), node_id, external_id, name, description, status, last_sync_at, record_count, created_at, updated_at FROM federated_datasets WHERE 1=1`
 	args := []interface{}{}
 	if nodeID != "" {
 		args = append(args, nodeID)
 		q += fmt.Sprintf(" AND node_id = $%d", len(args))
 	}
+	appendOwnershipScope(ctx, &q, &args, "")
 	q += ` ORDER BY name`
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -714,7 +842,7 @@ func ListFederatedDatasets(ctx context.Context, nodeID string) ([]model.Federate
 	var datasets []model.FederatedDataset
 	for rows.Next() {
 		var d model.FederatedDataset
-		if err := rows.Scan(&d.ID, &d.NodeID, &d.ExternalID, &d.Name, &d.Description, &d.Status, &d.LastSyncAt, &d.RecordCount, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.TenantID, &d.WorkspaceID, &d.NodeID, &d.ExternalID, &d.Name, &d.Description, &d.Status, &d.LastSyncAt, &d.RecordCount, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		datasets = append(datasets, d)
@@ -726,9 +854,10 @@ func CreateFederatedDataset(ctx context.Context, d model.FederatedDataset) (*mod
 	if d.ID == "" {
 		d.ID = "fd-" + uuid.NewString()[:8]
 	}
+	d.TenantID, d.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO federated_datasets (id, node_id, external_id, name, description, status, record_count) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		d.ID, d.NodeID, d.ExternalID, d.Name, d.Description, d.Status, d.RecordCount)
+		`INSERT INTO federated_datasets (id, tenant_id, workspace_id, node_id, external_id, name, description, status, record_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		d.ID, nullableString(d.TenantID), nullableString(d.WorkspaceID), d.NodeID, d.ExternalID, d.Name, d.Description, d.Status, d.RecordCount)
 	if err != nil {
 		return nil, err
 	}
@@ -736,12 +865,13 @@ func CreateFederatedDataset(ctx context.Context, d model.FederatedDataset) (*mod
 }
 
 func ListSyncLogs(ctx context.Context, nodeID string) ([]model.SyncLog, error) {
-	q := `SELECT id, node_id, dataset_id, status, records_in, records_failed, message, started_at, completed_at FROM sync_logs WHERE 1=1`
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), node_id, dataset_id, status, records_in, records_failed, message, started_at, completed_at FROM sync_logs WHERE 1=1`
 	args := []interface{}{}
 	if nodeID != "" {
 		args = append(args, nodeID)
 		q += fmt.Sprintf(" AND node_id = $%d", len(args))
 	}
+	appendOwnershipScope(ctx, &q, &args, "")
 	q += ` ORDER BY started_at DESC LIMIT 100`
 	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -751,7 +881,7 @@ func ListSyncLogs(ctx context.Context, nodeID string) ([]model.SyncLog, error) {
 	var logs []model.SyncLog
 	for rows.Next() {
 		var l model.SyncLog
-		if err := rows.Scan(&l.ID, &l.NodeID, &l.DatasetID, &l.Status, &l.RecordsIn, &l.RecordsFailed, &l.Message, &l.StartedAt, &l.CompletedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.NodeID, &l.DatasetID, &l.Status, &l.RecordsIn, &l.RecordsFailed, &l.Message, &l.StartedAt, &l.CompletedAt); err != nil {
 			return nil, err
 		}
 		logs = append(logs, l)
@@ -763,9 +893,10 @@ func CreateSyncLog(ctx context.Context, l model.SyncLog) (*model.SyncLog, error)
 	if l.ID == "" {
 		l.ID = "log-" + uuid.NewString()[:8]
 	}
+	l.TenantID, l.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO sync_logs (id, node_id, dataset_id, status, records_in, records_failed, message, started_at, completed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		l.ID, l.NodeID, l.DatasetID, l.Status, l.RecordsIn, l.RecordsFailed, l.Message, l.StartedAt, l.CompletedAt)
+		`INSERT INTO sync_logs (id, tenant_id, workspace_id, node_id, dataset_id, status, records_in, records_failed, message, started_at, completed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		l.ID, nullableString(l.TenantID), nullableString(l.WorkspaceID), l.NodeID, l.DatasetID, l.Status, l.RecordsIn, l.RecordsFailed, l.Message, l.StartedAt, l.CompletedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -775,16 +906,19 @@ func CreateSyncLog(ctx context.Context, l model.SyncLog) (*model.SyncLog, error)
 // ─── Node Links (Object Connectivity) ──────────────────────────────────────
 
 func CreateNodeLink(ctx context.Context, link model.NodeLink) error {
+	link.TenantID, link.WorkspaceID = ownershipValues(ctx)
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO node_links (id, source_type, source_id, target_type, target_id) VALUES ($1,$2,$3,$4,$5)`,
-		"ln-"+uuid.NewString()[:8], link.SourceType, link.SourceID, link.TargetType, link.TargetID)
+		`INSERT INTO node_links (id, tenant_id, workspace_id, source_type, source_id, target_type, target_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		"ln-"+uuid.NewString()[:8], nullableString(link.TenantID), nullableString(link.WorkspaceID), link.SourceType, link.SourceID, link.TargetType, link.TargetID)
 	return err
 }
 
 func ListNodeLinks(ctx context.Context, sourceType string, sourceID string) ([]model.NodeLink, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, source_type, source_id, target_type, target_id, created_at FROM node_links WHERE source_type=$1 AND source_id=$2 ORDER BY created_at DESC`,
-		sourceType, sourceID)
+	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), source_type, source_id, target_type, target_id, created_at FROM node_links WHERE source_type=$1 AND source_id=$2`
+	args := []interface{}{sourceType, sourceID}
+	appendOwnershipScope(ctx, &q, &args, "")
+	q += ` ORDER BY created_at DESC`
+	rows, err := db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -792,7 +926,7 @@ func ListNodeLinks(ctx context.Context, sourceType string, sourceID string) ([]m
 	var links []model.NodeLink
 	for rows.Next() {
 		var l model.NodeLink
-		if err := rows.Scan(&l.ID, &l.SourceType, &l.SourceID, &l.TargetType, &l.TargetID, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.SourceType, &l.SourceID, &l.TargetType, &l.TargetID, &l.CreatedAt); err != nil {
 			return nil, err
 		}
 		links = append(links, l)
@@ -817,6 +951,7 @@ func GetSummary(ctx context.Context) (*Summary, error) {
 	if db == nil {
 		return nil, errors.New("database not initialized")
 	}
+	tenantID, workspaceID := ownershipValues(ctx)
 	s := &Summary{}
 	counts := []struct {
 		query string
@@ -824,15 +959,21 @@ func GetSummary(ctx context.Context) (*Summary, error) {
 	}{
 		{`SELECT COUNT(*) FROM admin_units`, &s.AdminUnits},
 		{`SELECT COUNT(*) FROM organizations`, &s.Organizations},
-		{`SELECT COUNT(*) FROM geo_layers`, &s.GeoLayers},
-		{`SELECT COUNT(*) FROM geo_features`, &s.GeoFeatures},
-		{`SELECT COUNT(*) FROM federated_nodes`, &s.FederatedNodes},
-		{`SELECT COUNT(*) FROM data_sharing_agreements WHERE status='active'`, &s.ActiveAgreements},
-		{`SELECT COUNT(*) FROM federated_datasets`, &s.FederatedDataset},
-		{`SELECT COUNT(*) FROM sync_logs`, &s.SyncLogs},
+		{`SELECT COUNT(*) FROM geo_layers WHERE ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.GeoLayers},
+		{`SELECT COUNT(*) FROM geo_features WHERE ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.GeoFeatures},
+		{`SELECT COUNT(*) FROM federated_nodes WHERE ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.FederatedNodes},
+		{`SELECT COUNT(*) FROM data_sharing_agreements WHERE status='active' AND ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.ActiveAgreements},
+		{`SELECT COUNT(*) FROM federated_datasets WHERE ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.FederatedDataset},
+		{`SELECT COUNT(*) FROM sync_logs WHERE ($1 = '' OR tenant_id IS NULL OR tenant_id = $1) AND ($2 = '' OR workspace_id IS NULL OR workspace_id = $2)`, &s.SyncLogs},
 	}
-	for _, c := range counts {
-		if err := db.QueryRowContext(ctx, c.query).Scan(c.dest); err != nil {
+	for idx, c := range counts {
+		var err error
+		if idx < 2 {
+			err = db.QueryRowContext(ctx, c.query).Scan(c.dest)
+		} else {
+			err = db.QueryRowContext(ctx, c.query, tenantID, workspaceID).Scan(c.dest)
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -899,7 +1040,7 @@ func scanClassifications(rows *sql.Rows) ([]model.Classification, error) {
 
 func scanFederatedNode(r rowScanner) (*model.FederatedNode, error) {
 	var n model.FederatedNode
-	if err := r.Scan(&n.ID, &n.Name, &n.NodeType, &n.URL, &n.APIKeyRef, &n.Status, &n.ContactEmail, &n.AdminUnitID, &n.LastSyncedAt, &n.CreatedAt, &n.UpdatedAt); err != nil {
+	if err := r.Scan(&n.ID, &n.TenantID, &n.WorkspaceID, &n.Name, &n.NodeType, &n.URL, &n.APIKeyRef, &n.Status, &n.ContactEmail, &n.AdminUnitID, &n.LastSyncedAt, &n.CreatedAt, &n.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &n, nil
@@ -909,7 +1050,7 @@ func scanFederatedNodes(rows *sql.Rows) ([]model.FederatedNode, error) {
 	var items []model.FederatedNode
 	for rows.Next() {
 		var n model.FederatedNode
-		if err := rows.Scan(&n.ID, &n.Name, &n.NodeType, &n.URL, &n.APIKeyRef, &n.Status, &n.ContactEmail, &n.AdminUnitID, &n.LastSyncedAt, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.TenantID, &n.WorkspaceID, &n.Name, &n.NodeType, &n.URL, &n.APIKeyRef, &n.Status, &n.ContactEmail, &n.AdminUnitID, &n.LastSyncedAt, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, n)
@@ -926,8 +1067,11 @@ func SpatialBuffer(ctx context.Context, featureID string, distanceMeters float64
 		SELECT ST_AsGeoJSON(ST_Buffer(ST_GeomFromGeoJSON(geometry)::geography, $2)::geometry)
 		FROM geo_features
 		WHERE id = $1
+		  AND ($3 = '' OR tenant_id IS NULL OR tenant_id = $3)
+		  AND ($4 = '' OR workspace_id IS NULL OR workspace_id = $4)
 	`
-	err := db.QueryRowContext(ctx, query, featureID, distanceMeters).Scan(&bufferedGeoJSON)
+	tenantID, workspaceID := ownershipValues(ctx)
+	err := db.QueryRowContext(ctx, query, featureID, distanceMeters, tenantID, workspaceID).Scan(&bufferedGeoJSON)
 	if err != nil {
 		// Fallback if PostGIS geography cast is not used or geometry is raw string
 		return fmt.Sprintf(`{"type":"Feature","properties":{"buffered":true,"distance":%f},"geometry":{"type":"Polygon","coordinates":[]}}`, distanceMeters), nil
@@ -938,15 +1082,18 @@ func SpatialBuffer(ctx context.Context, featureID string, distanceMeters float64
 // SpatialBBox queries all features whose geometry intersects a bounding envelope [minLng, minLat, maxLng, maxLat].
 func SpatialBBox(ctx context.Context, minLat, minLng, maxLat, maxLng float64) ([]model.GeoFeature, error) {
 	query := `
-		SELECT id, layer_id, admin_unit_id, name, geometry, properties, created_at
+		SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), layer_id, admin_unit_id, name, geometry, properties, created_at
 		FROM geo_features
 		WHERE ST_Intersects(
 			ST_GeomFromGeoJSON(geometry),
 			ST_MakeEnvelope($1, $2, $3, $4, 4326)
 		)
+		AND ($5 = '' OR tenant_id IS NULL OR tenant_id = $5)
+		AND ($6 = '' OR workspace_id IS NULL OR workspace_id = $6)
 		ORDER BY name
 	`
-	rows, err := db.QueryContext(ctx, query, minLng, minLat, maxLng, maxLat)
+	tenantID, workspaceID := ownershipValues(ctx)
+	rows, err := db.QueryContext(ctx, query, minLng, minLat, maxLng, maxLat, tenantID, workspaceID)
 	if err != nil {
 		// Fallback to all features if spatial index not enabled
 		return ListGeoFeatures(ctx, "", "")
@@ -957,7 +1104,7 @@ func SpatialBBox(ctx context.Context, minLat, minLng, maxLat, maxLng float64) ([
 	for rows.Next() {
 		var f model.GeoFeature
 		var props []byte
-		if err := rows.Scan(&f.ID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.TenantID, &f.WorkspaceID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(props, &f.Properties)
@@ -969,15 +1116,18 @@ func SpatialBBox(ctx context.Context, minLat, minLng, maxLat, maxLng float64) ([
 // SpatialPointInPolygon finds all features that contain a given latitude/longitude point.
 func SpatialPointInPolygon(ctx context.Context, lat, lng float64) ([]model.GeoFeature, error) {
 	query := `
-		SELECT id, layer_id, admin_unit_id, name, geometry, properties, created_at
+		SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), layer_id, admin_unit_id, name, geometry, properties, created_at
 		FROM geo_features
 		WHERE ST_Contains(
 			ST_GeomFromGeoJSON(geometry),
 			ST_SetSRID(ST_Point($1, $2), 4326)
 		)
+		AND ($3 = '' OR tenant_id IS NULL OR tenant_id = $3)
+		AND ($4 = '' OR workspace_id IS NULL OR workspace_id = $4)
 		ORDER BY name
 	`
-	rows, err := db.QueryContext(ctx, query, lng, lat)
+	tenantID, workspaceID := ownershipValues(ctx)
+	rows, err := db.QueryContext(ctx, query, lng, lat, tenantID, workspaceID)
 	if err != nil {
 		return []model.GeoFeature{}, nil
 	}
@@ -987,7 +1137,7 @@ func SpatialPointInPolygon(ctx context.Context, lat, lng float64) ([]model.GeoFe
 	for rows.Next() {
 		var f model.GeoFeature
 		var props []byte
-		if err := rows.Scan(&f.ID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.TenantID, &f.WorkspaceID, &f.LayerID, &f.AdminUnitID, &f.Name, &f.Geometry, &props, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(props, &f.Properties)
@@ -1003,12 +1153,14 @@ func SpatialAreaCalc(ctx context.Context, featureID string) (float64, error) {
 		SELECT ST_Area(ST_GeomFromGeoJSON(geometry)::geography)
 		FROM geo_features
 		WHERE id = $1
+		  AND ($2 = '' OR tenant_id IS NULL OR tenant_id = $2)
+		  AND ($3 = '' OR workspace_id IS NULL OR workspace_id = $3)
 	`
-	err := db.QueryRowContext(ctx, query, featureID).Scan(&areaSqMeters)
+	tenantID, workspaceID := ownershipValues(ctx)
+	err := db.QueryRowContext(ctx, query, featureID, tenantID, workspaceID).Scan(&areaSqMeters)
 	if err != nil {
 		return 0, err
 	}
 	// Return area in square kilometres
 	return areaSqMeters / 1000000.0, nil
 }
-

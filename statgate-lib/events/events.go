@@ -92,12 +92,12 @@ const (
 	EventResearchPublished    = "research.published"
 
 	// StatCollect
-	EventSurveyCreated        = "survey.created"
-	EventSurveyPublished      = "survey.published"
-	EventSubmissionReceived   = "submission.received"
-	EventSubmissionValidated  = "submission.validated"
-	EventSubmissionRejected   = "submission.rejected"
-	EventFieldDataSubmitted   = "field_data.submitted"
+	EventSurveyCreated       = "survey.created"
+	EventSurveyPublished     = "survey.published"
+	EventSubmissionReceived  = "submission.received"
+	EventSubmissionValidated = "submission.validated"
+	EventSubmissionRejected  = "submission.rejected"
+	EventFieldDataSubmitted  = "field_data.submitted"
 
 	// HelpDesk
 	EventTicketCreated     = "ticket.created"
@@ -130,43 +130,43 @@ const (
 	EventSpatialNodeSynced     = "spatial.node.synced"
 
 	// Knowledge Portal (content / open data / library)
-	EventContentPublished       = "content.published"
-	EventDatasetPublished       = "dataset.published"
-	EventRepositoryArchived     = "repository.item.archived"
-	EventSubscriptionCreated    = "subscription.created"
-	EventFeedbackReceived       = "feedback.received"
-	EventObjectLinkCreated      = "object.link.created"
+	EventContentPublished    = "content.published"
+	EventDatasetPublished    = "dataset.published"
+	EventRepositoryArchived  = "repository.item.archived"
+	EventSubscriptionCreated = "subscription.created"
+	EventFeedbackReceived    = "feedback.received"
+	EventObjectLinkCreated   = "object.link.created"
 
 	// AI & Autonomy (App 5: P22 Digital Twins & Analytics, P31 Agents, P39 Knowledge Graph)
-	EventPredictionGenerated    = "prediction.generated"
-	EventSimulationCompleted    = "simulation.completed"
-	EventAgentTaskCreated       = "agent.task.created"
-	EventAgentTaskCompleted     = "agent.task.completed"
-	EventAgentActionTaken       = "agent.action.taken"
-	EventGraphEntityRegistered  = "graph.entity.registered"
+	EventPredictionGenerated   = "prediction.generated"
+	EventSimulationCompleted   = "simulation.completed"
+	EventAgentTaskCreated      = "agent.task.created"
+	EventAgentTaskCompleted    = "agent.task.completed"
+	EventAgentActionTaken      = "agent.action.taken"
+	EventGraphEntityRegistered = "graph.entity.registered"
 
 	// Learning, Community & Commercial (App 7: P24 LMS/CPD, P26 CRM, P35 Stewardship)
-	EventCourseCompleted        = "course.completed"
-	EventCertificateIssued      = "certificate.issued"
-	EventBadgeIssued            = "badge.issued"
-	EventEnrollmentCreated      = "enrollment.created"
-	EventLeadConverted          = "lead.converted"
-	EventPartnerRegistered      = "partner.registered"
-	EventServiceRequestCreated  = "service_request.created"
+	EventCourseCompleted       = "course.completed"
+	EventCertificateIssued     = "certificate.issued"
+	EventBadgeIssued           = "badge.issued"
+	EventEnrollmentCreated     = "enrollment.created"
+	EventLeadConverted         = "lead.converted"
+	EventPartnerRegistered     = "partner.registered"
+	EventServiceRequestCreated = "service_request.created"
 
 	// Geospatial & Remote Sensing (App 9: P44 GIS / Drone / Remote Sensing)
-	EventSceneIngested          = "scene.ingested"
-	EventDroneFlightCompleted   = "drone.flight.completed"
-	EventSpatialAnalysisDone    = "spatial.analysis.completed"
-	EventMapTileRegistered      = "tile.registered"
+	EventSceneIngested        = "scene.ingested"
+	EventDroneFlightCompleted = "drone.flight.completed"
+	EventSpatialAnalysisDone  = "spatial.analysis.completed"
+	EventMapTileRegistered    = "tile.registered"
 
 	// Business Process Management (App 11: P48 BPM / Case / Process Mining)
-	EventProcessStarted         = "process.started"
-	EventProcessCompleted       = "process.completed"
-	EventWorkItemCreated        = "task.created"
-	EventWorkItemCompleted      = "task.completed"
-	EventCaseCreated            = "case.created"
-	EventAutomationTriggered    = "automation.triggered"
+	EventProcessStarted      = "process.started"
+	EventProcessCompleted    = "process.completed"
+	EventWorkItemCreated     = "task.created"
+	EventWorkItemCompleted   = "task.completed"
+	EventCaseCreated         = "case.created"
+	EventAutomationTriggered = "automation.triggered"
 )
 
 // EnterpriseEvent represents the universal message schema.
@@ -205,6 +205,17 @@ type Config struct {
 	Source     string
 	Channel    string
 	DLQChannel string
+}
+
+// RedisAvailable reports whether the cross-process transport is reachable.
+// An EventBus can still serve in-process subscribers when this returns false,
+// but services should expose the distinction in health responses because the
+// in-process broker cannot communicate across application boundaries.
+func (b *EventBus) RedisAvailable(ctx context.Context) bool {
+	if b == nil || b.client == nil {
+		return false
+	}
+	return b.client.Ping(ctx).Err() == nil
 }
 
 // NewEventBus initializes a new EventBus.

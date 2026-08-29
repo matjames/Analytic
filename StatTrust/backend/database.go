@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -40,7 +41,124 @@ func initDB() (*sql.DB, error) {
 	log.Println("Connected to PostgreSQL for StatTrust")
 	db = database
 	runMigrations()
+	loadTrustPersistence()
 	return db, nil
+}
+
+func persistLedgerBlock(block AuditLedgerBlock) {
+	if db == nil {
+		return
+	}
+	payload, err := json.Marshal(block.Payload)
+	if err != nil {
+		log.Printf("StatTrust ledger payload serialization failed: %v", err)
+		return
+	}
+	err = db.QueryRow(`
+		INSERT INTO audit_ledger
+			(chain_index, tenant_id, workspace_id, prev_hash, record_hash, merkle_root, event_type, source_app, actor_id, payload, timestamp, nonce)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		RETURNING storage_id`,
+		block.Index, block.TenantID, nullableWorkspace(block.WorkspaceID), block.PrevHash,
+		block.RecordHash, block.MerkleRoot, block.EventType, block.SourceApp, block.ActorID,
+		payload, block.Timestamp, block.Nonce).Scan(&block.StorageID)
+	if err != nil {
+		log.Printf("StatTrust ledger persistence failed: %v", err)
+	}
+}
+
+func persistProvenance(p ArtifactProvenance) {
+	if db == nil {
+		return
+	}
+	chain, err := json.Marshal(p.CustodyChain)
+	if err != nil {
+		log.Printf("StatTrust provenance serialization failed: %v", err)
+		return
+	}
+	_, err = db.Exec(`
+		INSERT INTO artifact_provenance
+			(id, tenant_id, workspace_id, artifact_id, artifact_name, artifact_type, origin_app, current_owner, sha256_checksum, tsa_timestamp, custody_chain, integrity_state, ledger_index)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		ON CONFLICT (id) DO UPDATE SET
+			tenant_id = EXCLUDED.tenant_id,
+			workspace_id = EXCLUDED.workspace_id,
+			artifact_id = EXCLUDED.artifact_id,
+			artifact_name = EXCLUDED.artifact_name,
+			artifact_type = EXCLUDED.artifact_type,
+			origin_app = EXCLUDED.origin_app,
+			current_owner = EXCLUDED.current_owner,
+			sha256_checksum = EXCLUDED.sha256_checksum,
+			tsa_timestamp = EXCLUDED.tsa_timestamp,
+			custody_chain = EXCLUDED.custody_chain,
+			integrity_state = EXCLUDED.integrity_state,
+			ledger_index = EXCLUDED.ledger_index`,
+		p.ID, p.TenantID, nullableWorkspace(p.WorkspaceID), p.ArtifactID, p.ArtifactName, p.ArtifactType,
+		p.OriginApp, p.CurrentOwner, p.Sha256Checksum, p.TSATimestamp, chain, p.IntegrityState, p.LedgerIndex)
+	if err != nil {
+		log.Printf("StatTrust provenance persistence failed: %v", err)
+	}
+}
+
+func loadTrustPersistence() {
+	if db == nil || globalStore == nil {
+		return
+	}
+	rows, err := db.Query(`
+		SELECT storage_id, chain_index, tenant_id, COALESCE(workspace_id, ''), prev_hash, record_hash, merkle_root,
+			event_type, source_app, actor_id, payload, timestamp, nonce
+		FROM audit_ledger ORDER BY storage_id`)
+	if err == nil {
+		defer rows.Close()
+		globalStore.mu.Lock()
+		for rows.Next() {
+			var block AuditLedgerBlock
+			var payload []byte
+			if err := rows.Scan(&block.StorageID, &block.Index, &block.TenantID, &block.WorkspaceID, &block.PrevHash,
+				&block.RecordHash, &block.MerkleRoot, &block.EventType, &block.SourceApp, &block.ActorID, &payload,
+				&block.Timestamp, &block.Nonce); err != nil {
+				log.Printf("StatTrust ledger load failed: %v", err)
+				continue
+			}
+			if err := json.Unmarshal(payload, &block.Payload); err == nil {
+				globalStore.ledger = append(globalStore.ledger, block)
+			}
+		}
+		globalStore.mu.Unlock()
+	} else {
+		log.Printf("StatTrust ledger load skipped: %v", err)
+	}
+
+	rows, err = db.Query(`
+		SELECT id, tenant_id, COALESCE(workspace_id, ''), artifact_id, artifact_name, artifact_type, origin_app,
+			current_owner, sha256_checksum, tsa_timestamp, custody_chain, integrity_state, ledger_index
+		FROM artifact_provenance`)
+	if err != nil {
+		log.Printf("StatTrust provenance load skipped: %v", err)
+		return
+	}
+	defer rows.Close()
+	globalStore.mu.Lock()
+	defer globalStore.mu.Unlock()
+	for rows.Next() {
+		var p ArtifactProvenance
+		var chain []byte
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.WorkspaceID, &p.ArtifactID, &p.ArtifactName, &p.ArtifactType,
+			&p.OriginApp, &p.CurrentOwner, &p.Sha256Checksum, &p.TSATimestamp, &chain, &p.IntegrityState, &p.LedgerIndex); err != nil {
+			log.Printf("StatTrust provenance load failed: %v", err)
+			continue
+		}
+		if err := json.Unmarshal(chain, &p.CustodyChain); err == nil {
+			globalStore.provenance[provenanceKey(p.TenantID, p.WorkspaceID, p.ArtifactID)] = p
+		}
+	}
+}
+
+func nullableWorkspace(workspaceID string) interface{} {
+	if workspaceID == "" {
+		return nil
+	}
+	return workspaceID
 }
 
 func runMigrations() {
@@ -52,6 +170,7 @@ func runMigrations() {
 	CREATE TABLE IF NOT EXISTS security_incidents (
 		id VARCHAR(100) PRIMARY KEY,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
+		workspace_id VARCHAR(128),
 		title VARCHAR(255) NOT NULL,
 		severity VARCHAR(50) NOT NULL,
 		status VARCHAR(50) NOT NULL,
@@ -79,8 +198,10 @@ func runMigrations() {
 	);
 
 	CREATE TABLE IF NOT EXISTS audit_ledger (
-		index BIGSERIAL PRIMARY KEY,
+		storage_id BIGSERIAL PRIMARY KEY,
+		chain_index BIGINT NOT NULL,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
+		workspace_id VARCHAR(128),
 		prev_hash VARCHAR(64) NOT NULL,
 		record_hash VARCHAR(64) NOT NULL,
 		merkle_root VARCHAR(64) NOT NULL,
@@ -95,6 +216,7 @@ func runMigrations() {
 	CREATE TABLE IF NOT EXISTS verifiable_credentials (
 		id VARCHAR(100) PRIMARY KEY,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
+		workspace_id VARCHAR(128),
 		credential_id VARCHAR(255) UNIQUE NOT NULL,
 		issuer_did VARCHAR(255) NOT NULL,
 		holder_did VARCHAR(255) NOT NULL,
@@ -109,7 +231,7 @@ func runMigrations() {
 	CREATE TABLE IF NOT EXISTS artifact_provenance (
 		id VARCHAR(100) PRIMARY KEY,
 		tenant_id VARCHAR(64) DEFAULT 'tenant-alpha',
-		artifact_id VARCHAR(255) UNIQUE NOT NULL,
+		artifact_id VARCHAR(255) NOT NULL,
 		artifact_name VARCHAR(255) NOT NULL,
 		artifact_type VARCHAR(100) NOT NULL,
 		origin_app VARCHAR(100) NOT NULL,
@@ -188,5 +310,47 @@ func runMigrations() {
 		log.Printf("Error executing StatTrust DB migrations: %v", err)
 	} else {
 		log.Println("StatTrust DB schema migrations applied successfully.")
+	}
+	for _, table := range []string{"security_incidents", "audit_ledger", "artifact_provenance"} {
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)", table)); err != nil {
+			log.Printf("Error adding workspace scope to %s: %v", table, err)
+		}
+	}
+	if _, err := db.Exec(`
+		ALTER TABLE audit_ledger ADD COLUMN IF NOT EXISTS storage_id BIGSERIAL;
+		ALTER TABLE audit_ledger ADD COLUMN IF NOT EXISTS chain_index BIGINT;
+	`); err != nil {
+		log.Printf("Error migrating audit ledger storage identity: %v", err)
+	} else {
+		var hasLegacyIndex bool
+		err := db.QueryRow(`SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'audit_ledger' AND column_name = 'index'
+		)`).Scan(&hasLegacyIndex)
+		if err != nil {
+			log.Printf("Error checking legacy audit ledger index: %v", err)
+		} else {
+			backfill := `UPDATE audit_ledger SET chain_index = storage_id WHERE chain_index IS NULL`
+			if hasLegacyIndex {
+				backfill = `UPDATE audit_ledger SET chain_index = "index" WHERE chain_index IS NULL`
+			}
+			if _, err := db.Exec(backfill); err != nil {
+				log.Printf("Error backfilling audit ledger chain index: %v", err)
+			}
+		}
+		if _, err := db.Exec(`
+			ALTER TABLE audit_ledger ALTER COLUMN chain_index SET NOT NULL;
+			ALTER TABLE audit_ledger DROP CONSTRAINT IF EXISTS audit_ledger_pkey;
+			ALTER TABLE audit_ledger ADD CONSTRAINT audit_ledger_pkey PRIMARY KEY (storage_id);
+		`); err != nil {
+			log.Printf("Error finalizing audit ledger storage identity: %v", err)
+		}
+	}
+	if _, err := db.Exec(`
+		ALTER TABLE artifact_provenance DROP CONSTRAINT IF EXISTS artifact_provenance_artifact_id_key;
+		CREATE UNIQUE INDEX IF NOT EXISTS artifact_provenance_scope_key
+			ON artifact_provenance (tenant_id, COALESCE(workspace_id, ''), artifact_id);
+	`); err != nil {
+		log.Printf("Error migrating artifact provenance scope uniqueness: %v", err)
 	}
 }

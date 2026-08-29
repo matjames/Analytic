@@ -1,0 +1,109 @@
+id: co2-emissions-overview
+title: CO2 Emissions by Country
+description: Annual CO2 emissions across the world, from the local co2_emissions_by_country dataset
+category: Environment
+sections:
+  - id: kpi-row
+    title: Emissions Snapshot
+    layout: four-column
+    components:
+      - type: kpi
+        title: Total CO2 (all years)
+        accentColor: "#165c92"
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: sum
+              alias: total_co2
+      - type: kpi
+        title: Avg Annual CO2
+        accentColor: "#1a7ab5"
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: avg
+              alias: avg_co2
+      - type: kpi
+        title: Max Annual CO2
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: max
+              alias: max_co2
+      - type: kpi
+        title: Countries Tracked
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Entity
+              function: count
+              alias: country_count
+
+  - id: section-map
+    title: World Map
+    layout: single
+    components:
+      - type: choropleth
+        title: Total CO2 Emissions by Country
+        data:
+          geojson_path: /assets/world_countries.geojson
+          color_scheme: ["#dbeafe", "#93c5fd", "#3b82f6", "#165c92"]
+          legend_title: "Total CO2 Emissions"
+          bin_labels: [Low, Medium, High, Very High]
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: sum
+              alias: total_emissions
+          groupBy:
+            - field: Entity
+        columnMapping:
+          district: Entity
+          value: total_emissions
+
+  - id: section-charts
+    title: Time & Ranking
+    layout: two-column
+    components:
+      - type: line
+        title: Global Total CO2 Over Time
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: sum
+              alias: total_co2
+          groupBy:
+            - field: Year
+              format: year
+      - type: bar
+        title: Top 10 Emitters (all time)
+        query:
+          table: ml_staging.co2_emissions_by_country
+          aggregations:
+            - column: Annual_CO2_emissions
+              function: sum
+              alias: total_emissions
+          groupBy:
+            - field: Entity
+          orderBy:
+            - field: total_emissions
+              direction: desc
+          limit: 10
+
+  - id: section-linelist
+    title: Country Line List
+    layout: single
+    components:
+      - type: table_advanced
+        title: Recent Country Emissions (sample)
+        sql: >
+          SELECT "Entity", "Year", "Annual_CO2_emissions"
+          FROM ml_staging.co2_emissions_by_country
+          WHERE "Year" = (SELECT MAX("Year") FROM ml_staging.co2_emissions_by_country)
+          ORDER BY "Annual_CO2_emissions" DESC
+          LIMIT 20

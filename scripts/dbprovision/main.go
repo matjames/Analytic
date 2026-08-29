@@ -13,9 +13,11 @@ import (
 )
 
 var wantDBs = []string{
+	"statgate_ml_staging", "statcollect", "kaggle", "statgate",
 	"knowledge_portal", "ai_intelligence", "learning_crm",
 	"gis_intelligence", "bpm_hub",
 	"statfederation", "statiot", "statdata",
+	"pms", "rms", "statchat", "statgovernance", "statspatial", "stattrust",
 }
 
 func main() {

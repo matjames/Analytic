@@ -45,6 +45,7 @@ Phase 15: Enterprise Document Management (EDMS)     [===================] 95%
 | **StatGovernance** | `StatGovernance/` | :8093 | :3012 | `statgovernance` | Active | Compiled (Go & Vite) |
 | **StatTrust** | `StatTrust/` | :8094 | :3013 | `stattrust` | Active | Operational (Go & Vite) |
 | **StatOps** | `StatOps/` | :8098 | :3015 | `statops` | Active | Operational (Go & Vite) |
+| **StatFederation** | `StatFederation/` | :8105 | :3016 | `statfederation` | Active | Operational (Go & Vite) |
 | **Enterprise Core** | `enterprise/core/` | :8096 | — | `enterprise` | Active | Compiled (Go) |
 | **Enterprise Search** | `enterprise/search/` | :8095 | — | — | Active | Operational |
 | **Analytics Core** | `backend/` | :8082 | — | `ml_staging` | Active | Operational |
@@ -125,5 +126,31 @@ Phase 15: Enterprise Document Management (EDMS)     [===================] 95%
 - Chaos Engineering & Disaster Recovery simulator with live region failover tests and RTO/RPO verification
 - Configuration Management Database (CMDB) tracking Tier 0/1/2 assets and live service dependency graph
 - Dedicated Mission Control React SPA (`:3015`) and Go Gin service (`:8098`) registered in Docker Compose and App Launcher
+
+### Phase 23 & 30 (App 6: National & Global Evidence Federation — StatFederation) Extensions:
+- National Statistical System (NSS) multi-node topology with real-time HTTP health probing and background heartbeat loop
+- Bilateral Data Sharing Agreements (DSAs) with legal status lifecycle (Draft -> Under Review -> Active -> Revoked) and daily query quotas
+- National & SDG Indicator Repository with SDMX dimension mapping and disaggregation dimensions
+- Outbound Sovereign Indicator Push Protocol serialising indicators to standard SDMX-JSON and transmitting to peer analytical hubs
+- Inbound SDMX indicator ingestion endpoint (`/api/v1/federation/indicators/ingest`) with automatic store mirror updates
+- Cross-agency distributed query router with scatter-gather execution ledger and execution time tracking
+- Diplomatic treaties registry (EAC, African Union STATAFRIC, AfCFTA) with encryption standard and compliance rules
+- Multilateral report submission generator (SDG Voluntary National Reviews, AU Agenda 2063, EAC Integration)
+- Real-time cross-hub federated evidence search querying connected participant nodes
+- Transboundary sovereignty compliance ledger with immutable audit trail and applied rule evaluation
+- Dedicated Cyber-Diplomacy React SPA (`:3016`) and Go Gin service (`:8105`) registered in Docker Compose and App Launcher
+
+### Phase 6 & Phase XII (Official Statistics Engine & Institutional Condition):
+- Dynamic Multidimensional Tabulation & Crosstab Matrix Calculation Engine with Pearson's Chi-Square tests (`backend/internal/tabulation/`)
+- Master Sampling Framework & Survey Designer with Cochran/FPC sample size estimation, DEFF cluster adjustment, and proportional EA allocation (`backend/internal/sampling/`)
+- Institutional Condition Calculator (Phase XII) evaluating multi-domain weights across Data Quality, Statistical Integrity, KPIs, and Governance (`backend/internal/intelligence/`)
+- Dedicated `/tabulate` and `/sampling` interfaces integrated into the Flask analytics suite
+
+### Phase 7 & Global Dissemination (Open Data Portal & IATI Standards):
+- CKAN 3.0-compatible Open Data API (`/api/3/action/package_list`, `package_show`, `package_search`) in Knowledge Portal (`knowledge-portal/backend/`)
+- SDMX-REST (`/api/sdmx/data/{code}`) and RSS 2.0 XML dataset feeds for international aggregators
+- IATI 2.03 Development Partner XML activities exporter in PMS backend (`PMS/backend/iati_export.go`)
+- Turnkey Sovereign Hub Setup Guide (`HUB_SETUP_GUIDE.md`) and automated PowerShell bootstrap script (`setup-hub.ps1`)
+
 
 

@@ -426,24 +426,7 @@
       <span class="cmd-bar-badge badge-exec">ANALYTICS & DECISION SUPPORT</span>
     </div>
     <div class="cmd-bar-right">
-      <div class="app-launcher-wrapper" style="position:relative;">
-        <button type="button" class="nav-item launcher-toggle" onclick="toggleAppLauncher()" aria-label="Open app launcher">
-          <i class="bi bi-grid-3x3-gap-fill"></i>
-        </button>
-        <div id="appLauncherMenu" class="app-launcher-menu" style="display:none;top:calc(100% + 10px);right:0;">
-          <div class="launcher-title">All applications</div>
-          <div class="launcher-grid">
-            <a href="/" class="launcher-card"><span class="launcher-icon">🏠</span><span>Dashboard</span></a>
-            <a href="/datasets" class="launcher-card"><span class="launcher-icon">📊</span><span>Dataset Catalog</span></a>
-            <a href="/notebook" class="launcher-card"><span class="launcher-icon">📓</span><span>Notebook</span></a>
-            <a href="/semantic" class="launcher-card"><span class="launcher-icon">🧠</span><span>Semantic Registry</span></a>
-            <a href="/abac" class="launcher-card"><span class="launcher-icon">🔐</span><span>ABAC Security</span></a>
-            <a href="/executive" class="launcher-card"><span class="launcher-icon">🏛️</span><span>Executive Centre</span></a>
-            <a href="http://localhost:3002" class="launcher-card"><span class="launcher-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span><span>System Launcher</span></a>
-            <a href="http://localhost:3000" class="launcher-card"><span class="launcher-icon">📝</span><span>Register Portal</span></a>
-          </div>
-        </div>
-      </div>
+      {% include '_launcher.html' %}
       <div class="live-indicator"><div class="live-dot"></div>LIVE DATA</div>
       <span style="font-size:0.78rem;color:var(--text-muted);">STATGATE UNIFIED THEME</span>
       <a href="/" class="nav-btn">← Dashboard</a>
@@ -591,6 +574,39 @@
       </div>
     </div>
 
+    <!-- Sprint 2: Institutional Condition & Knowledge Graph -->
+    <div class="two-col">
+      <!-- Institutional Condition Gauge -->
+      <div class="glass-panel">
+        <div class="panel-title">
+          <div class="dot" style="background:var(--accent-green)"></div>
+          📐 Institutional Condition (Phase XII)
+        </div>
+        <div id="conditionPanel" style="text-align:center;padding:20px 0;">
+          <div style="font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Composite Score</div>
+          <div id="conditionScore" style="font-size:3.6rem;font-weight:900;color:var(--accent-green);margin:6px 0;letter-spacing:-2px;">--</div>
+          <div id="conditionLevel" style="font-size:0.95rem;font-weight:700;padding:4px 16px;display:inline-block;border-radius:20px;background:rgba(34,197,94,0.15);color:var(--accent-green);"></div>
+          <div id="conditionDomains" style="margin-top:20px;text-align:left;"></div>
+          <div id="conditionRecs" style="margin-top:14px;text-align:left;font-size:0.78rem;color:var(--text-muted);line-height:1.6;"></div>
+        </div>
+      </div>
+
+      <!-- Knowledge Graph Evidence Network -->
+      <div class="glass-panel">
+        <div class="panel-title">
+          <div class="dot" style="background:var(--accent-purple)"></div>
+          🧠 Knowledge Graph — Evidence Network
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5;">
+          Cross-domain evidence linking: Datasets → Indicators → Projects → Policies.
+          Sourced from AI Autonomy (<code>ai-autonomy</code> App 5) graph engine.
+        </p>
+        <div id="knowledgeGraphPanel" style="min-height:200px;">
+          <div class="skeleton" style="height:180px;"></div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /app -->
 
@@ -609,6 +625,89 @@
         menu.style.display = 'none';
       });
     }
+  });
+
+  // ─── Sprint 2: Institutional Condition ───────────────────────────
+  async function loadCondition() {
+    try {
+      const res = await fetch('/api/intelligence/condition');
+      const d = await res.json();
+      const score = d.composite_score || 0;
+      document.getElementById('conditionScore').innerText = score.toFixed(1);
+
+      const levelColors = {
+        'OPTIMAL': 'var(--accent-green)', 'NOMINAL': 'var(--accent-cyan)',
+        'ATTENTION': 'var(--accent-gold)', 'ELEVATED': '#f97316',
+        'CRITICAL': 'var(--accent-red)', 'EMERGENCY': '#dc2626'
+      };
+      const color = levelColors[d.level] || 'var(--accent-green)';
+      document.getElementById('conditionScore').style.color = color;
+      document.getElementById('conditionLevel').innerText = d.level || 'OPTIMAL';
+      document.getElementById('conditionLevel').style.color = color;
+      document.getElementById('conditionLevel').style.background = color.replace(')', ',0.12)').replace('var(', 'rgba(34,197,94');
+
+      const domains = (d.domain_scores || []).map(ds => `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <div style="flex:1;font-size:0.78rem;color:var(--text-muted);">${ds.domain_name}</div>
+          <div style="width:120px;height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden;">
+            <div style="height:100%;width:${Math.min(ds.score, 100)}%;background:${ds.score >= 85 ? 'var(--accent-green)' : ds.score >= 70 ? 'var(--accent-gold)' : 'var(--accent-red)'};border-radius:3px;transition:width 1s;"></div>
+          </div>
+          <div style="width:40px;text-align:right;font-size:0.78rem;font-weight:600;font-family:var(--font-mono);">${ds.score.toFixed(1)}</div>
+        </div>
+      `).join('');
+      document.getElementById('conditionDomains').innerHTML = domains;
+
+      const recs = (d.recommendations || []).map(r => `<div>• ${r}</div>`).join('');
+      document.getElementById('conditionRecs').innerHTML = recs;
+    } catch (e) { console.warn('Condition fetch failed:', e); }
+  }
+
+  // ─── Sprint 2: Knowledge Graph Evidence Network ──────────────────
+  async function loadKnowledgeGraph() {
+    try {
+      const res = await fetch('/api/knowledge-graph/nodes');
+      const g = await res.json();
+      const typeIcons = { INDICATOR: '📊', DATASET: '🗃️', PROJECT: '📋', POLICY: '📜' };
+      const typeColors = { INDICATOR: '#38bdf8', DATASET: '#34d399', PROJECT: '#fbbf24', POLICY: '#c084fc' };
+
+      let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">';
+      for (const node of (g.nodes || [])) {
+        const icon = typeIcons[node.type] || '🔹';
+        const clr = typeColors[node.type] || 'var(--text-muted)';
+        html += `
+          <div style="padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.15);">
+            <div style="font-size:0.7rem;color:${clr};font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${icon} ${node.type}</div>
+            <div style="font-size:0.82rem;font-weight:600;margin-top:4px;">${node.label}</div>
+            <div style="font-size:0.72rem;color:var(--text-dim);margin-top:2px;">Domain: ${node.domain || '—'}</div>
+          </div>`;
+      }
+      html += '</div>';
+
+      // Render edges
+      const edges = (g.edges || []);
+      if (edges.length > 0) {
+        html += '<div style="font-size:0.72rem;font-weight:600;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Evidence Relationships</div>';
+        const nodeMap = {};
+        (g.nodes || []).forEach(n => nodeMap[n.id] = n.label);
+        for (const e of edges) {
+          html += `<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;padding:6px 10px;background:rgba(0,0,0,0.1);border-radius:4px;">
+            <span style="color:#38bdf8;">${nodeMap[e.source] || e.source}</span>
+            <span style="color:var(--accent-gold);font-weight:700;margin:0 6px;">→ ${e.relationship} →</span>
+            <span style="color:#34d399;">${nodeMap[e.target] || e.target}</span>
+          </div>`;
+        }
+      }
+
+      document.getElementById('knowledgeGraphPanel').innerHTML = html;
+    } catch (e) {
+      document.getElementById('knowledgeGraphPanel').innerHTML = '<div style="font-size:0.8rem;color:var(--text-dim);">Knowledge Graph unavailable.</div>';
+    }
+  }
+
+  // Load on page ready
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCondition();
+    loadKnowledgeGraph();
   });
 </script>
 </body>

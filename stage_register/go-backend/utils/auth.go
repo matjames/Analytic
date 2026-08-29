@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,13 +48,13 @@ func CheckPassword(hash, p string) bool {
 func CreateToken(userID int64) string {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":    fmt.Sprint(userID),
+		"sub":     fmt.Sprint(userID),
 		"user_id": userID,
-		"iat":    now.Unix(),
-		"nbf":    now.Add(-30 * time.Second).Unix(),
-		"exp":    now.Add(6 * time.Hour).Unix(),
-		"iss":    jwtEnv("STATGATE_JWT_ISSUER", "statgate-registry"),
-		"aud":    jwtEnv("STATGATE_JWT_AUDIENCE", "statgate"),
+		"iat":     now.Unix(),
+		"nbf":     now.Add(-30 * time.Second).Unix(),
+		"exp":     now.Add(6 * time.Hour).Unix(),
+		"iss":     jwtEnv("STATGATE_JWT_ISSUER", "statgate-registry"),
+		"aud":     jwtEnv("STATGATE_JWT_AUDIENCE", "statgate"),
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -112,11 +114,70 @@ func SignUserToken(user models.User) (string, error) {
 		claims["district_id"] = *user.DistrictID
 	}
 
+	return signClaims(claims)
+}
+
+// SignRefreshToken issues a typed, long-lived token that can only be used at
+// the Registry refresh endpoint. Downstream services accept access tokens
+// only, so a stolen refresh token cannot be used as an API credential.
+func SignRefreshToken(user models.User) (string, error) {
+	var nonce [32]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", fmt.Errorf("generate refresh token id: %w", err)
+	}
+
+	claims := jwt.MapClaims{
+		"sub": fmt.Sprint(user.ID),
+		"typ": "refresh",
+		"jti": fmt.Sprintf("%x", nonce[:]),
+		"iat": time.Now().Unix(),
+		"nbf": time.Now().Add(-30 * time.Second).Unix(),
+		"exp": time.Now().Add(30 * 24 * time.Hour).Unix(),
+		"iss": jwtEnv("STATGATE_JWT_ISSUER", "statgate-registry"),
+		"aud": jwtEnv("STATGATE_JWT_AUDIENCE", "statgate"),
+	}
+	return signClaims(claims)
+}
+
+// RefreshSubject validates a refresh token and returns its Registry user id.
+func RefreshSubject(tokenString string) (int64, error) {
+	secret, err := jwtSecret()
+	if err != nil {
+		return 0, err
+	}
+
+	issuer := jwtEnv("STATGATE_JWT_ISSUER", "statgate-registry")
+	audience := jwtEnv("STATGATE_JWT_AUDIENCE", "statgate")
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unsupported signing method: %v", token.Header["alg"])
+		}
+		return []byte(secret), nil
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(issuer), jwt.WithAudience(audience))
+	if err != nil || !token.Valid {
+		return 0, fmt.Errorf("invalid refresh token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || claims["typ"] != "refresh" {
+		return 0, fmt.Errorf("token is not a refresh token")
+	}
+	sub, ok := claims["sub"].(string)
+	if !ok {
+		return 0, fmt.Errorf("refresh token missing subject")
+	}
+	userID, err := strconv.ParseInt(sub, 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, fmt.Errorf("refresh token has invalid subject")
+	}
+	return userID, nil
+}
+
+func signClaims(claims jwt.MapClaims) (string, error) {
 	secret, err := jwtSecret()
 	if err != nil {
 		return "", err
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }

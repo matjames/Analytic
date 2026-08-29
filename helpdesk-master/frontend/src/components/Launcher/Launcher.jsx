@@ -1,13 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react'
-
-const launcherApps = [
-  { name: 'Analytics', url: 'http://localhost:5000', icon: 'fa fa-chart-line' },
-  { name: 'Registry', url: 'http://localhost:3007', icon: 'fa fa-archive' },
-  { name: 'Helpdesk', url: 'http://localhost:3005', icon: 'fa fa-life-ring' },
-  { name: 'StatChat', url: 'http://localhost:3009', icon: 'fa fa-comments' },
-  { name: 'System Launcher', url: 'http://localhost:3002', icon: 'bi bi-grid-3x3-gap-fill' },
-  { name: 'Register Portal', url: 'http://localhost:3000', icon: 'fa fa-edit' },
-]
+import launcherApps from '../../config/launcherApps'
 
 export default function Launcher() {
   const [open, setOpen] = useState(false)
@@ -27,11 +19,11 @@ export default function Launcher() {
         <i className="bi bi-grid-3x3-gap-fill"></i>
       </button>
       {open && (
-        <div className="launcher-menu">
+        <div className="launcher-menu" role="dialog" aria-label="StatGate applications" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 320, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, background: '#fff', border: '1px solid #dbe3ec', borderRadius: 12, boxShadow: '0 18px 48px rgba(15,23,42,.2)', zIndex: 2000 }}>
           {launcherApps.map((app) => (
-            <a key={app.name} href={app.url} className="launcher-card" onClick={() => setOpen(false)}>
-              <i className={app.icon}></i>
-              <span>{app.name}</span>
+            <a key={app.name} href={app.url} className="launcher-card" onClick={() => setOpen(false)} style={{ minHeight: 78, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: '#334155', background: app.name === 'Helpdesk' ? '#eff6ff' : '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, textDecoration: 'none', textAlign: 'center' }}>
+              <span style={{fontSize: 20}}>{app.icon}</span>
+              <span style={{fontSize: 11, fontWeight: 700}}>{app.name}</span>
             </a>
           ))}
         </div>

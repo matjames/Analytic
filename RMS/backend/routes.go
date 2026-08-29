@@ -7,6 +7,9 @@ import (
 func RegisterRoutes(r *gin.Engine) {
 	// Enterprise integration middleware
 	r.Use(registryAuthMiddleware())
+	r.Use(workspaceResearchMiddleware())
+	r.Use(workspaceResearchBodyMiddleware())
+	r.Use(workspaceResearchChildIDMiddleware())
 
 	api := r.Group("/api")
 	{
