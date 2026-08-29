@@ -10,6 +10,7 @@ import (
 	"github.com/matjames/statgate-lib/auth"
 	"github.com/matjames/statgate-lib/health"
 	"github.com/matjames/statgate-lib/metrics"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 type RouterConfig struct {
@@ -36,7 +37,7 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	corsCfg := cors.Config{
 		AllowAllOrigins:  true,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Device-Token"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Workspace-ID", "X-Request-ID", "X-Device-Token"},
 		ExposeHeaders:    []string{"Content-Length", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -77,6 +78,11 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	})
 
 	apiV1 := r.Group("/api/v1")
+	// Stage 2: workspace context propagation + membership enforcement via
+	// Enterprise Core. Passes through when no workspace is selected or the
+	// request is unauthenticated (device-token routes).
+	apiV1.Use(tenant.GinWorkspaceContext())
+	apiV1.Use(tenant.GinWorkspaceMembership("", nil))
 	{
 		apiV1.GET("/info", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{

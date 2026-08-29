@@ -43,7 +43,7 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	} else {
 		corsCfg.AllowOrigins = strings.Split(cfg.CORSOrigin, ",")
 	}
-	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Request-ID", "X-User-ID"}
+	corsCfg.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "X-Workspace-ID", "X-Request-ID", "X-User-ID"}
 	corsCfg.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	corsCfg.AllowCredentials = true
 	r.Use(cors.New(corsCfg))
@@ -75,6 +75,10 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		api.Use(cfg.AuthValidator.GinMiddleware())
 		api.Use(tenant.GinTenantIsolation())
 	}
+	// Stage 2: workspace context propagation + membership enforcement via
+	// Enterprise Core (no-op when no workspace is selected or unauthenticated).
+	api.Use(tenant.GinWorkspaceContext())
+	api.Use(tenant.GinWorkspaceMembership("", nil))
 
 	h := cfg.Handlers
 

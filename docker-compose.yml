@@ -1236,6 +1236,7 @@
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - STATIOT_GATEWAY_SECRET=${STATIOT_GATEWAY_SECRET:-statiot-device-auth-secret-key-prod}
       - CORS_ALLOWED_ORIGIN=*
+      - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
     depends_on:
       postgres:
         condition: service_healthy
@@ -1275,6 +1276,7 @@
       - JWT_AUDIENCE=${STATGATE_JWT_AUDIENCE:-statgate}
       - CORS_ALLOWED_ORIGIN=*
       - DEFAULT_TENANT_ID=default
+      - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
       - MAX_WORKERS=32
     depends_on:
       postgres:
