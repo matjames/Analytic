@@ -44,6 +44,7 @@ func (h *FieldOpsHandlers) CreateWorker(c *gin.Context) {
 	if req.TenantID == "" {
 		req.TenantID = "default"
 	}
+	req.WorkspaceID = getWorkspaceID(c)
 	if req.Role == "" {
 		req.Role = "ENUMERATOR"
 	}
@@ -59,7 +60,8 @@ func (h *FieldOpsHandlers) CreateWorker(c *gin.Context) {
 // ListWorkers returns field workers in a tenant.
 func (h *FieldOpsHandlers) ListWorkers(c *gin.Context) {
 	tenantID := c.Query("tenant_id")
-	workers, err := h.store.ListFieldWorkers(c.Request.Context(), tenantID)
+	workspaceID := getWorkspaceID(c)
+	workers, err := h.store.ListFieldWorkers(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list workers", "details": err.Error()})
 		return

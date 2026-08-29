@@ -29,6 +29,7 @@ type IoTGateway struct {
 	Longitude       *float64               `json:"longitude,omitempty" db:"longitude"`
 	LocationName    string                 `json:"location_name,omitempty" db:"location_name"`
 	TenantID        string                 `json:"tenant_id" db:"tenant_id"`
+	WorkspaceID     string                 `json:"workspace_id,omitempty" db:"workspace_id"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
 	LastHeartbeat   *time.Time             `json:"last_heartbeat,omitempty" db:"last_heartbeat"`
 	CreatedAt       time.Time              `json:"created_at" db:"created_at"`
@@ -60,6 +61,7 @@ type IoTDevice struct {
 	Longitude        *float64               `json:"longitude,omitempty" db:"longitude"`
 	Altitude         *float64               `json:"altitude,omitempty" db:"altitude"`
 	TenantID         string                 `json:"tenant_id" db:"tenant_id"`
+	WorkspaceID      string                 `json:"workspace_id,omitempty" db:"workspace_id"`
 	OrgID            string                 `json:"org_id,omitempty" db:"org_id"`
 	ConfigPayload    map[string]interface{} `json:"config_payload,omitempty" db:"config_payload"`
 	Tags             []string               `json:"tags,omitempty" db:"tags"`
@@ -151,6 +153,7 @@ type IoTAlert struct {
 	Status         string     `json:"status" db:"status"` // ACTIVE, ACKNOWLEDGED, RESOLVED
 	AcknowledgedBy *string    `json:"acknowledged_by,omitempty" db:"acknowledged_by"`
 	TenantID       string     `json:"tenant_id" db:"tenant_id"`
+	WorkspaceID    string     `json:"workspace_id,omitempty" db:"workspace_id"`
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 	ResolvedAt     *time.Time `json:"resolved_at,omitempty" db:"resolved_at"`
 }
@@ -168,6 +171,7 @@ type FieldWorker struct {
 	Role             string    `json:"role" db:"role"` // ENUMERATOR, SUPERVISOR, INSPECTOR, TECHNICIAN
 	AssignedDistrict string    `json:"assigned_district,omitempty" db:"assigned_district"`
 	TenantID         string    `json:"tenant_id" db:"tenant_id"`
+	WorkspaceID      string    `json:"workspace_id,omitempty" db:"workspace_id"`
 	OrgID            string    `json:"org_id,omitempty" db:"org_id"`
 	IsActive         bool      `json:"is_active" db:"is_active"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`

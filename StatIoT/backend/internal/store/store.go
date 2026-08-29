@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -17,14 +19,14 @@ type Store interface {
 	// Gateways
 	CreateGateway(ctx context.Context, gw *models.IoTGateway) error
 	GetGateway(ctx context.Context, id string) (*models.IoTGateway, error)
-	ListGateways(ctx context.Context, tenantID string) ([]models.IoTGateway, error)
+	ListGateways(ctx context.Context, tenantID, workspaceID string) ([]models.IoTGateway, error)
 	UpdateGatewayHeartbeat(ctx context.Context, id string, status models.GatewayStatus) error
 
 	// Devices & Sensors
 	RegisterDevice(ctx context.Context, dev *models.IoTDevice) error
 	GetDevice(ctx context.Context, id string) (*models.IoTDevice, error)
 	GetDeviceByUID(ctx context.Context, uid string) (*models.IoTDevice, error)
-	ListDevices(ctx context.Context, tenantID string) ([]models.IoTDevice, error)
+	ListDevices(ctx context.Context, tenantID, workspaceID string) ([]models.IoTDevice, error)
 	UpdateDeviceHeartbeat(ctx context.Context, id string, battery *float64, signal *int, lat *float64, lng *float64) error
 	RegisterSensor(ctx context.Context, s *models.SensorRegistryItem) error
 	ListSensorsByDevice(ctx context.Context, deviceID string) ([]models.SensorRegistryItem, error)
@@ -43,13 +45,13 @@ type Store interface {
 
 	// Alerts
 	CreateAlert(ctx context.Context, alert *models.IoTAlert) error
-	ListAlerts(ctx context.Context, tenantID string, status string) ([]models.IoTAlert, error)
+	ListAlerts(ctx context.Context, tenantID, status, workspaceID string) ([]models.IoTAlert, error)
 	ResolveAlert(ctx context.Context, alertID string, resolvedBy string) error
 
 	// Mobile FieldOps: Workers & Devices
 	CreateFieldWorker(ctx context.Context, w *models.FieldWorker) error
 	GetFieldWorker(ctx context.Context, id string) (*models.FieldWorker, error)
-	ListFieldWorkers(ctx context.Context, tenantID string) ([]models.FieldWorker, error)
+	ListFieldWorkers(ctx context.Context, tenantID, workspaceID string) ([]models.FieldWorker, error)
 	RegisterMobileDevice(ctx context.Context, dev *models.MobileDevice) error
 	GetMobileDevice(ctx context.Context, uuid string) (*models.MobileDevice, error)
 
@@ -163,13 +165,15 @@ func (m *MemStore) GetGateway(ctx context.Context, id string) (*models.IoTGatewa
 	return gw, nil
 }
 
-func (m *MemStore) ListGateways(ctx context.Context, tenantID string) ([]models.IoTGateway, error) {
+func (m *MemStore) ListGateways(ctx context.Context, tenantID, workspaceID string) ([]models.IoTGateway, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]models.IoTGateway, 0, len(m.gateways))
 	for _, gw := range m.gateways {
 		if tenantID == "" || gw.TenantID == tenantID {
-			res = append(res, *gw)
+			if workspaceID == "" || gw.WorkspaceID == workspaceID || gw.WorkspaceID == "" {
+				res = append(res, *gw)
+			}
 		}
 	}
 	return res, nil
@@ -224,13 +228,15 @@ func (m *MemStore) GetDeviceByUID(ctx context.Context, uid string) (*models.IoTD
 	return m.devices[id], nil
 }
 
-func (m *MemStore) ListDevices(ctx context.Context, tenantID string) ([]models.IoTDevice, error) {
+func (m *MemStore) ListDevices(ctx context.Context, tenantID, workspaceID string) ([]models.IoTDevice, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]models.IoTDevice, 0, len(m.devices))
 	for _, dev := range m.devices {
 		if tenantID == "" || dev.TenantID == tenantID {
-			res = append(res, *dev)
+			if workspaceID == "" || dev.WorkspaceID == workspaceID || dev.WorkspaceID == "" {
+				res = append(res, *dev)
+			}
 		}
 	}
 	return res, nil
@@ -449,13 +455,15 @@ func (m *MemStore) CreateAlert(ctx context.Context, alert *models.IoTAlert) erro
 	return nil
 }
 
-func (m *MemStore) ListAlerts(ctx context.Context, tenantID string, status string) ([]models.IoTAlert, error) {
+func (m *MemStore) ListAlerts(ctx context.Context, tenantID string, status, workspaceID string) ([]models.IoTAlert, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]models.IoTAlert, 0, len(m.alerts))
 	for _, a := range m.alerts {
 		if (tenantID == "" || a.TenantID == tenantID) && (status == "" || a.Status == status) {
-			res = append(res, *a)
+			if workspaceID == "" || a.WorkspaceID == workspaceID || a.WorkspaceID == "" {
+				res = append(res, *a)
+			}
 		}
 	}
 	return res, nil
@@ -499,13 +507,15 @@ func (m *MemStore) GetFieldWorker(ctx context.Context, id string) (*models.Field
 	return w, nil
 }
 
-func (m *MemStore) ListFieldWorkers(ctx context.Context, tenantID string) ([]models.FieldWorker, error) {
+func (m *MemStore) ListFieldWorkers(ctx context.Context, tenantID, workspaceID string) ([]models.FieldWorker, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]models.FieldWorker, 0, len(m.workers))
 	for _, w := range m.workers {
 		if tenantID == "" || w.TenantID == tenantID {
-			res = append(res, *w)
+			if workspaceID == "" || w.WorkspaceID == workspaceID || w.WorkspaceID == "" {
+				res = append(res, *w)
+			}
 		}
 	}
 	return res, nil
@@ -848,7 +858,33 @@ type PGStore struct {
 }
 
 func NewPGStore(db *sql.DB) *PGStore {
-	return &PGStore{db: db}
+	p := &PGStore{db: db}
+	p.ensureMigrations()
+	return p
+}
+
+// ensureMigrations executes the bundled SQL migrations and adds the workspace
+// scoping columns (Stage 2: identity/security closure). Idempotent; safe on
+// every startup. The Docker image ships ./migrations next to the binary.
+func (p *PGStore) ensureMigrations() {
+	if data, err := os.ReadFile("migrations/001_init.sql"); err == nil {
+		if _, err := p.db.Exec(string(data)); err != nil {
+			log.Printf("statiot: migration 001_init failed: %v", err)
+		}
+	} else {
+		log.Printf("statiot: migrations not found on disk: %v", err)
+	}
+	stmts := []string{
+		`ALTER TABLE statiot.iot_gateways ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statiot.iot_devices ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statiot.iot_alerts ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statiot.field_workers ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := p.db.Exec(stmt); err != nil {
+			log.Printf("statiot: workspace scope migration failed: %v", err)
+		}
+	}
 }
 
 func (p *PGStore) CreateGateway(ctx context.Context, gw *models.IoTGateway) error {
@@ -892,14 +928,15 @@ func (p *PGStore) GetGateway(ctx context.Context, id string) (*models.IoTGateway
 	return &gw, nil
 }
 
-func (p *PGStore) ListGateways(ctx context.Context, tenantID string) ([]models.IoTGateway, error) {
+func (p *PGStore) ListGateways(ctx context.Context, tenantID, workspaceID string) ([]models.IoTGateway, error) {
 	query := `
 		SELECT id, name, gateway_code, ip_address, mac_address, firmware_version,
 		       status, latitude, longitude, location_name, tenant_id, metadata, last_heartbeat, created_at, updated_at
 		FROM statiot.iot_gateways WHERE ($1 = '' OR tenant_id = $1)
+		AND ($2 = '' OR workspace_id = $2 OR workspace_id = '')
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1010,15 +1047,16 @@ func (p *PGStore) GetDeviceByUID(ctx context.Context, uid string) (*models.IoTDe
 	return &dev, nil
 }
 
-func (p *PGStore) ListDevices(ctx context.Context, tenantID string) ([]models.IoTDevice, error) {
+func (p *PGStore) ListDevices(ctx context.Context, tenantID, workspaceID string) ([]models.IoTDevice, error) {
 	query := `
 		SELECT id, device_uid, name, device_type, protocol, gateway_id, firmware_version,
 		       status, battery_level, signal_strength_dbm, latitude, longitude, altitude,
 		       tenant_id, org_id, config_payload, last_seen_at, created_at, updated_at
 		FROM statiot.iot_devices WHERE ($1 = '' OR tenant_id = $1)
+		AND ($2 = '' OR workspace_id = $2 OR workspace_id = '')
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1305,14 +1343,15 @@ func (p *PGStore) CreateAlert(ctx context.Context, alert *models.IoTAlert) error
 	return err
 }
 
-func (p *PGStore) ListAlerts(ctx context.Context, tenantID string, status string) ([]models.IoTAlert, error) {
+func (p *PGStore) ListAlerts(ctx context.Context, tenantID string, status, workspaceID string) ([]models.IoTAlert, error) {
 	query := `
 		SELECT id, device_id, sensor_code, alert_type, severity, message, value, threshold, status, acknowledged_by, tenant_id, created_at, resolved_at
 		FROM statiot.iot_alerts
 		WHERE ($1 = '' OR tenant_id = $1) AND ($2 = '' OR status = $2)
+		AND ($3 = '' OR workspace_id = $3 OR workspace_id = '')
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID, status)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, status, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1374,13 +1413,14 @@ func (p *PGStore) GetFieldWorker(ctx context.Context, id string) (*models.FieldW
 	return &w, nil
 }
 
-func (p *PGStore) ListFieldWorkers(ctx context.Context, tenantID string) ([]models.FieldWorker, error) {
+func (p *PGStore) ListFieldWorkers(ctx context.Context, tenantID, workspaceID string) ([]models.FieldWorker, error) {
 	query := `
 		SELECT id, user_id, full_name, phone_number, team_name, role, assigned_district, tenant_id, org_id, is_active, created_at, updated_at
 		FROM statiot.field_workers WHERE ($1 = '' OR tenant_id = $1)
+		AND ($2 = '' OR workspace_id = $2 OR workspace_id = '')
 		ORDER BY created_at DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, tenantID)
+	rows, err := p.db.QueryContext(ctx, query, tenantID, workspaceID)
 	if err != nil {
 		return nil, err
 	}

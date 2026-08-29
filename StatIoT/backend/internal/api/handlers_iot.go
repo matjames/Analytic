@@ -25,6 +25,17 @@ func NewIoTHandlers(st store.Store, gw *iot.GatewayEngine) *IoTHandlers {
 }
 
 // RegisterGateway handles provisioning a new physical or virtual IoT Gateway.
+// getWorkspaceID extracts the selected workspace (Stage 2) set by
+// tenant.GinWorkspaceContext on the request path.
+func getWorkspaceID(c *gin.Context) string {
+	if w, exists := c.Get("workspace_id"); exists {
+		if s, ok := w.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
 	var req models.IoTGateway
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,6 +57,7 @@ func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
 	if req.TenantID == "" {
 		req.TenantID = "default"
 	}
+	req.WorkspaceID = getWorkspaceID(c)
 
 	if err := h.store.CreateGateway(c.Request.Context(), &req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create gateway", "details": err.Error()})
@@ -55,10 +67,11 @@ func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Gateway registered successfully", "gateway": req})
 }
 
-// ListGateways lists all gateways for a tenant.
+// ListGateways lists all gateways for a tenant, scoped to the selected workspace.
 func (h *IoTHandlers) ListGateways(c *gin.Context) {
 	tenantID := c.Query("tenant_id")
-	gateways, err := h.store.ListGateways(c.Request.Context(), tenantID)
+	workspaceID := getWorkspaceID(c)
+	gateways, err := h.store.ListGateways(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve gateways", "details": err.Error()})
 		return
@@ -116,6 +129,7 @@ func (h *IoTHandlers) RegisterDevice(c *gin.Context) {
 	if req.TenantID == "" {
 		req.TenantID = "default"
 	}
+	req.WorkspaceID = getWorkspaceID(c)
 
 	if err := h.store.RegisterDevice(c.Request.Context(), &req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register device", "details": err.Error()})
@@ -129,10 +143,11 @@ func (h *IoTHandlers) RegisterDevice(c *gin.Context) {
 	})
 }
 
-// ListDevices returns all registered devices.
+// ListDevices returns all registered devices, scoped to the selected workspace.
 func (h *IoTHandlers) ListDevices(c *gin.Context) {
 	tenantID := c.Query("tenant_id")
-	devs, err := h.store.ListDevices(c.Request.Context(), tenantID)
+	workspaceID := getWorkspaceID(c)
+	devs, err := h.store.ListDevices(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve devices", "details": err.Error()})
 		return
@@ -366,8 +381,9 @@ func (h *IoTHandlers) GetLatestFirmware(c *gin.Context) {
 func (h *IoTHandlers) ListAlerts(c *gin.Context) {
 	tenantID := c.Query("tenant_id")
 	status := c.Query("status")
+	workspaceID := getWorkspaceID(c)
 
-	alerts, err := h.store.ListAlerts(c.Request.Context(), tenantID, status)
+	alerts, err := h.store.ListAlerts(c.Request.Context(), tenantID, status, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve alerts", "details": err.Error()})
 		return
