@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="StatCitizen — Citizen Participation, Public Evidence & Institutional Feedback Platform within the StatGate Sovereign Intelligence Infrastructure">
+  <title>StatCitizen — Citizen Participation & Public Evidence Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Offline Alert Banner -->
+  <div id="offlineBanner" class="offline-banner" style="display: none;">
+    <div class="banner-content">
+      <span class="icon">⚠️</span>
+      <span>You are currently offline. Your submissions will be safely stored locally and synchronized when your connection is restored.</span>
+    </div>
+  </div>
+
+  <!-- Header & Navigation -->
+  <header class="site-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-badge">
+          <div class="brand-icon-pulse"></div>
+          <span class="brand-symbol">🏛️</span>
+        </div>
+        <div class="brand-titles">
+          <h1 class="brand-name">StatCitizen</h1>
+          <span class="brand-tagline">StatGate Sovereign Intelligence • Public Evidence &amp; Feedback</span>
+        </div>
+      </div>
+
+      <nav class="main-nav" aria-label="Primary Navigation">
+        <button class="nav-link active" data-tab="home">Home</button>
+        <button class="nav-link" data-tab="report">Report Issue</button>
+        <button class="nav-link" data-tab="feedback">Feedback</button>
+        <button class="nav-link" data-tab="rate">Rate Service</button>
+        <button class="nav-link" data-tab="consultations">Consultations</button>
+        <button class="nav-link" data-tab="track">Track Status</button>
+        <button class="nav-link" data-tab="knowledge">Public Knowledge</button>
+        <button class="nav-link ai-nav-link" data-tab="ai">Citizen AI</button>
+      </nav>
+
+      <div class="header-actions">
+        <div id="sessionIndicator" class="session-badge" title="Anonymous Session Active">
+          <span class="session-dot"></span>
+          <span id="sessionText">Anonymous Session</span>
+        </div>
+        <button id="adminToggleBtn" class="btn-secondary btn-sm" title="Toggle Institutional Admin View">Admin Portal</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-content">
+    <!-- TAB 1: HOME / DISCOVERY -->
+    <section id="tab-home" class="tab-panel active">
+      <div class="hero-section">
+        <div class="hero-content">
+          <div class="hero-pill">SOVEREIGN CITIZEN ENGAGEMENT LAYER</div>
+          <h2 class="hero-title">Your Voice. Governed Evidence.<br><span class="gradient-text">Measurable Institutional Action.</span></h2>
+          <p class="hero-subtitle">
+            Participate in public consultations, report infrastructure and service issues, provide structured feedback, and track end-to-end institutional accountability in real time.
+          </p>
+          <div class="hero-cta-group">
+            <button class="btn-primary btn-lg" onclick="switchTab('report')">
+              <span>Report an Issue</span>
+              <span class="arrow">→</span>
+            </button>
+            <button class="btn-outline btn-lg" onclick="switchTab('track')">
+              <span>Track Existing Case</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hero-stats-card">
+          <div class="stat-card-header">
+            <h3>Verified Platform Activity</h3>
+            <span class="live-pulse">LIVE</span>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-item">
+              <div class="stat-val" id="statTotalReports">1,248</div>
+              <div class="stat-lbl">Reports Submitted</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val text-accent" id="statResolutionRate">89.4%</div>
+              <div class="stat-lbl">Resolution Rate</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" id="statOpenConsultations">14</div>
+              <div class="stat-lbl">Open Consultations</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" id="statAvgSatisfaction">4.6 / 5</div>
+              <div class="stat-lbl">Service Rating</div>
+            </div>
+          </div>
+          <div class="stat-card-footer">
+            <span>🔒 Governed under Uganda Data Protection &amp; Privacy Act</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Cards -->
+      <div class="section-title-group">
+        <h2>How Would You Like to Engage Today?</h2>
+        <p>Choose an action below. All submissions receive an immutable tracking correlation ID.</p>
+      </div>
+
+      <div class="action-grid">
+        <div class="action-card" onclick="switchTab('report')">
+          <div class="card-icon">📢</div>
+          <h3>Report a Problem</h3>
+          <p>Report service breakdowns, facility defects, medicine shortages, or infrastructure concerns with photos and GPS.</p>
+          <div class="card-action">Submit Report →</div>
+        </div>
+
+        <div class="action-card" onclick="switchTab('feedback')">
+          <div class="card-icon">💡</div>
+          <h3>Provide Feedback</h3>
+          <p>Share constructive structured feedback regarding government programmes, facilities, accessibility, and staff conduct.</p>
+          <div class="card-action">Share Feedback →</div>
+        </div>
+
+        <div class="action-card" onclick="switchTab('rate')">
+          <div class="card-icon">⭐</div>
+          <h3>Rate Public Services</h3>
+          <p>Evaluate institutional service points across 7 standardized dimensions: waiting time, accessibility, quality, and staff experience.</p>
+          <div class="card-action">Rate Service →</div>
+        </div>
+
+        <div class="action-card" onclick="switchTab('consultations')">
+          <div class="card-icon">📋</div>
+          <h3>Public Consultations</h3>
+          <p>Participate in active ministry surveys, research studies, and policy development programmes.</p>
+          <div class="card-action">Participate →</div>
+        </div>
+
+        <div class="action-card" onclick="switchTab('track')">
+          <div class="card-icon">🔍</div>
+          <h3>Closed-Loop Tracking</h3>
+          <p>Track your submission lifecycle from receipt to investigation, human decision, task execution, and resolution.</p>
+          <div class="card-action">Track Status →</div>
+        </div>
+
+        <div class="action-card" onclick="switchTab('ai')">
+          <div class="card-icon">🤖</div>
+          <h3>Governed Citizen AI</h3>
+          <p>Ask questions grounded strictly in official institutional publications, verified datasets, and active consultations.</p>
+          <div class="card-action">Ask AI Assistant →</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: REPORT ISSUE -->
+    <section id="tab-report" class="tab-panel">
+      <div class="page-header">
+        <h2>Report a Service or Infrastructure Issue</h2>
+        <p>Submit structured evidence directly to responsible institutions. Anonymous submissions are fully supported.</p>
+      </div>
+
+      <div class="form-card">
+        <form id="reportForm" onsubmit="handleReportSubmit(event)">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="reportCategory">Category <span class="req">*</span></label>
+              <select id="reportCategory" required>
+                <option value="">Select issue category...</option>
+                <option value="service_problem">Service Problem (Health, Education, Water)</option>
+                <option value="infrastructure">Infrastructure Defect (Roads, Bridges, Grid)</option>
+                <option value="facility_issue">Facility Issue (Hospital, School, Registry Office)</option>
+                <option value="programme_concern">Programme Concern (Interventions, Grants)</option>
+                <option value="community_issue">Community Problem (Sanitation, Environmental)</option>
+                <option value="emergency">Emergency / Critical Escalation</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="reportDistrict">District / Region <span class="req">*</span></label>
+              <select id="reportDistrict" required>
+                <option value="">Select district...</option>
+                <option value="Kampala">Kampala</option>
+                <option value="Wakiso">Wakiso</option>
+                <option value="Mbarara">Mbarara</option>
+                <option value="Gulu">Gulu</option>
+                <option value="Jinja">Jinja</option>
+                <option value="Mbale">Mbale</option>
+                <option value="Arua">Arua</option>
+                <option value="Fort Portal">Fort Portal</option>
+                <option value="Masaka">Masaka</option>
+                <option value="Kabale">Kabale</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="reportTitle">Report Title <span class="req">*</span></label>
+            <input type="text" id="reportTitle" placeholder="e.g. Essential medicine stockout at Katwe Health Centre III" required maxlength="120">
+          </div>
+
+          <div class="form-group">
+            <label for="reportDescription">Detailed Description &amp; Evidence <span class="req">*</span></label>
+            <textarea id="reportDescription" rows="5" placeholder="Provide specific details regarding what happened, when, and the impact observed..." required></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="reportFacility">Specific Facility or Service Point (Optional)</label>
+              <input type="text" id="reportFacility" placeholder="e.g. Katwe HC III / District Office">
+            </div>
+            <div class="form-group flex-1">
+              <label for="reportPriority">Urgency / Severity</label>
+              <select id="reportPriority">
+                <option value="low">Low (General Observation)</option>
+                <option value="medium" selected>Medium (Impacting Daily Operations)</option>
+                <option value="high">High (Severe Service Disruption)</option>
+                <option value="critical">Critical (Life Safety / Emergency)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Attachment & Location -->
+          <div class="form-card-secondary">
+            <div class="form-group">
+              <label>Attach Evidence (Photos, Documents, Receipts)</label>
+              <div class="upload-dropzone" onclick="document.getElementById('reportFile').click()">
+                <span class="upload-icon">📁</span>
+                <span id="uploadLabel">Click or drag files here (PNG, JPG, PDF up to 10MB)</span>
+                <input type="file" id="reportFile" style="display: none;" onchange="handleFileSelected(this)">
+              </div>
+            </div>
+
+            <div class="checkbox-group">
+              <label class="custom-checkbox">
+                <input type="checkbox" id="reportGpsConsent" onchange="toggleGpsLocation(this)">
+                <span class="checkmark"></span>
+                <span>Include GPS Geolocation (Explicit consent required)</span>
+              </label>
+              <div id="gpsStatusText" class="helper-text"></div>
+            </div>
+
+            <div class="checkbox-group">
+              <label class="custom-checkbox">
+                <input type="checkbox" id="reportAnonymous" checked>
+                <span class="checkmark"></span>
+                <span><strong>Submit Anonymously</strong> (Zero PII attached; tracked solely via correlation token)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Privacy Consent Confirmation -->
+          <div class="consent-box">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="reportConsent" required>
+              <span class="checkmark"></span>
+              <span>I grant explicit consent for this structured report to be processed through the StatGate institutional workflow engine for investigation and resolution.</span>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary btn-lg" id="submitReportBtn">
+              <span>Submit Report</span>
+              <span class="arrow">→</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Submission Success Modal -->
+      <div id="reportSuccessModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-icon-success">✅</div>
+          <h3>Report Successfully Submitted</h3>
+          <p>Your report has entered the sovereign institutional workflow engine.</p>
+          
+          <div class="receipt-box">
+            <div class="receipt-row">
+              <span class="receipt-lbl">Tracking Correlation ID:</span>
+              <span class="receipt-val font-mono" id="receiptCorrId">-</span>
+            </div>
+            <div class="receipt-row">
+              <span class="receipt-lbl">Universal Object ID:</span>
+              <span class="receipt-val font-mono" id="receiptCanId">-</span>
+            </div>
+            <div class="receipt-row">
+              <span class="receipt-lbl">Initial Status:</span>
+              <span class="badge badge-submitted">Submitted</span>
+            </div>
+          </div>
+
+          <p class="helper-text">Save your correlation ID. You can use it anytime under <strong>Track Status</strong> to view the real-time institutional investigation, actions taken, and resolution.</p>
+
+          <div class="modal-actions">
+            <button class="btn-primary" onclick="copyCorrelationId()">Copy Correlation ID</button>
+            <button class="btn-outline" onclick="goToTrackingFromReceipt()">Track This Report</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: FEEDBACK -->
+    <section id="tab-feedback" class="tab-panel">
+      <div class="page-header">
+        <h2>Institutional Service &amp; Programme Feedback</h2>
+        <p>Provide structured feedback to help public bodies improve service quality, facility access, and programme effectiveness.</p>
+      </div>
+
+      <div class="form-card">
+        <form id="feedbackForm" onsubmit="handleFeedbackSubmit(event)">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="feedbackCategory">Feedback Category <span class="req">*</span></label>
+              <select id="feedbackCategory" required>
+                <option value="">Select category...</option>
+                <option value="service_delivery">Service Delivery &amp; Responsiveness</option>
+                <option value="facilities">Facility Cleanliness &amp; Accessibility</option>
+                <option value="programmes">Government Programme Outcomes</option>
+                <option value="staff_conduct">Staff Conduct &amp; Professionalism</option>
+                <option value="information_access">Public Information Transparency</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="feedbackDistrict">District</label>
+              <select id="feedbackDistrict">
+                <option value="">National / General</option>
+                <option value="Kampala">Kampala</option>
+                <option value="Wakiso">Wakiso</option>
+                <option value="Mbarara">Mbarara</option>
+                <option value="Gulu">Gulu</option>
+                <option value="Jinja">Jinja</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="feedbackSubject">Subject <span class="req">*</span></label>
+            <input type="text" id="feedbackSubject" placeholder="e.g. Queue management improvements at Regional Passport Centre" required>
+          </div>
+
+          <div class="form-group">
+            <label for="feedbackDescription">Feedback &amp; Constructive Suggestions <span class="req">*</span></label>
+            <textarea id="feedbackDescription" rows="4" placeholder="Detail your experience and specific suggestions for improvement..." required></textarea>
+          </div>
+
+          <div class="consent-box">
+            <label class="custom-checkbox">
+              <input type="checkbox" id="feedbackConsent" required>
+              <span class="checkmark"></span>
+              <span>I consent to this feedback being aggregated for public sector service analytics and quality improvements.</span>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary btn-lg">Submit Feedback</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB 4: RATE SERVICE -->
+    <section id="tab-rate" class="tab-panel">
+      <div class="page-header">
+        <h2>Rate Public Services</h2>
+        <p>Score public services across 7 configurable dimensions to create transparent citizen service satisfaction indexes.</p>
+      </div>
+
+      <div class="form-card">
+        <form id="ratingForm" onsubmit="handleRatingSubmit(event)">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="ratingService">Public Service <span class="req">*</span></label>
+              <select id="ratingService" required onchange="updateServiceFacilityPlaceholder()">
+                <option value="">Select service to rate...</option>
+                <option value="srv_health">Public Health Care &amp; Clinical Services</option>
+                <option value="srv_education">Primary / Secondary Education</option>
+                <option value="srv_water">Water &amp; Sanitation Utility</option>
+                <option value="srv_civil_reg">Civil Registration (NIRA / Birth / National ID)</option>
+                <option value="srv_revenue">Revenue &amp; Tax Authority Services (URA)</option>
+                <option value="srv_transport">Public Transport &amp; Licensing</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="ratingDistrict">District <span class="req">*</span></label>
+              <select id="ratingDistrict" required>
+                <option value="Kampala">Kampala</option>
+                <option value="Wakiso">Wakiso</option>
+                <option value="Mbarara">Mbarara</option>
+                <option value="Gulu">Gulu</option>
+                <option value="Jinja">Jinja</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="rating-dimensions-card">
+            <h3>7-Dimension Service Rating</h3>
+            <p class="helper-text">Rate each dimension from 1 (Poor) to 5 (Excellent):</p>
+
+            <div class="dimension-row" data-dimension="satisfaction">
+              <div class="dim-info">
+                <span class="dim-name">1. Overall Satisfaction</span>
+                <span class="dim-desc">General assessment of the experience</span>
+              </div>
+              <div class="star-rating" data-dim="satisfaction">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="accessibility">
+              <div class="dim-info">
+                <span class="dim-name">2. Accessibility</span>
+                <span class="dim-desc">Ease of locating and reaching the service</span>
+              </div>
+              <div class="star-rating" data-dim="accessibility">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="wait_time">
+              <div class="dim-info">
+                <span class="dim-name">3. Waiting Time</span>
+                <span class="dim-desc">Reasonableness of queue and processing duration</span>
+              </div>
+              <div class="star-rating" data-dim="wait_time">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">4/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="availability">
+              <div class="dim-info">
+                <span class="dim-name">4. Service Availability</span>
+                <span class="dim-desc">Service was operational when needed</span>
+              </div>
+              <div class="star-rating" data-dim="availability">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="staff">
+              <div class="dim-info">
+                <span class="dim-name">5. Staff Professionalism</span>
+                <span class="dim-desc">Courteousness and competence of personnel</span>
+              </div>
+              <div class="star-rating" data-dim="staff">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="quality">
+              <div class="dim-info">
+                <span class="dim-name">6. Service Quality</span>
+                <span class="dim-desc">Thoroughness and reliability of the outcome</span>
+              </div>
+              <div class="star-rating" data-dim="quality">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+
+            <div class="dimension-row" data-dimension="outcome">
+              <div class="dim-info">
+                <span class="dim-name">7. Outcome Attained</span>
+                <span class="dim-desc">Did you accomplish your intended objective?</span>
+              </div>
+              <div class="star-rating" data-dim="outcome">
+                <button type="button" class="star" data-val="1">★</button>
+                <button type="button" class="star" data-val="2">★</button>
+                <button type="button" class="star" data-val="3">★</button>
+                <button type="button" class="star" data-val="4">★</button>
+                <button type="button" class="star" data-val="5">★</button>
+                <span class="star-score">5/5</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="ratingComment">Additional Comments (Optional)</label>
+            <textarea id="ratingComment" rows="3" placeholder="Optional comments regarding your rating..."></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary btn-lg">Submit Service Rating</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- TAB 5: CONSULTATIONS & SURVEYS -->
+    <section id="tab-consultations" class="tab-panel">
+      <div class="page-header">
+        <h2>Public Consultations &amp; Surveys</h2>
+        <p>Participate in active ministry policy consultations, community assessments, and StatCollect research surveys.</p>
+      </div>
+
+      <div id="consultationsList" class="consultations-grid">
+        <!-- Dynamic Consultations loaded by JS -->
+      </div>
+    </section>
+
+    <!-- TAB 6: TRACK STATUS -->
+    <section id="tab-track" class="tab-panel">
+      <div class="page-header">
+        <h2>Closed-Loop Institutional Case Tracker</h2>
+        <p>Enter your correlation tracking ID or report reference to view full institutional investigation, task assignments, decisions, and resolution.</p>
+      </div>
+
+      <div class="track-search-card">
+        <div class="track-input-group">
+          <input type="text" id="trackInput" placeholder="Enter Correlation ID (e.g. sc_1724938210984 or rpt_...)" class="track-input">
+          <button class="btn-primary btn-lg" onclick="searchCaseTracking()">Search Case</button>
+        </div>
+      </div>
+
+      <div id="trackResultContainer" style="display: none;">
+        <div class="track-result-card">
+          <div class="track-result-header">
+            <div>
+              <span class="badge" id="trackBadge">Under Review</span>
+              <h3 id="trackTitle" class="track-case-title">Medicine Stockout Investigation</h3>
+              <div class="track-meta" id="trackMeta">Correlation ID: sc_1724938210984 • Submitted: Aug 29, 2026</div>
+            </div>
+            <div class="track-canonical-id" id="trackCanonicalId">tenant_default:statcitizen:report:rpt_123</div>
+          </div>
+
+          <!-- Closed-Loop Progress Stepper -->
+          <div class="stepper-container">
+            <div class="step-node active completed" id="step-submitted">
+              <div class="step-circle">1</div>
+              <div class="step-label">Submitted</div>
+              <div class="step-time">Received by Gate</div>
+            </div>
+            <div class="step-connector active" id="conn-1"></div>
+            <div class="step-node active completed" id="step-received">
+              <div class="step-circle">2</div>
+              <div class="step-label">Received</div>
+              <div class="step-time">Dispatched to Core</div>
+            </div>
+            <div class="step-connector active" id="conn-2"></div>
+            <div class="step-node active" id="step-investigating">
+              <div class="step-circle">3</div>
+              <div class="step-label">Investigating</div>
+              <div class="step-time">Institutional Officer</div>
+            </div>
+            <div class="step-connector" id="conn-3"></div>
+            <div class="step-node" id="step-action">
+              <div class="step-circle">4</div>
+              <div class="step-label">Action Taken</div>
+              <div class="step-time">Remediation Task</div>
+            </div>
+            <div class="step-connector" id="conn-4"></div>
+            <div class="step-node" id="step-resolved">
+              <div class="step-circle">5</div>
+              <div class="step-label">Resolved</div>
+              <div class="step-time">Citizen Response</div>
+            </div>
+          </div>
+
+          <div class="track-body">
+            <div class="track-detail-box">
+              <h4>Institutional Status Message</h4>
+              <p id="trackStatusMsg">Report received and verified by District Health Inspectorate. Operational ticket dispatched to Regional Supply Depot for emergency replenishment.</p>
+            </div>
+
+            <div class="track-detail-box" id="trackResponseBox" style="display: none;">
+              <h4>Official Institutional Response &amp; Outcome</h4>
+              <p id="trackResponseText">-</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 7: PUBLIC KNOWLEDGE & STATS -->
+    <section id="tab-knowledge" class="tab-panel">
+      <div class="page-header">
+        <h2>Governed Public Knowledge &amp; Statistics</h2>
+        <p>Access official institutional publications, verified datasets, and open public indicators through the sovereign publication gate.</p>
+      </div>
+
+      <div class="knowledge-filter-bar">
+        <button class="filter-chip active" onclick="filterPublications('all', this)">All Records</button>
+        <button class="filter-chip" onclick="filterPublications('statistics', this)">Statistics &amp; Indicators</button>
+        <button class="filter-chip" onclick="filterPublications('report', this)">Evaluation Reports</button>
+        <button class="filter-chip" onclick="filterPublications('dataset', this)">Public Datasets</button>
+        <button class="filter-chip" onclick="filterPublications('policy', this)">Policy Documents</button>
+      </div>
+
+      <div id="publicationsList" class="knowledge-grid">
+        <!-- Dynamically loaded publications -->
+      </div>
+    </section>
+
+    <!-- TAB 8: GOVERNED CITIZEN AI ASSISTANT -->
+    <section id="tab-ai" class="tab-panel">
+      <div class="page-header">
+        <div class="ai-header-badge">GOVERNED EVIDENCE GROUNDED</div>
+        <h2>StatCitizen AI Assistant</h2>
+        <p>Ask natural language questions regarding public services, district statistics, and consultation findings. All answers strictly cite official public evidence.</p>
+      </div>
+
+      <div class="ai-chat-card">
+        <div class="ai-messages" id="aiMessagesContainer">
+          <div class="ai-msg ai-bot">
+            <div class="ai-avatar">🏛️</div>
+            <div class="ai-msg-content">
+              <p>Hello! I am the <strong>StatCitizen Governed AI Assistant</strong>.</p>
+              <p>You can ask me questions regarding:</p>
+              <ul>
+                <li>Active public consultations and how to participate</li>
+                <li>Verified statistics and public health/education indicators</li>
+                <li>Public service procedures and facility locations</li>
+              </ul>
+              <p class="ai-disclaimer">🔒 <em>Note: I operate under strict sovereign intelligence constraints. I only cite verified public records and never fabricate institutional data.</em></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-input-bar">
+          <input type="text" id="aiQueryInput" placeholder="Ask a question (e.g. 'What did the recent public health survey find in Wakiso?')..." onkeydown="if(event.key==='Enter') sendAIQuery()">
+          <button class="btn-primary" onclick="sendAIQuery()">
+            <span>Ask AI</span>
+            <span>⚡</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN MODAL / PANEL -->
+    <div id="adminModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card modal-lg">
+        <div class="admin-modal-header">
+          <div>
+            <h3>StatCitizen Institutional Administration Edge</h3>
+            <span class="helper-text">Demonstrates Enterprise Core closed-loop resolution</span>
+          </div>
+          <button class="btn-close" onclick="closeAdminModal()">✕</button>
+        </div>
+
+        <div class="admin-tabs">
+          <button class="admin-tab active" onclick="switchAdminTab('reports', this)">Live Citizen Reports</button>
+          <button class="admin-tab" onclick="switchAdminTab('publications', this)">Publish Public Evidence</button>
+          <button class="admin-tab" onclick="switchAdminTab('analytics', this)">Ecosystem Analytics</button>
+        </div>
+
+        <div id="adminTabContent" class="admin-tab-content">
+          <div id="adminReportsList" class="admin-reports-table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Report ID</th>
+                  <th>Title</th>
+                  <th>District</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="adminReportsTbody">
+                <!-- Dynamically loaded -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-col">
+        <div class="footer-brand">
+          <span class="brand-symbol">🏛️</span>
+          <span>StatCitizen</span>
+        </div>
+        <p>The citizen participation and public evidence platform of the StatGate Sovereign Intelligence Infrastructure.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Ecosystem Links</h4>
+        <ul>
+          <li><a href="http://localhost:3006" target="_blank">App Launcher</a></li>
+          <li><a href="http://localhost:8096" target="_blank">Enterprise Core</a></li>
+          <li><a href="http://localhost:3005" target="_blank">HelpDesk</a></li>
+          <li><a href="http://localhost:3007" target="_blank">Registry</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Sovereign Governance</h4>
+        <p>Compliant with Universal Object Identity, Enterprise Event Architecture, and Governed Publication Gates.</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>&copy; 2026 StatGate Sovereign Intelligence Infrastructure. All rights reserved.</span>
+      <span class="badge badge-outline">v1.0.0 Sovereign Edge</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

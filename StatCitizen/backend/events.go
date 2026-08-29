@@ -224,6 +224,7 @@ const (
 	EventCaseClosed  = "citizen.case.closed"
 
 	// Publication events
+	EventPublicationCreated   = "citizen.publication.created"
 	EventPublicationPublished = "citizen.publication.published"
 )
 

@@ -118,6 +118,10 @@ type Post struct {
 	Org         string        `json:"org"`
 	Time        string        `json:"time"`
 	Text        string        `json:"text"`
+	Type        string        `json:"type,omitempty"`
+	Title       string        `json:"title,omitempty"`
+	MediaURL    string        `json:"mediaUrl,omitempty"`
+	MediaMime   string        `json:"mediaMime,omitempty"`
 	Likes       int           `json:"likes"`
 	Comments    int           `json:"comments"`
 	Shares      int           `json:"shares"`
@@ -162,6 +166,9 @@ type Connection struct {
 	ConnectedRole string    `json:"connectedRole"`
 	ConnectedOrg  string    `json:"connectedOrg"`
 	ConnectedAt   time.Time `json:"connectedAt"`
+	Status        string    `json:"status"`
+	Direction     string    `json:"direction,omitempty"`
+	CanRespond    bool      `json:"canRespond,omitempty"`
 }
 
 type Community struct {
@@ -337,18 +344,34 @@ type MeetingRecording struct {
 }
 
 type WellnessPost struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId,omitempty"`
+	AuthorID       string    `json:"authorId,omitempty"`
+	Author         string    `json:"author"`
+	Handle         string    `json:"handle"`
+	Avatar         string    `json:"avatar"`
+	Category       string    `json:"category"`
+	Time           string    `json:"time"`
+	Text           string    `json:"text"`
+	Likes          int       `json:"likes"`
+	Comments       int       `json:"comments"`
+	Shares         int       `json:"shares"`
+	Bookmarks      int       `json:"bookmarks"`
+	Tags           []string  `json:"tags"`
+	CreatedAt      time.Time `json:"createdAt"`
+	LikedByMe      bool      `json:"likedByMe,omitempty"`
+	BookmarkedByMe bool      `json:"bookmarkedByMe,omitempty"`
+}
+
+type WellnessComment struct {
 	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId,omitempty"`
+	AuthorID  string    `json:"authorId,omitempty"`
+	PostID    string    `json:"postId"`
 	Author    string    `json:"author"`
-	Handle    string    `json:"handle"`
-	Avatar    string    `json:"avatar"`
-	Category  string    `json:"category"`
-	Time      string    `json:"time"`
+	Role      string    `json:"role,omitempty"`
+	Org       string    `json:"org,omitempty"`
 	Text      string    `json:"text"`
-	Likes     int       `json:"likes"`
-	Comments  int       `json:"comments"`
-	Shares    int       `json:"shares"`
-	Bookmarks int       `json:"bookmarks"`
-	Tags      []string  `json:"tags"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 

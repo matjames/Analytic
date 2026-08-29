@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"statchat/pkg/model"
@@ -22,6 +24,10 @@ CREATE TABLE IF NOT EXISTS posts (
   org TEXT NOT NULL,
   time_label TEXT NOT NULL,
   text TEXT NOT NULL,
+  post_type TEXT NOT NULL DEFAULT 'text',
+  title TEXT NOT NULL DEFAULT '',
+  media_url TEXT NOT NULL DEFAULT '',
+  media_mime TEXT NOT NULL DEFAULT '',
   likes INT NOT NULL DEFAULT 0,
   comments INT NOT NULL DEFAULT 0,
   shares INT NOT NULL DEFAULT 0,
@@ -36,6 +42,19 @@ CREATE TABLE IF NOT EXISTS connections (
   connected_at TIMESTAMPTZ NOT NULL,
   UNIQUE (user_id, connected_to_id)
 );
+
+CREATE TABLE IF NOT EXISTS connection_requests (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  requester_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('pending','accepted','declined')),
+  created_at TIMESTAMPTZ NOT NULL,
+  responded_at TIMESTAMPTZ,
+  UNIQUE (requester_id, target_id)
+);
+CREATE INDEX IF NOT EXISTS connection_requests_target_status_idx ON connection_requests (tenant_id, target_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS connection_requests_requester_status_idx ON connection_requests (tenant_id, requester_id, status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS post_comments (
   id TEXT PRIMARY KEY,
@@ -59,6 +78,10 @@ CREATE TABLE IF NOT EXISTS post_likes (
 
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS post_type TEXT NOT NULL DEFAULT 'text';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_mime TEXT NOT NULL DEFAULT '';
 ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
 ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS author_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE connections ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
@@ -120,6 +143,8 @@ CREATE TABLE IF NOT EXISTS meeting_recordings (
 
 CREATE TABLE IF NOT EXISTS wellness_posts (
   id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL DEFAULT 'default',
+  author_id TEXT NOT NULL DEFAULT '',
   author TEXT NOT NULL,
   handle TEXT NOT NULL,
   avatar TEXT NOT NULL,
@@ -133,6 +158,49 @@ CREATE TABLE IF NOT EXISTS wellness_posts (
   tags JSONB NOT NULL DEFAULT '[]',
   created_at TIMESTAMPTZ NOT NULL
 );
+ALTER TABLE wellness_posts ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE wellness_posts ADD COLUMN IF NOT EXISTS author_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS wellness_posts_tenant_created_idx ON wellness_posts (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS wellness_post_comments (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  post_id TEXT NOT NULL,
+  author TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT '',
+  org TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS wellness_post_comments_tenant_post_idx ON wellness_post_comments (tenant_id, post_id, created_at);
+
+CREATE TABLE IF NOT EXISTS wellness_post_likes (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (tenant_id, post_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS wellness_post_bookmarks (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (tenant_id, post_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS wellness_post_shares (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS wellness_post_shares_tenant_post_idx ON wellness_post_shares (tenant_id, post_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS knowledge_experts (
   id TEXT PRIMARY KEY,
@@ -291,7 +359,7 @@ func seedCollaborationDefaults(ctx context.Context) error {
 }
 
 func GetPosts(userID, tenantID string) ([]model.Post, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, tenant_id, author_id, author, role, org, time_label, text, likes, comments, shares, created_at FROM posts WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
+	rows, err := db.QueryContext(context.Background(), `SELECT id,tenant_id,author_id,author,role,org,time_label,text,post_type,title,media_url,media_mime,likes,comments,shares,created_at FROM posts WHERE tenant_id = $1 ORDER BY created_at DESC`, normalizedTenantID(tenantID))
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +368,7 @@ func GetPosts(userID, tenantID string) ([]model.Post, error) {
 	posts := []model.Post{}
 	for rows.Next() {
 		var p model.Post
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.AuthorID, &p.Author, &p.Role, &p.Org, &p.Time, &p.Text, &p.Likes, &p.Comments, &p.Shares, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.AuthorID, &p.Author, &p.Role, &p.Org, &p.Time, &p.Text, &p.Type, &p.Title, &p.MediaURL, &p.MediaMime, &p.Likes, &p.Comments, &p.Shares, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, p)
@@ -433,8 +501,11 @@ func CreatePost(req model.Post) (model.Post, error) {
 	if req.Time == "" {
 		req.Time = "now"
 	}
-	_, err := db.ExecContext(context.Background(), `INSERT INTO posts (id, tenant_id, author_id, author, role, org, time_label, text, likes, comments, shares, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		req.ID, req.TenantID, req.AuthorID, req.Author, req.Role, req.Org, req.Time, req.Text, req.Likes, req.Comments, req.Shares, req.CreatedAt)
+	if req.Type == "" {
+		req.Type = "text"
+	}
+	_, err := db.ExecContext(context.Background(), `INSERT INTO posts (id,tenant_id,author_id,author,role,org,time_label,text,post_type,title,media_url,media_mime,likes,comments,shares,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		req.ID, req.TenantID, req.AuthorID, req.Author, req.Role, req.Org, req.Time, req.Text, req.Type, req.Title, req.MediaURL, req.MediaMime, req.Likes, req.Comments, req.Shares, req.CreatedAt)
 	return req, err
 }
 
@@ -462,6 +533,7 @@ ORDER BY c.connected_at DESC`, userID, tenantID)
 		if len(roles) > 0 {
 			conn.ConnectedRole = roles[0]
 		}
+		conn.Status = "accepted"
 		conns = append(conns, conn)
 	}
 	return conns, rows.Err()
@@ -477,25 +549,132 @@ func CreateConnection(userID, connectedToID, tenantID string) (model.Connection,
 	var roles []string
 	json.Unmarshal(rolesJSON, &roles)
 
-	conn := model.Connection{
-		ID:            uuid.NewString(),
-		UserID:        userID,
-		ConnectedToID: connectedToID,
-		ConnectedName: target.Name,
-		ConnectedOrg:  target.OrganizationID,
-		ConnectedAt:   time.Now().UTC(),
-	}
+	now := time.Now().UTC()
+	conn := model.Connection{ID: uuid.NewString(), UserID: userID, ConnectedToID: connectedToID, ConnectedName: target.Name, ConnectedOrg: target.OrganizationID, ConnectedAt: now, Status: "pending", Direction: "outgoing"}
 	if len(roles) > 0 {
 		conn.ConnectedRole = roles[0]
 	}
-	_, err = db.ExecContext(context.Background(), `INSERT INTO connections (id, tenant_id, user_id, connected_to_id, connected_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
-		conn.ID, tenantID, userID, connectedToID, conn.ConnectedAt)
+	tenantID = normalizedTenantID(tenantID)
+	var acceptedID string
+	if err := db.QueryRowContext(context.Background(), `SELECT id FROM connections WHERE tenant_id=$3 AND ((user_id=$1 AND connected_to_id=$2) OR (user_id=$2 AND connected_to_id=$1)) LIMIT 1`, userID, connectedToID, tenantID).Scan(&acceptedID); err == nil {
+		conn.ID, conn.Status, conn.Direction = acceptedID, "accepted", "accepted"
+		return conn, nil
+	} else if err != sql.ErrNoRows {
+		return model.Connection{}, err
+	}
+	var requestID, requestStatus string
+	if err := db.QueryRowContext(context.Background(), `SELECT id,status FROM connection_requests WHERE tenant_id=$3 AND requester_id=$1 AND target_id=$2`, userID, connectedToID, tenantID).Scan(&requestID, &requestStatus); err == nil {
+		if requestStatus == "pending" {
+			conn.ID = requestID
+			return conn, nil
+		}
+		_, err = db.ExecContext(context.Background(), `UPDATE connection_requests SET status='pending',created_at=$4,responded_at=NULL WHERE tenant_id=$3 AND requester_id=$1 AND target_id=$2`, userID, connectedToID, tenantID, now)
+		if err != nil {
+			return model.Connection{}, err
+		}
+		conn.ID = requestID
+		return conn, nil
+	} else if err != sql.ErrNoRows {
+		return model.Connection{}, err
+	}
+	if err := db.QueryRowContext(context.Background(), `SELECT id FROM connection_requests WHERE tenant_id=$3 AND requester_id=$1 AND target_id=$2 AND status='pending'`, connectedToID, userID, tenantID).Scan(&requestID); err == nil {
+		tx, txErr := db.BeginTx(context.Background(), nil)
+		if txErr != nil {
+			return model.Connection{}, txErr
+		}
+		defer tx.Rollback()
+		if _, txErr = tx.ExecContext(context.Background(), `UPDATE connection_requests SET status='accepted',responded_at=$2 WHERE id=$1 AND tenant_id=$3 AND status='pending'`, requestID, now, tenantID); txErr != nil {
+			return model.Connection{}, txErr
+		}
+		if _, txErr = tx.ExecContext(context.Background(), `INSERT INTO connections (id,tenant_id,user_id,connected_to_id,connected_at) VALUES ($1,$2,$3,$4,$5),($6,$2,$4,$3,$5) ON CONFLICT DO NOTHING`, requestID, tenantID, connectedToID, userID, now, uuid.NewString()); txErr != nil {
+			return model.Connection{}, txErr
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			return model.Connection{}, txErr
+		}
+		conn.ID, conn.Status, conn.Direction = requestID, "accepted", "accepted"
+		return conn, nil
+	} else if err != sql.ErrNoRows {
+		return model.Connection{}, err
+	}
+	_, err = db.ExecContext(context.Background(), `INSERT INTO connection_requests (id,tenant_id,requester_id,target_id,status,created_at) VALUES ($1,$2,$3,$4,'pending',$5)`, conn.ID, tenantID, userID, connectedToID, now)
 	return conn, err
 }
 
 func RemoveConnection(userID, connectedToID, tenantID string) error {
-	_, err := db.ExecContext(context.Background(), `DELETE FROM connections WHERE user_id = $1 AND connected_to_id = $2 AND tenant_id = $3`, userID, connectedToID, tenantID)
+	_, err := db.ExecContext(context.Background(), `DELETE FROM connections WHERE tenant_id = $3 AND ((user_id = $1 AND connected_to_id = $2) OR (user_id = $2 AND connected_to_id = $1))`, userID, connectedToID, normalizedTenantID(tenantID))
 	return err
+}
+
+func GetConnectionRequests(userID, tenantID string) ([]model.Connection, error) {
+	rows, err := db.QueryContext(context.Background(), `
+SELECT cr.id,cr.requester_id,cr.target_id,cr.status,cr.created_at,requester.name,requester.roles,requester.organization_id,target.name,target.roles,target.organization_id
+FROM connection_requests cr
+JOIN users requester ON requester.id=cr.requester_id
+JOIN users target ON target.id=cr.target_id
+WHERE cr.tenant_id=$2 AND (cr.requester_id=$1 OR cr.target_id=$1) AND cr.status='pending'
+ORDER BY cr.created_at DESC`, userID, normalizedTenantID(tenantID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	requests := []model.Connection{}
+	for rows.Next() {
+		var request model.Connection
+		var requesterID, targetID, status, requesterName, targetName, requesterOrg, targetOrg string
+		var requesterRoles, targetRoles []byte
+		if err := rows.Scan(&request.ID, &requesterID, &targetID, &status, &request.ConnectedAt, &requesterName, &requesterRoles, &requesterOrg, &targetName, &targetRoles, &targetOrg); err != nil {
+			return nil, err
+		}
+		request.Status = status
+		request.Direction = "outgoing"
+		request.ConnectedToID, request.ConnectedName, request.ConnectedOrg = targetID, targetName, targetOrg
+		var roles []string
+		if userID == targetID {
+			request.Direction, request.ConnectedToID, request.ConnectedName, request.ConnectedOrg = "incoming", requesterID, requesterName, requesterOrg
+			request.CanRespond = true
+			roles = nil
+			json.Unmarshal(requesterRoles, &roles)
+		} else {
+			json.Unmarshal(targetRoles, &roles)
+		}
+		if len(roles) > 0 {
+			request.ConnectedRole = roles[0]
+		}
+		request.UserID = userID
+		requests = append(requests, request)
+	}
+	return requests, rows.Err()
+}
+
+func RespondToConnectionRequest(requestID, userID, tenantID string, accept bool) (model.Connection, error) {
+	tenantID = normalizedTenantID(tenantID)
+	var requesterID, targetID string
+	if err := db.QueryRowContext(context.Background(), `SELECT requester_id,target_id FROM connection_requests WHERE id=$1 AND tenant_id=$2 AND target_id=$3 AND status='pending'`, requestID, tenantID, userID).Scan(&requesterID, &targetID); err != nil {
+		return model.Connection{}, err
+	}
+	now := time.Now().UTC()
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return model.Connection{}, err
+	}
+	defer tx.Rollback()
+	status := "declined"
+	if accept {
+		status = "accepted"
+	}
+	if _, err = tx.ExecContext(context.Background(), `UPDATE connection_requests SET status=$2,responded_at=$3 WHERE id=$1 AND status='pending'`, requestID, status, now); err != nil {
+		return model.Connection{}, err
+	}
+	if accept {
+		if _, err = tx.ExecContext(context.Background(), `INSERT INTO connections (id,tenant_id,user_id,connected_to_id,connected_at) VALUES ($1,$2,$3,$4,$5),($6,$2,$4,$3,$5) ON CONFLICT DO NOTHING`, requestID, tenantID, requesterID, targetID, now, uuid.NewString()); err != nil {
+			return model.Connection{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return model.Connection{}, err
+	}
+	return model.Connection{ID: requestID, UserID: userID, ConnectedToID: requesterID, Status: status, Direction: "incoming", CanRespond: false, ConnectedAt: now}, nil
 }
 
 func GetOpportunities() ([]model.Opportunity, error) {
@@ -605,8 +784,17 @@ func GetMeetingRecordings() ([]model.MeetingRecording, error) {
 	return recs, rows.Err()
 }
 
-func GetWellnessPosts() ([]model.WellnessPost, error) {
-	rows, err := db.QueryContext(context.Background(), `SELECT id, author, handle, avatar, category, time_label, text, likes, comments, shares, bookmarks, tags, created_at FROM wellness_posts ORDER BY created_at DESC`)
+func wellnessPostTenant(postID, viewerTenantID string) (string, error) {
+	var postTenantID string
+	err := db.QueryRowContext(context.Background(), `SELECT tenant_id FROM wellness_posts WHERE id=$1 AND tenant_id IN ('default',$2)`, postID, normalizedTenantID(viewerTenantID)).Scan(&postTenantID)
+	return postTenantID, err
+}
+
+func GetWellnessPosts(userID, tenantID string) ([]model.WellnessPost, error) {
+	rows, err := db.QueryContext(context.Background(), `SELECT p.id,p.tenant_id,p.author_id,p.author,p.handle,p.avatar,p.category,p.time_label,p.text,p.likes,p.comments,p.shares,p.bookmarks,p.tags,p.created_at,
+EXISTS(SELECT 1 FROM wellness_post_likes l WHERE l.tenant_id=p.tenant_id AND l.post_id=p.id AND l.user_id=$1),
+EXISTS(SELECT 1 FROM wellness_post_bookmarks b WHERE b.tenant_id=p.tenant_id AND b.post_id=p.id AND b.user_id=$1)
+FROM wellness_posts p WHERE p.tenant_id IN ('default',$2) ORDER BY p.created_at DESC`, userID, normalizedTenantID(tenantID))
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +804,7 @@ func GetWellnessPosts() ([]model.WellnessPost, error) {
 	for rows.Next() {
 		var p model.WellnessPost
 		var tagsJSON []byte
-		if err := rows.Scan(&p.ID, &p.Author, &p.Handle, &p.Avatar, &p.Category, &p.Time, &p.Text, &p.Likes, &p.Comments, &p.Shares, &p.Bookmarks, &tagsJSON, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.AuthorID, &p.Author, &p.Handle, &p.Avatar, &p.Category, &p.Time, &p.Text, &p.Likes, &p.Comments, &p.Shares, &p.Bookmarks, &tagsJSON, &p.CreatedAt, &p.LikedByMe, &p.BookmarkedByMe); err != nil {
 			return nil, err
 		}
 		json.Unmarshal(tagsJSON, &p.Tags)
@@ -626,6 +814,7 @@ func GetWellnessPosts() ([]model.WellnessPost, error) {
 }
 
 func CreateWellnessPost(req model.WellnessPost) (model.WellnessPost, error) {
+	req.TenantID = normalizedTenantID(req.TenantID)
 	if req.ID == "" {
 		req.ID = uuid.NewString()
 	}
@@ -639,9 +828,156 @@ func CreateWellnessPost(req model.WellnessPost) (model.WellnessPost, error) {
 		req.Tags = []string{}
 	}
 	tagsJSON, _ := json.Marshal(req.Tags)
-	_, err := db.ExecContext(context.Background(), `INSERT INTO wellness_posts (id, author, handle, avatar, category, time_label, text, likes, comments, shares, bookmarks, tags, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		req.ID, req.Author, req.Handle, req.Avatar, req.Category, req.Time, req.Text, req.Likes, req.Comments, req.Shares, req.Bookmarks, tagsJSON, req.CreatedAt)
+	req.Likes, req.Comments, req.Shares, req.Bookmarks = 0, 0, 0, 0
+	_, err := db.ExecContext(context.Background(), `INSERT INTO wellness_posts (id,tenant_id,author_id,author,handle,avatar,category,time_label,text,likes,comments,shares,bookmarks,tags,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		req.ID, req.TenantID, req.AuthorID, req.Author, req.Handle, req.Avatar, req.Category, req.Time, req.Text, req.Likes, req.Comments, req.Shares, req.Bookmarks, tagsJSON, req.CreatedAt)
 	return req, err
+}
+
+func GetWellnessComments(postID, tenantID string) ([]model.WellnessComment, error) {
+	postTenantID, err := wellnessPostTenant(postID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(context.Background(), `SELECT id,tenant_id,author_id,post_id,author,role,org,text,created_at FROM wellness_post_comments WHERE tenant_id=$1 AND post_id=$2 ORDER BY created_at ASC`, postTenantID, postID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	comments := []model.WellnessComment{}
+	for rows.Next() {
+		var comment model.WellnessComment
+		if err := rows.Scan(&comment.ID, &comment.TenantID, &comment.AuthorID, &comment.PostID, &comment.Author, &comment.Role, &comment.Org, &comment.Text, &comment.CreatedAt); err != nil {
+			return nil, err
+		}
+		comments = append(comments, comment)
+	}
+	return comments, rows.Err()
+}
+
+func AddWellnessComment(comment model.WellnessComment, viewerTenantID string) (model.WellnessComment, error) {
+	postTenantID, err := wellnessPostTenant(comment.PostID, viewerTenantID)
+	if err != nil {
+		return model.WellnessComment{}, err
+	}
+	if strings.TrimSpace(comment.Text) == "" {
+		return model.WellnessComment{}, fmt.Errorf("comment text is required")
+	}
+	comment.ID = uuid.NewString()
+	comment.TenantID = postTenantID
+	comment.CreatedAt = time.Now().UTC()
+	_, err = db.ExecContext(context.Background(), `INSERT INTO wellness_post_comments (id,tenant_id,author_id,post_id,author,role,org,text,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, comment.ID, comment.TenantID, comment.AuthorID, comment.PostID, comment.Author, comment.Role, comment.Org, strings.TrimSpace(comment.Text), comment.CreatedAt)
+	if err != nil {
+		return model.WellnessComment{}, err
+	}
+	_, err = db.ExecContext(context.Background(), `UPDATE wellness_posts SET comments=comments+1 WHERE id=$1 AND tenant_id=$2`, comment.PostID, postTenantID)
+	return comment, err
+}
+
+func ToggleWellnessLike(postID, userID, tenantID string) (bool, int, error) {
+	postTenantID, err := wellnessPostTenant(postID, tenantID)
+	if err != nil {
+		return false, 0, err
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return false, 0, err
+	}
+	defer tx.Rollback()
+	var liked bool
+	if result, deleteErr := tx.ExecContext(context.Background(), `DELETE FROM wellness_post_likes WHERE tenant_id=$1 AND post_id=$2 AND user_id=$3`, postTenantID, postID, userID); deleteErr != nil {
+		return false, 0, deleteErr
+	} else if count, _ := result.RowsAffected(); count > 0 {
+		liked = false
+	} else {
+		result, insertErr := tx.ExecContext(context.Background(), `INSERT INTO wellness_post_likes (id,tenant_id,post_id,user_id,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,post_id,user_id) DO NOTHING`, uuid.NewString(), postTenantID, postID, userID, time.Now().UTC())
+		if insertErr != nil {
+			return false, 0, insertErr
+		}
+		inserted, _ := result.RowsAffected()
+		liked = inserted == 1
+	}
+	delta := -1
+	if liked {
+		delta = 1
+	}
+	if _, err = tx.ExecContext(context.Background(), `UPDATE wellness_posts SET likes=GREATEST(0,likes+$1) WHERE id=$2 AND tenant_id=$3`, delta, postID, postTenantID); err != nil {
+		return false, 0, err
+	}
+	var likes int
+	if err = tx.QueryRowContext(context.Background(), `SELECT likes FROM wellness_posts WHERE id=$1 AND tenant_id=$2`, postID, postTenantID).Scan(&likes); err != nil {
+		return false, 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, 0, err
+	}
+	return liked, likes, nil
+}
+
+func ToggleWellnessBookmark(postID, userID, tenantID string) (bool, int, error) {
+	postTenantID, err := wellnessPostTenant(postID, tenantID)
+	if err != nil {
+		return false, 0, err
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return false, 0, err
+	}
+	defer tx.Rollback()
+	var bookmarked bool
+	if result, deleteErr := tx.ExecContext(context.Background(), `DELETE FROM wellness_post_bookmarks WHERE tenant_id=$1 AND post_id=$2 AND user_id=$3`, postTenantID, postID, userID); deleteErr != nil {
+		return false, 0, deleteErr
+	} else if count, _ := result.RowsAffected(); count > 0 {
+		bookmarked = false
+	} else {
+		result, insertErr := tx.ExecContext(context.Background(), `INSERT INTO wellness_post_bookmarks (id,tenant_id,post_id,user_id,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,post_id,user_id) DO NOTHING`, uuid.NewString(), postTenantID, postID, userID, time.Now().UTC())
+		if insertErr != nil {
+			return false, 0, insertErr
+		}
+		inserted, _ := result.RowsAffected()
+		bookmarked = inserted == 1
+	}
+	delta := -1
+	if bookmarked {
+		delta = 1
+	}
+	if _, err = tx.ExecContext(context.Background(), `UPDATE wellness_posts SET bookmarks=GREATEST(0,bookmarks+$1) WHERE id=$2 AND tenant_id=$3`, delta, postID, postTenantID); err != nil {
+		return false, 0, err
+	}
+	var bookmarks int
+	if err = tx.QueryRowContext(context.Background(), `SELECT bookmarks FROM wellness_posts WHERE id=$1 AND tenant_id=$2`, postID, postTenantID).Scan(&bookmarks); err != nil {
+		return false, 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, 0, err
+	}
+	return bookmarked, bookmarks, nil
+}
+
+func ShareWellnessPost(postID, userID, tenantID string) (int, error) {
+	postTenantID, err := wellnessPostTenant(postID, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(context.Background(), `INSERT INTO wellness_post_shares (id,tenant_id,post_id,user_id,created_at) VALUES ($1,$2,$3,$4,$5)`, uuid.NewString(), postTenantID, postID, userID, time.Now().UTC()); err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(context.Background(), `UPDATE wellness_posts SET shares=shares+1 WHERE id=$1 AND tenant_id=$2`, postID, postTenantID); err != nil {
+		return 0, err
+	}
+	var shares int
+	if err = tx.QueryRowContext(context.Background(), `SELECT shares FROM wellness_posts WHERE id=$1 AND tenant_id=$2`, postID, postTenantID).Scan(&shares); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return shares, nil
 }
 
 // Knowledge store functions

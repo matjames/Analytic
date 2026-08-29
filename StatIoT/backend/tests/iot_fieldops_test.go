@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,8 @@ func getTestMetrics() *metrics.Metrics {
 }
 
 func setupTestRouter(t *testing.T) (*store.MemStore, http.Handler) {
+	t.Helper()
+	os.Setenv("STATIOT_GATEWAY_SECRET", "test-gateway-secret")
 	memStore := store.NewMemStore()
 	eventWorker := iotevents.NewEventWorker(nil, memStore)
 	gatewayEngine := iot.NewGatewayEngine(memStore, eventWorker)
@@ -57,7 +60,15 @@ func setupTestRouter(t *testing.T) (*store.MemStore, http.Handler) {
 		Env:              "test",
 	})
 
-	return memStore, router
+	// Admin routes enforce tenant context (tenant.GinTenantIsolation). The
+	// test suite runs without a JWT validator, so inject a tenant header for
+	// every request the way an authenticated caller would carry one.
+	return memStore, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Tenant-ID") == "" {
+			r.Header.Set("X-Tenant-ID", "default")
+		}
+		router.ServeHTTP(w, r)
+	})
 }
 
 func TestHealthAndMetricsEndpoints(t *testing.T) {
@@ -121,9 +132,10 @@ func TestIoTGatewayAndDeviceFlow(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &gwResp)
 	gwID := gwResp.Gateway.ID
 
-	// 2. Gateway Heartbeat
+	// 2. Gateway Heartbeat (requires the shared gateway secret)
 	hbReq, _ := http.NewRequest(http.MethodPost, "/api/v1/iot/gateways/"+gwID+"/heartbeat", bytes.NewBuffer([]byte(`{"status":"ONLINE"}`)))
 	hbReq.Header.Set("Content-Type", "application/json")
+	hbReq.Header.Set("X-Gateway-Secret", "test-gateway-secret")
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, hbReq)
 	if w.Code != http.StatusOK {
@@ -204,6 +216,9 @@ func TestIoTGatewayAndDeviceFlow(t *testing.T) {
 	body, _ = json.Marshal(ingestReq)
 	req, _ = http.NewRequest(http.MethodPost, "/api/v1/iot/telemetry/ingest", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
+	// Device-facing routes require device credentials (Stage 2 auth).
+	req.Header.Set("X-Device-UID", "DEV-WEATHER-001")
+	req.Header.Set("X-Device-Token", deviceToken)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
@@ -223,8 +238,10 @@ func TestIoTGatewayAndDeviceFlow(t *testing.T) {
 		t.Fatalf("expected 1 anomaly alert created for threshold breach, got %d", ingestResp.AlertsCreated)
 	}
 
-	// 6. Query Telemetry Aggregates
+	// 6. Query Telemetry Aggregates (device credentials required)
 	req, _ = http.NewRequest(http.MethodGet, "/api/v1/iot/telemetry/"+deviceID+"/aggregates?metric_name=temperature", nil)
+	req.Header.Set("X-Device-UID", "DEV-WEATHER-001")
+	req.Header.Set("X-Device-Token", deviceToken)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

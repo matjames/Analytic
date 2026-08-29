@@ -35,6 +35,8 @@ $foreignComment = Request POST "/collaboration/posts/$($created.id)/comments" $f
 $comment = Request POST "/collaboration/posts/$($created.id)/comments" $authorToken @{author='Spoofed'; text='Authenticated comment'}
 $createdComment = $comment.Body | ConvertFrom-Json
 $sameTenantConnection = Request POST '/collaboration/connections' $authorToken @{targetUserId=$peerId}
+$sameTenantRequest = $sameTenantConnection.Body | ConvertFrom-Json
+$acceptedConnection = Request POST "/collaboration/connection-requests/$($sameTenantRequest.id)/accept" $peerToken
 $selfConnection = Request POST '/collaboration/connections' $authorToken @{targetUserId=$authorId}
 $foreignConnection = Request POST '/collaboration/connections' $authorToken @{targetUserId=$foreignId}
 $connections = @((Request GET '/collaboration/connections' $authorToken).Body | ConvertFrom-Json)
@@ -43,7 +45,7 @@ $result = [ordered]@{
   tenantReadIsolation = ($authorPosts.id -contains $created.id) -and -not ($foreignPosts.id -contains $created.id)
   tenantWriteIsolation = $foreignLike.Status -eq 404 -and $foreignShare.Status -eq 404 -and $foreignComment.Status -eq 404
   authenticatedComment = $comment.Status -eq 200 -and $createdComment.author -eq 'Verified Author' -and $createdComment.authorId -eq $authorId
-  connectionBoundary = $sameTenantConnection.Status -eq 200 -and $selfConnection.Status -eq 400 -and $foreignConnection.Status -eq 404 -and ($connections.connectedToId -contains $peerId)
+  connectionBoundary = $sameTenantConnection.Status -eq 200 -and $sameTenantRequest.status -eq 'pending' -and $acceptedConnection.Status -eq 200 -and $selfConnection.Status -eq 400 -and $foreignConnection.Status -eq 404 -and ($connections.connectedToId -contains $peerId)
 }
 $result | ConvertTo-Json -Compress
 if ($result.Values -contains $false) { exit 1 }

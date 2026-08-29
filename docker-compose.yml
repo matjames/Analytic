@@ -31,6 +31,7 @@ services:
       - STATFEDERATION_DB_PASSWORD=${STATFEDERATION_DB_PASSWORD:?STATFEDERATION_DB_PASSWORD must be set}
       - STATIOT_DB_PASSWORD=${STATIOT_DB_PASSWORD:?STATIOT_DB_PASSWORD must be set}
       - STATDATA_DB_PASSWORD=${STATDATA_DB_PASSWORD:?STATDATA_DB_PASSWORD must be set}
+      - STATCITIZEN_DB_PASSWORD=${STATCITIZEN_DB_PASSWORD:-statcitizen_secret}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
@@ -1394,6 +1395,44 @@ services:
     networks:
       - statgate-network
 
+  # ─── STATCITIZEN (Citizen Participation & Public Evidence Platform) ───
+  statcitizen-api:
+    build:
+      context: ./StatCitizen
+    ports:
+      - "8097:8097"
+    environment:
+      - STATGATE_ENV=production
+      - STATCITIZEN_API_PORT=8097
+      - STATCITIZEN_UI_PORT=3015
+      - STATCITIZEN_DB_HOST=postgres
+      - STATCITIZEN_DB_PORT=5432
+      - STATCITIZEN_DB_NAME=statcitizen
+      - STATCITIZEN_DB_USER=statcitizen
+      - STATCITIZEN_DB_PASSWORD=${STATCITIZEN_DB_PASSWORD:-statcitizen_secret}
+      - STATCITIZEN_DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - STATGATE_EVENT_CHANNEL=statgate:events
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
+      - ENTERPRISE_CORE_URL=http://enterprise-core:8096
+      - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8097/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - statgate-network
 
 networks:
   statgate-network:

@@ -227,6 +227,8 @@ export async function updateUserSettings(settings: UserSettings): Promise<UserSe
 
 export interface Post {
   id: string;
+  tenantId?: string;
+  authorId?: string;
   author: string;
   role: string;
   org: string;
@@ -248,6 +250,9 @@ export interface Connection {
   connectedRole: string;
   connectedOrg: string;
   connectedAt?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  direction?: 'incoming' | 'outgoing' | 'accepted';
+  canRespond?: boolean;
 }
 
 export interface Community {
@@ -434,6 +439,18 @@ export async function removeConnection(targetUserId: string): Promise<void> {
     body: JSON.stringify({ targetUserId }),
   });
   if (!response.ok) throw new Error(`Failed to remove connection: ${response.status}`);
+}
+
+export async function fetchConnectionRequests(): Promise<Connection[]> {
+  const response = await apiFetch(`${BASE_URL}/collaboration/connection-requests`);
+  if (!response.ok) throw new Error(`Failed to fetch connection requests: ${response.status}`);
+  return response.json();
+}
+
+export async function respondToConnectionRequest(requestId: string, action: 'accept' | 'decline'): Promise<Connection> {
+  const response = await apiFetch(`${BASE_URL}/collaboration/connection-requests/${encodeURIComponent(requestId)}/${action}`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to ${action} connection request: ${response.status}`);
+  return response.json();
 }
 
 export async function fetchCommunities(): Promise<Community[]> {
@@ -740,6 +757,10 @@ export interface TranslationResult {
   sourceLanguage: string;
   targetLanguage: string;
   text: string;
+  type?: 'text' | 'photo' | 'video' | 'article';
+  title?: string;
+  mediaUrl?: string;
+  mediaMime?: string;
   provider: string;
 }
 
@@ -801,6 +822,8 @@ export async function fetchMeetingRecordings(): Promise<MeetingRecording[]> {
 
 export interface WellnessPost {
   id: string;
+  tenantId?: string;
+  authorId?: string;
   author: string;
   handle: string;
   avatar: string;
@@ -813,6 +836,20 @@ export interface WellnessPost {
   bookmarks: number;
   tags: string[];
   createdAt?: string;
+  likedByMe?: boolean;
+  bookmarkedByMe?: boolean;
+}
+
+export interface WellnessComment {
+  id: string;
+  tenantId?: string;
+  authorId?: string;
+  postId: string;
+  author: string;
+  role?: string;
+  org?: string;
+  text: string;
+  createdAt: string;
 }
 
 export async function fetchWellnessPosts(): Promise<WellnessPost[]> {
@@ -946,6 +983,40 @@ export async function forwardChatMessage(messageId: string, targetConversationId
     body: JSON.stringify({ targetConversationId }),
   });
   if (!response.ok) throw new Error(`Failed to forward message: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchWellnessComments(postId: string): Promise<WellnessComment[]> {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts/${encodeURIComponent(postId)}/comments`);
+  if (!response.ok) throw new Error(`Failed to fetch wellness comments: ${response.status}`);
+  return response.json();
+}
+
+export async function addWellnessComment(postId: string, text: string): Promise<WellnessComment> {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts/${encodeURIComponent(postId)}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw new Error(`Failed to add wellness comment: ${response.status}`);
+  return response.json();
+}
+
+export async function toggleWellnessLike(postId: string): Promise<{ liked: boolean; likes: number }> {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts/${encodeURIComponent(postId)}/like`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to update wellness like: ${response.status}`);
+  return response.json();
+}
+
+export async function toggleWellnessBookmark(postId: string): Promise<{ bookmarked: boolean; bookmarks: number }> {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts/${encodeURIComponent(postId)}/bookmark`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to update wellness bookmark: ${response.status}`);
+  return response.json();
+}
+
+export async function shareWellnessPost(postId: string): Promise<{ shares: number }> {
+  const response = await apiFetch(`${BASE_URL}/wellness/posts/${encodeURIComponent(postId)}/share`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to share wellness post: ${response.status}`);
   return response.json();
 }
 

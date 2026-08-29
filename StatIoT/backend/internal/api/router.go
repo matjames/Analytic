@@ -78,11 +78,10 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	})
 
 	apiV1 := r.Group("/api/v1")
-	// Stage 2: workspace context propagation + membership enforcement via
-	// Enterprise Core. Passes through when no workspace is selected or the
-	// request is unauthenticated (device-token routes).
+	// Stage 2: workspace context propagation. Membership enforcement applies
+	// only to the admin group below (device/gateway routes authenticate via
+	// device tokens / gateway secret instead).
 	apiV1.Use(tenant.GinWorkspaceContext())
-	apiV1.Use(tenant.GinWorkspaceMembership("", nil))
 	{
 		apiV1.GET("/info", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
@@ -94,14 +93,38 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 			})
 		})
 
+		// ── DEVICE-FACING ROUTES (device token authentication, fail-closed) ──
+		device := apiV1.Group("", cfg.IoTHandlers.DeviceAuth())
+		{
+			device.POST("/iot/telemetry/ingest", cfg.IoTHandlers.IngestTelemetry)
+			device.GET("/iot/telemetry/:device_id/latest", cfg.IoTHandlers.GetLatestTelemetry)
+			device.GET("/iot/telemetry/:device_id/aggregates", cfg.IoTHandlers.GetTelemetryAggregates)
+			device.GET("/iot/devices/:id/config", cfg.IoTHandlers.GetDeviceConfig)
+			device.POST("/iot/devices/:id/config/report", cfg.IoTHandlers.ReportAppliedConfig)
+			device.GET("/iot/firmware/latest", cfg.IoTHandlers.GetLatestFirmware)
+		}
+
+		// ── GATEWAY ROUTES (shared gateway secret) ──
+		gwGroup := apiV1.Group("", cfg.IoTHandlers.GatewaySecretAuth())
+		{
+			gwGroup.POST("/iot/gateways/:id/heartbeat", cfg.IoTHandlers.GatewayHeartbeat)
+		}
+
+		// ── ADMIN ROUTES (Registry JWT required) ──
+		admin := apiV1.Group("")
+		if cfg.AuthValidator != nil {
+			admin.Use(cfg.AuthValidator.GinMiddleware())
+		}
+		admin.Use(tenant.GinTenantIsolation())
+		admin.Use(tenant.GinWorkspaceMembership("", nil))
+
 		// ── IoT & SENSORS (P27) ─────────────────────────────────────────
-		iotGroup := apiV1.Group("/iot")
+		iotGroup := admin.Group("/iot")
 		{
 			// Gateways
 			iotGroup.POST("/gateways", cfg.IoTHandlers.RegisterGateway)
 			iotGroup.GET("/gateways", cfg.IoTHandlers.ListGateways)
 			iotGroup.GET("/gateways/:id", cfg.IoTHandlers.GetGateway)
-			iotGroup.POST("/gateways/:id/heartbeat", cfg.IoTHandlers.GatewayHeartbeat)
 
 			// Devices & Sensors
 			iotGroup.POST("/devices", cfg.IoTHandlers.RegisterDevice)
@@ -110,17 +133,9 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 			iotGroup.POST("/devices/:id/sensors", cfg.IoTHandlers.RegisterSensor)
 			iotGroup.GET("/devices/:id/sensors", cfg.IoTHandlers.ListSensors)
 
-			// Edge Configuration & Firmware
-			iotGroup.GET("/devices/:id/config", cfg.IoTHandlers.GetDeviceConfig)
+			// Edge Configuration & Firmware (admin side)
 			iotGroup.POST("/devices/:id/config", cfg.IoTHandlers.SetDesiredConfig)
-			iotGroup.POST("/devices/:id/config/report", cfg.IoTHandlers.ReportAppliedConfig)
 			iotGroup.POST("/firmware", cfg.IoTHandlers.CreateFirmware)
-			iotGroup.GET("/firmware/latest", cfg.IoTHandlers.GetLatestFirmware)
-
-			// Telemetry & Aggregation
-			iotGroup.POST("/telemetry/ingest", cfg.IoTHandlers.IngestTelemetry)
-			iotGroup.GET("/telemetry/:device_id/latest", cfg.IoTHandlers.GetLatestTelemetry)
-			iotGroup.GET("/telemetry/:device_id/aggregates", cfg.IoTHandlers.GetTelemetryAggregates)
 
 			// Alerts
 			iotGroup.GET("/alerts", cfg.IoTHandlers.ListAlerts)
@@ -128,7 +143,7 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		}
 
 		// ── MOBILE FIELD OPERATIONS & OFFLINE (P43) ────────────────────
-		fieldGroup := apiV1.Group("/fieldops")
+		fieldGroup := admin.Group("/fieldops")
 		{
 			// Workers & Mobile Devices
 			fieldGroup.POST("/workers", cfg.FieldOpsHandlers.CreateWorker)

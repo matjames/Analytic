@@ -53,9 +53,9 @@ Status is evidence-based: a feature is complete only after UI, API, authorizatio
 
 | Capability | Status |
 |---|---|
-| Social posts/comments/connections | Partial: authenticated author identity, tenant-scoped post/comment/feed and connection access, tenant-isolated likes/shares/comments, self/cross-tenant connection denial, and live certification are implemented; broader social-graph policy depth remains |
-| Photo/video/article posts | Not functional |
-| Wellness comments/shares/bookmarks persistence | Not functional |
+| Social posts/comments/connections | Operational: authenticated author identity, tenant-scoped post/comment/feed and connection access, tenant-isolated likes/shares/comments, explicit pending/accepted/declined requests, idempotent duplicate handling, recipient-only accept/decline, reciprocal accepted edges, reciprocal removal, self/cross-tenant denial, and live certification are implemented |
+| Photo/video/article posts | Operational: authenticated tenant-scoped typed posts support article titles, validated photo/video media URLs, same-tenant feed visibility, frontend composers/rendering, and live certification; dedicated media-provider/upload UX remains a production enhancement |
+| Wellness comments/shares/bookmarks persistence | Operational: authenticated tenant-scoped wellness authorship, durable comments, per-user idempotent likes/bookmarks, durable shares, default seeded content visibility, frontend controls, and live certification are implemented |
 | Communities and forums | Operational: tenant-scoped public/private communities, creator ownership, owner-managed invitations, public join/leave, member-only topics/replies, authenticated authorship, private visibility, owner/member moderation boundaries, ownership transfer, frontend workspace, typed client coverage, and live certification are implemented |
 | Collaborative documents | Operational: tenant-scoped shared documents, authenticated ownership, editor/viewer membership, optimistic version protection, revision history, owner-managed access, frontend editor workspace, and live certification are implemented |
 | Whiteboards | Operational: tenant-scoped canvas boards, authenticated ownership, editor/viewer membership, persisted stroke data, optimistic version protection, revision history, owner-managed access, frontend canvas workspace, and live certification are implemented |

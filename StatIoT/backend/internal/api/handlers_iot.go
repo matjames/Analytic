@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -34,6 +36,55 @@ func getWorkspaceID(c *gin.Context) string {
 		}
 	}
 	return ""
+}
+
+// DeviceAuth is a fail-closed middleware for device-facing routes. It requires
+// X-Device-UID and X-Device-Token headers and verifies the token hash via the
+// gateway engine. On success the device identity is stored in the context.
+func (h *IoTHandlers) DeviceAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetHeader("X-Device-UID")
+		token := c.GetHeader("X-Device-Token")
+		if uid == "" || token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error":   "device_credentials_required",
+				"message": "X-Device-UID and X-Device-Token headers are required",
+			})
+			return
+		}
+		dev, err := h.gateway.AuthenticateDevice(c.Request.Context(), uid, token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error":   "device_authentication_failed",
+				"details": err.Error(),
+			})
+			return
+		}
+		c.Set("device_id", dev.ID)
+		c.Set("device_uid", uid)
+		c.Set("workspace_id", dev.WorkspaceID)
+		c.Next()
+	}
+}
+
+// GatewaySecretAuth protects gateway-originated routes (e.g. heartbeats) with
+// the shared STATIOT_GATEWAY_SECRET delivered in the X-Gateway-Secret header.
+func (h *IoTHandlers) GatewaySecretAuth() gin.HandlerFunc {
+	expected := os.Getenv("STATIOT_GATEWAY_SECRET")
+	return func(c *gin.Context) {
+		if expected == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error":   "gateway_auth_unavailable",
+				"message": "STATIOT_GATEWAY_SECRET is not configured",
+			})
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(c.GetHeader("X-Gateway-Secret")), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "gateway_authentication_failed"})
+			return
+		}
+		c.Next()
+	}
 }
 
 func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
@@ -219,12 +270,18 @@ func (h *IoTHandlers) IngestTelemetry(c *gin.Context) {
 		return
 	}
 
-	// Device Authentication Verification
-	if req.AuthToken != "" {
-		if _, err := h.gateway.AuthenticateDevice(c.Request.Context(), req.DeviceUID, req.AuthToken); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Device authentication failed", "details": err.Error()})
-			return
-		}
+	// Device identity: the DeviceAuth middleware has already verified the
+	// device token and stored the authenticated UID in the context. The
+	// authenticated identity always wins over any body-supplied device_uid
+	// (prevents cross-device spoofing).
+	if authedUID := c.GetString("device_uid"); authedUID != "" {
+		req.DeviceUID = authedUID
+	} else {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "device_credentials_required",
+			"message": "device authentication is required for telemetry ingestion",
+		})
+		return
 	}
 
 	count, alerts, err := h.gateway.ProcessTelemetryBatch(c.Request.Context(), &req)

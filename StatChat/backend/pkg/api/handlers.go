@@ -228,6 +228,8 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/collaboration/connections", connectionsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/connections", createConnectionHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/connections", removeConnectionHandler).Methods(http.MethodDelete)
+	router.HandleFunc("/collaboration/connection-requests", connectionRequestsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/collaboration/connection-requests/{id}/{action}", respondConnectionRequestHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/opportunities", opportunitiesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/jobs", jobsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/v1/chat/communities", communitiesHandler).Methods(http.MethodGet, http.MethodPost)
@@ -258,6 +260,11 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/meetings/recordings", meetingRecordingsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/wellness/posts", wellnessPostsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/wellness/posts", createWellnessPostHandler).Methods(http.MethodPost)
+	router.HandleFunc("/wellness/posts/{id}/comments", wellnessPostCommentsHandler).Methods(http.MethodGet)
+	router.HandleFunc("/wellness/posts/{id}/comments", addWellnessCommentHandler).Methods(http.MethodPost)
+	router.HandleFunc("/wellness/posts/{id}/like", toggleWellnessLikeHandler).Methods(http.MethodPost)
+	router.HandleFunc("/wellness/posts/{id}/bookmark", toggleWellnessBookmarkHandler).Methods(http.MethodPost)
+	router.HandleFunc("/wellness/posts/{id}/share", shareWellnessPostHandler).Methods(http.MethodPost)
 	router.HandleFunc("/knowledge/experts", knowledgeExpertsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/knowledge/articles", knowledgeArticlesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/knowledge/ideas", knowledgeIdeasHandler).Methods(http.MethodGet)
@@ -549,6 +556,30 @@ func createPostHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
+	req.Type = strings.ToLower(strings.TrimSpace(req.Type))
+	if req.Type == "" {
+		req.Type = "text"
+	}
+	if req.Type != "text" && req.Type != "photo" && req.Type != "video" && req.Type != "article" {
+		writeError(w, http.StatusBadRequest, "type must be text, photo, video, or article")
+		return
+	}
+	if req.Type == "article" && strings.TrimSpace(req.Title) == "" {
+		writeError(w, http.StatusBadRequest, "article title is required")
+		return
+	}
+	if (req.Type == "photo" || req.Type == "video") && strings.TrimSpace(req.MediaURL) == "" {
+		writeError(w, http.StatusBadRequest, "mediaUrl is required for photo and video posts")
+		return
+	}
+	if req.MediaURL != "" {
+		parsedMediaURL, parseErr := url.Parse(strings.TrimSpace(req.MediaURL))
+		if parseErr != nil || (parsedMediaURL.Scheme != "" && parsedMediaURL.Scheme != "https" && parsedMediaURL.Scheme != "http") || (parsedMediaURL.Scheme == "" && !strings.HasPrefix(parsedMediaURL.Path, "/uploads/")) {
+			writeError(w, http.StatusBadRequest, "mediaUrl must be an http(s) URL or an uploaded media path")
+			return
+		}
+		req.MediaURL = strings.TrimSpace(req.MediaURL)
+	}
 	currentUser, err := requestCurrentUser(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "authenticated user is required")
@@ -704,7 +735,7 @@ func meetingRecordingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wellnessPostsHandler(w http.ResponseWriter, r *http.Request) {
-	posts, err := store.GetWellnessPosts()
+	posts, err := store.GetWellnessPosts(requestUserID(r), requestTenantID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load wellness posts")
 		return
@@ -718,9 +749,29 @@ func createWellnessPostHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.Author == "" || req.Text == "" {
-		writeError(w, http.StatusBadRequest, "author and text are required")
+	if strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
 		return
+	}
+	currentUser, err := requestCurrentUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "authenticated user is required")
+		return
+	}
+	req.TenantID = requestTenantID(r)
+	req.AuthorID = currentUser.ID
+	req.Author = currentUser.Name
+	req.Handle = "@" + strings.ToLower(strings.ReplaceAll(strings.TrimSpace(currentUser.Name), " ", ""))
+	if req.Avatar == "" {
+		nameRunes := []rune(strings.TrimSpace(currentUser.Name))
+		if len(nameRunes) > 0 {
+			req.Avatar = strings.ToUpper(string(nameRunes[0]))
+		} else {
+			req.Avatar = "U"
+		}
+	}
+	if req.Category == "" || req.Category == "For You" {
+		req.Category = "Mental Health"
 	}
 	post, err := store.CreateWellnessPost(req)
 	if err != nil {

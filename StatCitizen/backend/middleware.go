@@ -398,3 +398,26 @@ func lookupSession(token string) (*CitizenSession, error) {
 	}()
 	return &s, nil
 }
+
+// ─── Middleware Aliases & Helpers ─────────────────────────────────────────────
+
+func rateLimitMiddleware(cfg *Config) gin.HandlerFunc {
+	return publicRateLimitMiddleware(cfg)
+}
+
+func citizenAuthMiddleware(cfg *Config) gin.HandlerFunc {
+	return citizenSessionMiddleware()
+}
+
+func enterpriseAuthMiddleware(cfg *Config) gin.HandlerFunc {
+	return enterpriseJWTMiddleware()
+}
+
+func buildCanonicalID(tenantID, objectType, id string) string {
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	return fmt.Sprintf("%s:statcitizen:%s:%s", tenantID, objectType, id)
+}
+
+

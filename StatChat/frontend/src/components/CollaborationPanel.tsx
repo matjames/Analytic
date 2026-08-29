@@ -8,6 +8,8 @@ import {
   fetchConnections,
   createConnection,
   removeConnection,
+  fetchConnectionRequests,
+  respondToConnectionRequest,
   fetchOpportunities,
   fetchJobs,
   fetchCommunities,
@@ -93,9 +95,13 @@ export default function CollaborationPanel({ user, theme, isMobile, activeSubVie
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectionRequests, setConnectionRequests] = useState<Connection[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
 const [postDraft, setPostDraft] = useState('');
+  const [postType, setPostType] = useState<'text' | 'photo' | 'video' | 'article'>('text');
+  const [postTitle, setPostTitle] = useState('');
+  const [postMediaUrl, setPostMediaUrl] = useState('');
   const [showPostForm, setShowPostForm] = useState(false);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -139,6 +145,7 @@ const [postDraft, setPostDraft] = useState('');
   useEffect(() => {
     fetchPosts().then(setPosts).catch(() => {});
     fetchConnections().then(setConnections).catch(() => {});
+    fetchConnectionRequests().then(setConnectionRequests).catch(() => {});
     fetchOpportunities().then(setOpportunities).catch(() => {});
     fetchJobs().then(setJobs).catch(() => {});
     fetchPolls().then(setPolls).catch(() => {});
@@ -173,12 +180,19 @@ const [postDraft, setPostDraft] = useState('');
         org: user?.organizationId ?? 'StatGate',
         time: 'now',
         text: postDraft.trim(),
+        type: postType,
+        title: postTitle.trim(),
+        mediaUrl: postMediaUrl.trim(),
+        mediaMime: postType === 'photo' ? 'image/*' : postType === 'video' ? 'video/*' : '',
         likes: 0,
         comments: 0,
         shares: 0,
       });
       setPosts((prev) => [newPost, ...prev]);
       setPostDraft('');
+      setPostTitle('');
+      setPostMediaUrl('');
+      setPostType('text');
       setShowPostForm(false);
     } catch {
       // ignore
@@ -534,7 +548,8 @@ const [postDraft, setPostDraft] = useState('');
         setConnections((prev) => prev.filter((c) => c.connectedToId !== userId));
       } else {
         const conn = await createConnection(userId);
-        setConnections((prev) => [conn, ...prev]);
+        if (conn.status === 'accepted') setConnections((prev) => [conn, ...prev]);
+        else setConnectionRequests((prev) => [conn, ...prev.filter((item) => item.id !== conn.id)]);
       }
     } catch {
       // ignore
@@ -553,6 +568,16 @@ const [postDraft, setPostDraft] = useState('');
       );
     } catch {
       // ignore
+    }
+  };
+
+  const handleConnectionRequest = async (request: Connection, action: 'accept' | 'decline') => {
+    try {
+      const result = await respondToConnectionRequest(request.id, action);
+      setConnectionRequests((previous) => previous.filter((item) => item.id !== request.id));
+      if (action === 'accept') setConnections((previous) => [...previous, { ...result, status: 'accepted', direction: 'accepted' }]);
+    } catch {
+      // Keep the network view usable when a request has already changed.
     }
   };
 
@@ -624,13 +649,33 @@ const [postDraft, setPostDraft] = useState('');
                   fontSize: 14,
                   fontFamily: 'inherit',
                   resize: 'vertical',
-                  minHeight: 60,
-                }}
+                minHeight: 60,
+              }}
               />
+              {postType === 'article' && (
+                <input
+                  value={postTitle}
+                  onChange={(event) => setPostTitle(event.target.value)}
+                  placeholder="Article title"
+                  aria-label="Article title"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor }}
+                />
+              )}
+              {(postType === 'photo' || postType === 'video') && (
+                <input
+                  type="url"
+                  value={postMediaUrl}
+                  onChange={(event) => setPostMediaUrl(event.target.value)}
+                  placeholder={`Paste a ${postType} URL`}
+                  aria-label={`${postType} URL`}
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor }}
+                />
+              )}
+              {postType !== 'text' && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>Media URLs can be public HTTPS links or files already uploaded to StatChat.</div>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <button
                   type="button"
-                  onClick={() => { setShowPostForm(false); setPostDraft(''); }}
+                  onClick={() => { setShowPostForm(false); setPostDraft(''); setPostTitle(''); setPostMediaUrl(''); setPostType('text'); }}
                   style={{ padding: '8px 16px', borderRadius: 999, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
                 >
                   Cancel
@@ -658,9 +703,9 @@ const [postDraft, setPostDraft] = useState('');
         </div>
         {!showPostForm && (
           <div className={styles.createPostActions}>
-            <button type="button" className={styles.createPostAction}>📷 Photo</button>
-            <button type="button" className={styles.createPostAction}>🎥 Video</button>
-            <button type="button" className={styles.createPostAction}>📄 Article</button>
+            <button type="button" className={styles.createPostAction} onClick={() => { setPostType('photo'); setShowPostForm(true); }}>📷 Photo</button>
+            <button type="button" className={styles.createPostAction} onClick={() => { setPostType('video'); setShowPostForm(true); }}>🎥 Video</button>
+            <button type="button" className={styles.createPostAction} onClick={() => { setPostType('article'); setShowPostForm(true); }}>📄 Article</button>
             <button type="button" className={styles.createPostAction} onClick={() => setShowPollForm((value) => !value)}>📊 Poll</button>
           </div>
         )}
@@ -692,7 +737,10 @@ const [postDraft, setPostDraft] = useState('');
             </div>
             <span className={styles.postTime}>{post.time}</span>
           </div>
-<div className={styles.postBody}>{post.text}</div>
+          {post.type === 'article' && post.title && <h3 style={{ margin: '0 16px 8px', fontSize: 18 }}>{post.title}</h3>}
+          {post.mediaUrl && post.type === 'photo' && <img src={post.mediaUrl} alt={post.title || 'Shared photo'} style={{ display: 'block', width: 'calc(100% - 32px)', maxHeight: 420, objectFit: 'cover', margin: '0 16px 12px', borderRadius: 12 }} />}
+          {post.mediaUrl && post.type === 'video' && <video controls src={post.mediaUrl} style={{ display: 'block', width: 'calc(100% - 32px)', maxHeight: 420, margin: '0 16px 12px', borderRadius: 12 }} />}
+          <div className={styles.postBody}>{post.text}</div>
           <div className={styles.postActions}>
             <button
               type="button"
@@ -781,10 +829,22 @@ const [postDraft, setPostDraft] = useState('');
   const renderConnect = () => (
     <div>
       <h2 className={styles.sectionHeader}>Grow your network</h2>
-      <p className={styles.sectionSubheader}>Connect with professionals across the StatGate enterprise</p>
+      <p className={styles.sectionSubheader}>Send connection requests and build a trusted professional network</p>
+      {connectionRequests.filter((request) => request.direction === 'incoming').length > 0 && (
+        <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16, marginBottom: 18 }}>
+          <strong>Incoming requests</strong>
+          {connectionRequests.filter((request) => request.direction === 'incoming').map((request) => (
+            <div key={request.id} className={styles.communityMemberRow}>
+              <div><div className={styles.postAuthorName}>{request.connectedName}</div><div className={styles.postAuthorMeta}>{request.connectedRole || 'Member'} Â· {request.connectedOrg}</div></div>
+              {request.canRespond && <div className={styles.communityMemberActions}><button type="button" className={styles.connectButton} onClick={() => handleConnectionRequest(request, 'accept')}>Accept</button><button type="button" className={styles.linkButton} onClick={() => handleConnectionRequest(request, 'decline')}>Decline</button></div>}
+            </div>
+          ))}
+        </div>
+      )}
       <div className={styles.networkGrid}>
         {allUsers.map((u) => {
           const connected = connectedIds.has(u.id);
+          const pending = connectionRequests.some((request) => request.connectedToId === u.id && request.direction === 'outgoing' && request.status === 'pending');
           return (
             <div key={u.id} className={styles.networkCard} style={{ background: bg, borderColor }}>
               <div className={styles.networkAvatar}>{getAvatarText(u.name)}</div>
@@ -795,6 +855,7 @@ const [postDraft, setPostDraft] = useState('');
                 type="button"
                 className={`${styles.connectButton} ${connected ? styles.connectedButton : ''}`}
                 onClick={() => toggleConnect(u.id)}
+                disabled={pending}
               >
                 {connected ? '✓ Connected' : '+ Connect'}
               </button>
@@ -818,7 +879,7 @@ const [postDraft, setPostDraft] = useState('');
           <div className={styles.statLabel}>People you may know</div>
         </div>
         <div className={styles.statCard} style={{ background: bg, borderColor }}>
-          <div className={styles.statValue}>12</div>
+          <div className={styles.statValue}>{connectionRequests.filter((request) => request.direction === 'incoming').length}</div>
           <div className={styles.statLabel}>Pending requests</div>
         </div>
       </div>

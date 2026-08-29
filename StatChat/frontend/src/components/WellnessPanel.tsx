@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { User } from '../types';
-import { fetchWellnessPosts, createWellnessPost, type WellnessPost } from '../api/client';
+import {
+  fetchWellnessPosts,
+  createWellnessPost,
+  fetchWellnessComments,
+  addWellnessComment,
+  toggleWellnessLike,
+  toggleWellnessBookmark,
+  shareWellnessPost,
+  type WellnessPost,
+  type WellnessComment,
+} from '../api/client';
 import styles from './WellnessPanel.module.css';
 
 interface Props {
@@ -25,10 +35,17 @@ export default function WellnessPanel({ user, theme, isMobile }: Props) {
   const [showPostForm, setShowPostForm] = useState(false);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [commentsByPost, setCommentsByPost] = useState<Record<string, WellnessComment[]>>({});
+  const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
 
   useEffect(() => {
     fetchWellnessPosts()
-      .then((fetched) => setPosts(fetched))
+      .then((fetched) => {
+        setPosts(fetched);
+        setLikedIds(new Set(fetched.filter((post) => post.likedByMe).map((post) => post.id)));
+        setBookmarkedIds(new Set(fetched.filter((post) => post.bookmarkedByMe).map((post) => post.id)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -42,22 +59,76 @@ export default function WellnessPanel({ user, theme, isMobile }: Props) {
     ? posts
     : posts.filter((p) => p.category === activeCategory);
 
-  const toggleLike = (id: string) => {
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const updatePost = (id: string, update: Partial<WellnessPost>) => {
+    setPosts((previous) => previous.map((post) => post.id === id ? { ...post, ...update } : post));
   };
 
-  const toggleBookmark = (id: string) => {
-    setBookmarkedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleLike = async (id: string) => {
+    try {
+      const result = await toggleWellnessLike(id);
+      updatePost(id, { likes: result.likes });
+      setLikedIds((previous) => {
+        const next = new Set(previous);
+        if (result.liked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    } catch {
+      // Keep the current state when the server rejects the action.
+    }
+  };
+
+  const toggleBookmark = async (id: string) => {
+    try {
+      const result = await toggleWellnessBookmark(id);
+      updatePost(id, { bookmarks: result.bookmarks });
+      setBookmarkedIds((previous) => {
+        const next = new Set(previous);
+        if (result.bookmarked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    } catch {
+      // Keep the current state when the server rejects the action.
+    }
+  };
+
+  const handleShare = async (id: string) => {
+    try {
+      const result = await shareWellnessPost(id);
+      updatePost(id, { shares: result.shares });
+    } catch {
+      // Keep the current state when the server rejects the action.
+    }
+  };
+
+  const toggleComments = async (id: string) => {
+    if (openCommentsFor === id) {
+      setOpenCommentsFor(null);
+      setCommentDraft('');
+      return;
+    }
+    try {
+      const loaded = await fetchWellnessComments(id);
+      setCommentsByPost((previous) => ({ ...previous, [id]: loaded }));
+      setOpenCommentsFor(id);
+      setCommentDraft('');
+    } catch {
+      // Keep the feed usable when comments cannot be loaded.
+    }
+  };
+
+  const handleComment = async (id: string) => {
+    if (!commentDraft.trim()) return;
+    try {
+      const comment = await addWellnessComment(id, commentDraft.trim());
+      setCommentsByPost((previous) => ({ ...previous, [id]: [...(previous[id] ?? []), comment] }));
+      const currentPost = posts.find((post) => post.id === id);
+      updatePost(id, { comments: (currentPost?.comments ?? 0) + 1 });
+      setCommentDraft('');
+    } catch {
+      // Keep the draft available when the server rejects the comment.
+    }
   };
 
   const handlePost = async () => {
@@ -175,12 +246,12 @@ export default function WellnessPanel({ user, theme, isMobile }: Props) {
                   className={`${styles.actionBtn} ${liked ? styles.likedBtn : ''}`}
                   onClick={() => toggleLike(post.id)}
                 >
-                  {liked ? '❤️' : '🤍'} {post.likes + (liked ? 1 : 0)}
+                  {liked ? '❤️' : '🤍'} {post.likes}
                 </button>
-                <button type="button" className={styles.actionBtn}>
+                <button type="button" className={styles.actionBtn} onClick={() => toggleComments(post.id)}>
                   💬 {post.comments}
                 </button>
-                <button type="button" className={styles.actionBtn}>
+                <button type="button" className={styles.actionBtn} onClick={() => handleShare(post.id)}>
                   ↗ {post.shares}
                 </button>
                 <button
@@ -188,9 +259,28 @@ export default function WellnessPanel({ user, theme, isMobile }: Props) {
                   className={`${styles.actionBtn} ${bookmarked ? styles.bookmarkedBtn : ''}`}
                   onClick={() => toggleBookmark(post.id)}
                 >
-                  {bookmarked ? '🔖' : '📑'} {post.bookmarks + (bookmarked ? 1 : 0)}
+                  {bookmarked ? '🔖' : '📑'} {post.bookmarks}
                 </button>
               </div>
+              {openCommentsFor === post.id && (
+                <div className={styles.commentsPanel}>
+                  {(commentsByPost[post.id] ?? []).map((comment) => (
+                    <div key={comment.id} className={styles.commentRow}>
+                      <strong>{comment.author}</strong>
+                      <span>{comment.text}</span>
+                    </div>
+                  ))}
+                  <div className={styles.commentComposer}>
+                    <input
+                      value={commentDraft}
+                      onChange={(event) => setCommentDraft(event.target.value)}
+                      placeholder="Add an encouraging comment..."
+                      aria-label="Add a wellness comment"
+                    />
+                    <button type="button" onClick={() => handleComment(post.id)} disabled={!commentDraft.trim()}>Send</button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
