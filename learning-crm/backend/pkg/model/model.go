@@ -96,6 +96,7 @@ type Badge struct {
 type Lead struct {
 	ID          string     `json:"id"`
 	TenantID    string     `json:"tenant_id"`
+	WorkspaceID string     `json:"workspace_id,omitempty"`
 	Name        string     `json:"name"`
 	Email       string     `json:"email"`
 	Company     string     `json:"company,omitempty"`

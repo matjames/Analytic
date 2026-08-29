@@ -12,7 +12,7 @@ import (
 // ─── Agents (P31) ────────────────────────────────────────────────────────────
 
 func ListAgentsHandler(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListAgents(r.Context(), actorTenant(r), r.URL.Query().Get("status"))
+	items, err := store.ListAgents(r.Context(), actorTenant(r), r.URL.Query().Get("status"), actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -31,6 +31,7 @@ func CreateAgentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.TenantID = actorTenant(r)
+	a.WorkspaceID = actorWorkspace(r)
 	a.CreatedBy = actorID(r)
 	if err := store.CreateAgent(r.Context(), &a); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -43,6 +44,10 @@ func CreateAgentHandler(w http.ResponseWriter, r *http.Request) {
 func GetAgentHandler(w http.ResponseWriter, r *http.Request) {
 	a, err := store.GetAgent(r.Context(), varsOf(r)["id"])
 	if err != nil {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	if !workspaceAllowsRead(a.WorkspaceID, actorWorkspace(r)) {
 		writeError(w, http.StatusNotFound, "agent not found")
 		return
 	}
@@ -228,7 +233,7 @@ func ReviewGovernanceHandler(w http.ResponseWriter, r *http.Request) {
 
 // AgentRuntimeStatsHandler returns a compact runtime view for orchestration tooling.
 func AgentRuntimeStatsHandler(w http.ResponseWriter, r *http.Request) {
-	agents, err := store.ListAgents(r.Context(), actorTenant(r), "")
+	agents, err := store.ListAgents(r.Context(), actorTenant(r), "", actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

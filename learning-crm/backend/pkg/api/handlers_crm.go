@@ -12,7 +12,7 @@ import (
 // ─── Leads (P26) ─────────────────────────────────────────────────────────────
 
 func ListLeadsHandler(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListLeads(r.Context(), actorTenant(r), r.URL.Query().Get("stage"))
+	items, err := store.ListLeads(r.Context(), actorTenant(r), r.URL.Query().Get("stage"), actorWorkspace(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -31,6 +31,7 @@ func CreateLeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l.TenantID = actorTenant(r)
+	l.WorkspaceID = actorWorkspace(r)
 	l.OwnerID = actorID(r)
 	if err := store.CreateLead(r.Context(), &l); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -46,12 +47,20 @@ func GetLeadHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "lead not found")
 		return
 	}
+	if !workspaceAllowsRead(l.WorkspaceID, actorWorkspace(r)) {
+		writeError(w, http.StatusNotFound, "lead not found")
+		return
+	}
 	writeJSON(w, http.StatusOK, l)
 }
 
 func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 	l, err := store.GetLead(r.Context(), varsOf(r)["id"])
 	if err != nil {
+		writeError(w, http.StatusNotFound, "lead not found")
+		return
+	}
+	if !workspaceAllowsRead(l.WorkspaceID, actorWorkspace(r)) {
 		writeError(w, http.StatusNotFound, "lead not found")
 		return
 	}
@@ -63,6 +72,10 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 	l.Name, l.Email = body.Name, body.Email
 	l.Company, l.Source, l.Stage = body.Company, body.Source, body.Stage
 	l.Value, l.OwnerID = body.Value, body.OwnerID
+	// Adopt the selected workspace for legacy (unscoped) leads on first edit.
+	if l.WorkspaceID == "" {
+		l.WorkspaceID = actorWorkspace(r)
+	}
 	if err := store.UpdateLead(r.Context(), l); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

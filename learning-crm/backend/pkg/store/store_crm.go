@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"learningcrm/pkg/model"
@@ -17,16 +18,16 @@ func CreateLead(ctx context.Context, l *model.Lead) error {
 		l.Stage = "lead"
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO leads (id, tenant_id, name, email, company, source, stage, value, owner_id, converted, converted_at, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		l.ID, l.TenantID, l.Name, l.Email, l.Company, l.Source, l.Stage, l.Value, l.OwnerID, l.Converted, l.ConvertedAt, l.CreatedAt)
+		INSERT INTO leads (id, tenant_id, workspace_id, name, email, company, source, stage, value, owner_id, converted, converted_at, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		l.ID, l.TenantID, l.WorkspaceID, l.Name, l.Email, l.Company, l.Source, l.Stage, l.Value, l.OwnerID, l.Converted, l.ConvertedAt, l.CreatedAt)
 	return err
 }
 
 func scanLead(row row) (*model.Lead, error) {
 	var l model.Lead
 	var conv sql.NullTime
-	if err := row.Scan(&l.ID, &l.TenantID, &l.Name, &l.Email, &l.Company, &l.Source, &l.Stage, &l.Value, &l.OwnerID, &l.Converted, &conv, &l.CreatedAt); err != nil {
+	if err := row.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.Name, &l.Email, &l.Company, &l.Source, &l.Stage, &l.Value, &l.OwnerID, &l.Converted, &conv, &l.CreatedAt); err != nil {
 		return nil, err
 	}
 	if conv.Valid {
@@ -35,13 +36,17 @@ func scanLead(row row) (*model.Lead, error) {
 	return &l, nil
 }
 
-const leadCols = `id, tenant_id, name, email, company, source, stage, value, owner_id, converted, converted_at, created_at`
+const leadCols = `id, tenant_id, name, email, company, source, stage, value, owner_id, converted, converted_at, COALESCE(workspace_id, ''), created_at`
 
-func ListLeads(ctx context.Context, tenantID, stage string) ([]model.Lead, error) {
+func ListLeads(ctx context.Context, tenantID, stage, workspaceID string) ([]model.Lead, error) {
 	query := `SELECT ` + leadCols + ` FROM leads WHERE tenant_id=$1`
 	args := []interface{}{tenantID}
+	if workspaceID != "" {
+		query += ` AND (workspace_id=$2 OR workspace_id='')`
+		args = append(args, workspaceID)
+	}
 	if stage != "" {
-		query += ` AND stage=$2`
+		query += fmt.Sprintf(` AND stage=$%d`, len(args)+1)
 		args = append(args, stage)
 	}
 	query += ` ORDER BY created_at DESC`
@@ -67,9 +72,9 @@ func GetLead(ctx context.Context, id string) (*model.Lead, error) {
 
 func UpdateLead(ctx context.Context, l *model.Lead) error {
 	_, err := db.ExecContext(ctx, `
-		UPDATE leads SET name=$2, email=$3, company=$4, source=$5, stage=$6, value=$7, owner_id=$8, converted=$9, converted_at=$10
+		UPDATE leads SET name=$2, email=$3, company=$4, source=$5, stage=$6, value=$7, owner_id=$8, converted=$9, converted_at=$10, workspace_id=$11
 		WHERE id=$1`,
-		l.ID, l.Name, l.Email, l.Company, l.Source, l.Stage, l.Value, l.OwnerID, l.Converted, l.ConvertedAt)
+		l.ID, l.Name, l.Email, l.Company, l.Source, l.Stage, l.Value, l.OwnerID, l.Converted, l.ConvertedAt, l.WorkspaceID)
 	return err
 }
 

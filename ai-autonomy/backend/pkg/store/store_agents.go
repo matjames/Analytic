@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"aiengines/pkg/model"
@@ -18,16 +19,16 @@ func CreateAgent(ctx context.Context, a *model.Agent) error {
 		a.Status = "registered"
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO agents (id, tenant_id, name, role, persona, capabilities, safety_policy, status, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		a.ID, a.TenantID, a.Name, a.Role, jsonB(a.Persona), jsonB(a.Capabilities), jsonB(a.SafetyPolicy), a.Status, a.CreatedBy, a.CreatedAt, a.UpdatedAt)
+		INSERT INTO agents (id, tenant_id, workspace_id, name, role, persona, capabilities, safety_policy, status, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		a.ID, a.TenantID, a.WorkspaceID, a.Name, a.Role, jsonB(a.Persona), jsonB(a.Capabilities), jsonB(a.SafetyPolicy), a.Status, a.CreatedBy, a.CreatedAt, a.UpdatedAt)
 	return err
 }
 
 func scanAgent(row row) (*model.Agent, error) {
 	var a model.Agent
 	var persona, cap, policy []byte
-	if err := row.Scan(&a.ID, &a.TenantID, &a.Name, &a.Role, &persona, &cap, &policy, &a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.TenantID, &a.WorkspaceID, &a.Name, &a.Role, &persona, &cap, &policy, &a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		return nil, err
 	}
 	_ = jsonUnmarshal(persona, &a.Persona)
@@ -36,13 +37,17 @@ func scanAgent(row row) (*model.Agent, error) {
 	return &a, nil
 }
 
-const agentCols = `id, tenant_id, name, role, persona, capabilities, safety_policy, status, created_by, created_at, updated_at`
+const agentCols = `id, tenant_id, name, role, persona, capabilities, safety_policy, status, created_by, COALESCE(workspace_id, ''), created_at, updated_at`
 
-func ListAgents(ctx context.Context, tenantID, status string) ([]model.Agent, error) {
+func ListAgents(ctx context.Context, tenantID, status, workspaceID string) ([]model.Agent, error) {
 	query := `SELECT ` + agentCols + ` FROM agents WHERE tenant_id=$1`
 	args := []interface{}{tenantID}
+	if workspaceID != "" {
+		query += ` AND (workspace_id=$2 OR workspace_id='')`
+		args = append(args, workspaceID)
+	}
 	if status != "" {
-		query += ` AND status=$2`
+		query += fmt.Sprintf(` AND status=$%d`, len(args)+1)
 		args = append(args, status)
 	}
 	query += ` ORDER BY created_at DESC`

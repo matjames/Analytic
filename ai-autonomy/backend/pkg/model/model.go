@@ -74,6 +74,7 @@ type Prediction struct {
 type Agent struct {
 	ID           string                 `json:"id"`
 	TenantID     string                 `json:"tenant_id"`
+	WorkspaceID  string                 `json:"workspace_id,omitempty"`
 	Name         string                 `json:"name"`
 	Role         string                 `json:"role"` // analyst|researcher|auditor|classifier...
 	Persona      map[string]interface{} `json:"persona,omitempty"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/matjames/statgate-lib/auth"
 	"github.com/matjames/statgate-lib/metrics"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
@@ -30,6 +31,22 @@ func actorTenant(r *http.Request) string {
 		return u.TenantID
 	}
 	return "default"
+}
+
+// actorWorkspace returns the selected workspace (Stage 2: identity/security
+// closure) captured by tenant.WorkspaceContext middleware. Empty when none.
+func actorWorkspace(r *http.Request) string {
+	return tenant.WorkspaceIDFromRequest(r)
+}
+
+// workspaceAllowsRead reports whether an existing resource may be seen from
+// the selected workspace. Legacy resources without a workspace (empty) remain
+// tenant-wide visible.
+func workspaceAllowsRead(existingWorkspace, selectedWorkspace string) bool {
+	if selectedWorkspace == "" || existingWorkspace == "" {
+		return true
+	}
+	return existingWorkspace == selectedWorkspace
 }
 
 func actorID(r *http.Request) string {
