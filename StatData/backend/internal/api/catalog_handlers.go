@@ -38,7 +38,8 @@ func (h *CatalogHandler) ListDatasets(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	datasets, total, err := h.store.ListDatasets(c.Request.Context(), tenantID, domain, classification, limit, offset)
+	workspaceID := getWorkspaceID(c)
+	datasets, total, err := h.store.ListDatasets(c.Request.Context(), tenantID, domain, classification, workspaceID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -60,6 +61,10 @@ func (h *CatalogHandler) GetDataset(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
 		return
 	}
+	if !workspaceAllowsRead(ds.WorkspaceID, getWorkspaceID(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
+		return
+	}
 	c.JSON(http.StatusOK, ds)
 }
 
@@ -72,6 +77,7 @@ func (h *CatalogHandler) CreateDataset(c *gin.Context) {
 	}
 
 	ds.TenantID = getTenantID(c)
+	ds.WorkspaceID = getWorkspaceID(c)
 	ds.CreatedBy = getUserID(c)
 
 	if err := h.store.CreateDataset(c.Request.Context(), &ds); err != nil {
@@ -88,6 +94,15 @@ func (h *CatalogHandler) CreateDataset(c *gin.Context) {
 // UpdateDataset handles PUT /api/data/catalog/datasets/:id
 func (h *CatalogHandler) UpdateDataset(c *gin.Context) {
 	id := c.Param("id")
+	existing, err := h.store.GetDatasetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
+		return
+	}
+	if !workspaceAllowsRead(existing.WorkspaceID, getWorkspaceID(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
+		return
+	}
 	var ds models.Dataset
 	if err := c.ShouldBindJSON(&ds); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -95,6 +110,13 @@ func (h *CatalogHandler) UpdateDataset(c *gin.Context) {
 	}
 	ds.ID = id
 	ds.TenantID = getTenantID(c)
+	// Preserve the owning workspace; adopt the selected workspace for
+	// legacy (unscoped) resources on first edit.
+	if existing.WorkspaceID != "" {
+		ds.WorkspaceID = existing.WorkspaceID
+	} else {
+		ds.WorkspaceID = getWorkspaceID(c)
+	}
 
 	if err := h.store.UpdateDataset(c.Request.Context(), &ds); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -108,6 +130,15 @@ func (h *CatalogHandler) UpdateDataset(c *gin.Context) {
 // DeleteDataset handles DELETE /api/data/catalog/datasets/:id
 func (h *CatalogHandler) DeleteDataset(c *gin.Context) {
 	id := c.Param("id")
+	existing, err := h.store.GetDatasetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
+		return
+	}
+	if !workspaceAllowsRead(existing.WorkspaceID, getWorkspaceID(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
+		return
+	}
 	if err := h.store.DeleteDataset(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

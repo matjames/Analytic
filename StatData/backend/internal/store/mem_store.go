@@ -355,12 +355,15 @@ func (m *MemStore) GetDatasetByURN(ctx context.Context, urn string) (*models.Dat
 	return nil, errors.New("dataset not found by URN")
 }
 
-func (m *MemStore) ListDatasets(ctx context.Context, tenantID, domain, classification string, limit, offset int) ([]*models.Dataset, int64, error) {
+func (m *MemStore) ListDatasets(ctx context.Context, tenantID, domain, classification, workspaceID string, limit, offset int) ([]*models.Dataset, int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	filtered := make([]*models.Dataset, 0)
 	for _, ds := range m.datasets {
 		if tenantID != "" && ds.TenantID != tenantID && ds.TenantID != "default" {
+			continue
+		}
+		if workspaceID != "" && ds.WorkspaceID != workspaceID {
 			continue
 		}
 		if domain != "" && ds.Domain != domain {

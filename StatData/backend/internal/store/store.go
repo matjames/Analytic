@@ -12,7 +12,7 @@ type Store interface {
 	CreateDataset(ctx context.Context, ds *models.Dataset) error
 	GetDatasetByID(ctx context.Context, id string) (*models.Dataset, error)
 	GetDatasetByURN(ctx context.Context, urn string) (*models.Dataset, error)
-	ListDatasets(ctx context.Context, tenantID, domain, classification string, limit, offset int) ([]*models.Dataset, int64, error)
+	ListDatasets(ctx context.Context, tenantID, domain, classification, workspaceID string, limit, offset int) ([]*models.Dataset, int64, error)
 	UpdateDataset(ctx context.Context, ds *models.Dataset) error
 	DeleteDataset(ctx context.Context, id string) error
 

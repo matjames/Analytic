@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -17,9 +18,71 @@ type PGStore struct {
 	db *sql.DB
 }
 
-// NewPGStore creates a PostgreSQL storage adapter
+// NewPGStore creates PostgreSQL storage adapter
 func NewPGStore(db *sql.DB) *PGStore {
-	return &PGStore{db: db}
+	p := &PGStore{db: db}
+	p.ensureSchema()
+	return p
+}
+
+// ensureSchema self-provisions the tables owned by this service and the
+// workspace scoping columns (Stage 2: identity/security closure). Idempotent;
+// safe on every startup and against a fresh database.
+func (p *PGStore) ensureSchema() {
+	stmts := []string{
+		`CREATE SCHEMA IF NOT EXISTS statdata`,
+		`CREATE TABLE IF NOT EXISTS statdata.datasets (
+			id VARCHAR(64) PRIMARY KEY,
+			urn VARCHAR(255) UNIQUE,
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			domain VARCHAR(64),
+			classification VARCHAR(32),
+			owner_team VARCHAR(128),
+			owner_email VARCHAR(255),
+			format VARCHAR(32),
+			storage_uri TEXT,
+			schema_id VARCHAR(64),
+			version VARCHAR(32),
+			quality_score DOUBLE PRECISION DEFAULT 0,
+			row_count BIGINT DEFAULT 0,
+			size_bytes BIGINT DEFAULT 0,
+			tags JSONB,
+			metadata JSONB,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128),
+			workspace_id VARCHAR(128),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS statdata.pipelines (
+			id VARCHAR(64) PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			pipeline_type VARCHAR(32),
+			status VARCHAR(32),
+			cron_schedule VARCHAR(64),
+			source_dataset_id VARCHAR(64),
+			target_dataset_id VARCHAR(64),
+			stages JSONB,
+			config JSONB,
+			max_retries INT DEFAULT 0,
+			timeout_seconds INT DEFAULT 0,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128),
+			last_run_at TIMESTAMPTZ,
+			workspace_id VARCHAR(128),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`ALTER TABLE statdata.datasets ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.pipelines ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := p.db.Exec(stmt); err != nil {
+			log.Printf("statdata: schema ensure failed: %v", err)
+		}
+	}
 }
 
 // ─── Data Catalog & Sources Implementations ─────────────────────────────────
@@ -39,8 +102,8 @@ func (p *PGStore) CreateDataset(ctx context.Context, ds *models.Dataset) error {
 			id, urn, name, description, domain, classification,
 			owner_team, owner_email, format, storage_uri, schema_id,
 			version, quality_score, row_count, size_bytes, tags,
-			metadata, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+			metadata, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			description = EXCLUDED.description,
@@ -53,7 +116,7 @@ func (p *PGStore) CreateDataset(ctx context.Context, ds *models.Dataset) error {
 		ds.ID, ds.URN, ds.Name, ds.Description, ds.Domain, string(ds.Classification),
 		ds.OwnerTeam, ds.OwnerEmail, ds.Format, ds.StorageURI, ds.SchemaID,
 		ds.Version, ds.QualityScore, ds.RowCount, ds.SizeBytes, tagsJSON,
-		metaJSON, ds.TenantID, ds.CreatedBy,
+		metaJSON, ds.TenantID, ds.CreatedBy, ds.WorkspaceID,
 	)
 	return err
 }
@@ -63,7 +126,7 @@ func (p *PGStore) GetDatasetByID(ctx context.Context, id string) (*models.Datase
 		SELECT id, urn, name, description, domain, classification,
 		       owner_team, owner_email, format, storage_uri, COALESCE(schema_id, ''),
 		       version, quality_score, row_count, size_bytes, tags,
-		       metadata, tenant_id, created_by, created_at, updated_at
+		       metadata, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.datasets WHERE id = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, id)
@@ -75,7 +138,7 @@ func (p *PGStore) GetDatasetByID(ctx context.Context, id string) (*models.Datase
 		&ds.ID, &ds.URN, &ds.Name, &ds.Description, &ds.Domain, &classStr,
 		&ds.OwnerTeam, &ds.OwnerEmail, &ds.Format, &ds.StorageURI, &ds.SchemaID,
 		&ds.Version, &ds.QualityScore, &ds.RowCount, &ds.SizeBytes, &tagsJSON,
-		&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.CreatedAt, &ds.UpdatedAt,
+		&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.WorkspaceID, &ds.CreatedAt, &ds.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -91,7 +154,7 @@ func (p *PGStore) GetDatasetByURN(ctx context.Context, urn string) (*models.Data
 		SELECT id, urn, name, description, domain, classification,
 		       owner_team, owner_email, format, storage_uri, COALESCE(schema_id, ''),
 		       version, quality_score, row_count, size_bytes, tags,
-		       metadata, tenant_id, created_by, created_at, updated_at
+		       metadata, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.datasets WHERE urn = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, urn)
@@ -103,7 +166,7 @@ func (p *PGStore) GetDatasetByURN(ctx context.Context, urn string) (*models.Data
 		&ds.ID, &ds.URN, &ds.Name, &ds.Description, &ds.Domain, &classStr,
 		&ds.OwnerTeam, &ds.OwnerEmail, &ds.Format, &ds.StorageURI, &ds.SchemaID,
 		&ds.Version, &ds.QualityScore, &ds.RowCount, &ds.SizeBytes, &tagsJSON,
-		&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.CreatedAt, &ds.UpdatedAt,
+		&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.WorkspaceID, &ds.CreatedAt, &ds.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -114,7 +177,7 @@ func (p *PGStore) GetDatasetByURN(ctx context.Context, urn string) (*models.Data
 	return &ds, nil
 }
 
-func (p *PGStore) ListDatasets(ctx context.Context, tenantID, domain, classification string, limit, offset int) ([]*models.Dataset, int64, error) {
+func (p *PGStore) ListDatasets(ctx context.Context, tenantID, domain, classification, workspaceID string, limit, offset int) ([]*models.Dataset, int64, error) {
 	var countQuery strings.Builder
 	countQuery.WriteString("SELECT COUNT(*) FROM statdata.datasets WHERE 1=1")
 
@@ -123,7 +186,7 @@ func (p *PGStore) ListDatasets(ctx context.Context, tenantID, domain, classifica
 		SELECT id, urn, name, description, domain, classification,
 		       owner_team, owner_email, format, storage_uri, COALESCE(schema_id, ''),
 		       version, quality_score, row_count, size_bytes, tags,
-		       metadata, tenant_id, created_by, created_at, updated_at
+		       metadata, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.datasets WHERE 1=1
 	`)
 
@@ -134,6 +197,12 @@ func (p *PGStore) ListDatasets(ctx context.Context, tenantID, domain, classifica
 		countQuery.WriteString(fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx))
 		query.WriteString(fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx))
 		args = append(args, tenantID)
+		argIdx++
+	}
+	if workspaceID != "" {
+		countQuery.WriteString(fmt.Sprintf(" AND workspace_id = $%d", argIdx))
+		query.WriteString(fmt.Sprintf(" AND workspace_id = $%d", argIdx))
+		args = append(args, workspaceID)
 		argIdx++
 	}
 	if domain != "" {
@@ -176,7 +245,7 @@ func (p *PGStore) ListDatasets(ctx context.Context, tenantID, domain, classifica
 			&ds.ID, &ds.URN, &ds.Name, &ds.Description, &ds.Domain, &classStr,
 			&ds.OwnerTeam, &ds.OwnerEmail, &ds.Format, &ds.StorageURI, &ds.SchemaID,
 			&ds.Version, &ds.QualityScore, &ds.RowCount, &ds.SizeBytes, &tagsJSON,
-			&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.CreatedAt, &ds.UpdatedAt,
+			&metaJSON, &ds.TenantID, &ds.CreatedBy, &ds.WorkspaceID, &ds.CreatedAt, &ds.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -197,14 +266,15 @@ func (p *PGStore) UpdateDataset(ctx context.Context, ds *models.Dataset) error {
 			name = $1, description = $2, domain = $3, classification = $4,
 			owner_team = $5, owner_email = $6, format = $7, storage_uri = $8,
 			schema_id = $9, version = $10, quality_score = $11, row_count = $12,
-			size_bytes = $13, tags = $14, metadata = $15, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $16
+			size_bytes = $13, tags = $14, metadata = $15, updated_at = CURRENT_TIMESTAMP,
+			workspace_id = $16
+		WHERE id = $17
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		ds.Name, ds.Description, ds.Domain, string(ds.Classification),
 		ds.OwnerTeam, ds.OwnerEmail, ds.Format, ds.StorageURI,
 		ds.SchemaID, ds.Version, ds.QualityScore, ds.RowCount,
-		ds.SizeBytes, tagsJSON, metaJSON, ds.ID,
+		ds.SizeBytes, tagsJSON, metaJSON, ds.WorkspaceID, ds.ID,
 	)
 	return err
 }

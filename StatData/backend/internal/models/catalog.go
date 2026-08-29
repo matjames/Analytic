@@ -32,6 +32,7 @@ type Dataset struct {
 	Tags           []string               `json:"tags"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	TenantID       string                 `json:"tenant_id"`
+	WorkspaceID    string                 `json:"workspace_id,omitempty"`
 	CreatedBy      string                 `json:"created_by"`
 	CreatedAt      time.Time              `json:"created_at"`
 	UpdatedAt      time.Time              `json:"updated_at"`

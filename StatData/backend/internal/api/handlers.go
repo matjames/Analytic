@@ -69,3 +69,25 @@ func getUserID(c *gin.Context) string {
 	}
 	return "system-architect"
 }
+
+// getWorkspaceID extracts the selected workspace (Stage 2: identity/security
+// closure) set by tenant.GinWorkspaceContext on the request path.
+func getWorkspaceID(c *gin.Context) string {
+	if w, exists := c.Get("workspace_id"); exists {
+		if s, ok := w.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// workspaceAllowsRead reports whether an existing resource may be seen from
+// the selected workspace. Legacy resources without a workspace (empty) remain
+// tenant-wide visible; resources owned by another workspace are hidden.
+func workspaceAllowsRead(existingWorkspace, selectedWorkspace string) bool {
+	if selectedWorkspace == "" || existingWorkspace == "" {
+		return true
+	}
+	return existingWorkspace == selectedWorkspace
+}
+
