@@ -77,6 +77,8 @@ func (p *PGStore) ensureSchema() {
 		)`,
 		`ALTER TABLE statdata.datasets ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.pipelines ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.data_sources ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.streaming_jobs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := p.db.Exec(stmt); err != nil {
@@ -292,8 +294,8 @@ func (p *PGStore) CreateDataSource(ctx context.Context, src *models.DataSource) 
 	query := `
 		INSERT INTO statdata.data_sources (
 			id, name, source_type, connection_uri, auth_type,
-			credentials, status, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			credentials, status, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			connection_uri = EXCLUDED.connection_uri,
@@ -302,7 +304,7 @@ func (p *PGStore) CreateDataSource(ctx context.Context, src *models.DataSource) 
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		src.ID, src.Name, src.SourceType, src.ConnectionURI, src.AuthType,
-		credJSON, src.Status, src.TenantID,
+		credJSON, src.Status, src.TenantID, src.WorkspaceID,
 	)
 	return err
 }
@@ -327,7 +329,7 @@ func (p *PGStore) GetDataSourceByID(ctx context.Context, id string) (*models.Dat
 	return &s, nil
 }
 
-func (p *PGStore) ListDataSources(ctx context.Context, tenantID, sourceType string) ([]*models.DataSource, error) {
+func (p *PGStore) ListDataSources(ctx context.Context, tenantID, sourceType, workspaceID string) ([]*models.DataSource, error) {
 	query := `
 		SELECT id, name, source_type, connection_uri, auth_type,
 		       credentials, status, tenant_id, last_tested_at, created_at, updated_at
@@ -338,6 +340,11 @@ func (p *PGStore) ListDataSources(ctx context.Context, tenantID, sourceType stri
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
+		argIdx++
+	}
+	if workspaceID != "" {
+		query += fmt.Sprintf(" AND (workspace_id = $%d OR workspace_id = '')", argIdx)
+		args = append(args, workspaceID)
 		argIdx++
 	}
 	if sourceType != "" {
@@ -1100,12 +1107,12 @@ func (p *PGStore) CreateStreamingJob(ctx context.Context, job *models.StreamingJ
 	query := `
 		INSERT INTO statdata.streaming_jobs (
 			id, name, source_topic, target_sink, status,
-			throughput_msg_sec, lag_records, config, tenant_id, last_checkpoint
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+			throughput_msg_sec, lag_records, config, tenant_id, workspace_id, last_checkpoint
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		job.ID, job.Name, job.SourceTopic, job.TargetSink, job.Status,
-		job.ThroughputMsgSec, job.LagRecords, configJSON, job.TenantID,
+		job.ThroughputMsgSec, job.LagRecords, configJSON, job.TenantID, job.WorkspaceID,
 	)
 	return err
 }
@@ -1132,7 +1139,7 @@ func (p *PGStore) GetStreamingJobByID(ctx context.Context, id string) (*models.S
 	return &j, nil
 }
 
-func (p *PGStore) ListStreamingJobs(ctx context.Context, tenantID, status string) ([]*models.StreamingJob, error) {
+func (p *PGStore) ListStreamingJobs(ctx context.Context, tenantID, status, workspaceID string) ([]*models.StreamingJob, error) {
 	query := `
 		SELECT id, name, source_topic, target_sink, status,
 		       throughput_msg_sec, lag_records, config, tenant_id, last_checkpoint,
@@ -1144,6 +1151,11 @@ func (p *PGStore) ListStreamingJobs(ctx context.Context, tenantID, status string
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
+		argIdx++
+	}
+	if workspaceID != "" {
+		query += fmt.Sprintf(" AND (workspace_id = $%d OR workspace_id = '')", argIdx)
+		args = append(args, workspaceID)
 		argIdx++
 	}
 	if status != "" {

@@ -48,6 +48,7 @@ type DataSource struct {
 	Credentials    map[string]interface{} `json:"credentials,omitempty"`
 	Status         string                 `json:"status"` // ACTIVE, INACTIVE, ERROR
 	TenantID       string                 `json:"tenant_id"`
+	WorkspaceID    string                 `json:"workspace_id,omitempty"`
 	LastTestedAt   *time.Time             `json:"last_tested_at,omitempty"`
 	CreatedAt      time.Time              `json:"created_at"`
 	UpdatedAt      time.Time              `json:"updated_at"`

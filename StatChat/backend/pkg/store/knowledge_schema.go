@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS knowledge_idea_votes (
 );
 CREATE INDEX IF NOT EXISTS knowledge_idea_votes_tenant_user_idx ON knowledge_idea_votes (tenant_id, user_id);
 
-UPDATE knowledge_articles SET content = excerpt WHERE content = '';
+UPDATE knowledge_articles
+SET content = excerpt || E'\n\nThis full article page covers the context, practical steps, review checklist, and implementation risks teams should consider before applying the practice in production.'
+WHERE tenant_id = 'default'
+  AND id IN ('a1', 'a2', 'a3', 'a4', 'a5', 'a6')
+  AND (content = '' OR content = excerpt);
 `)
 	return err
 }

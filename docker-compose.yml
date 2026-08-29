@@ -138,7 +138,7 @@ services:
       - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
       - KAGGLE_STAGING_SCHEMA=${KAGGLE_STAGING_SCHEMA:-ml_staging}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
@@ -185,7 +185,7 @@ services:
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?required}
       - JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - RATE_LIMIT_REDIS_REQUIRED=true
@@ -519,7 +519,7 @@ services:
       - GOVERNANCE_DB_USER=${GOVERNANCE_DB_USER:-StatGovernance}
       - GOVERNANCE_DB_PASSWORD=${GOVERNANCE_DB_PASSWORD:?GOVERNANCE_DB_PASSWORD must be set}
       - GOVERNANCE_DB_SSLMODE=${GOVERNANCE_DB_SSLMODE:-disable}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATCHAT_API_URL=http://statchat-backend:4000
       - STATCHAT_UI_URL=http://statchat-frontend:80
@@ -581,7 +581,7 @@ services:
       - DB_USER=${KAGGLE_DB_USER:-Kaggle}
       - DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATCHAT_API_URL=http://statchat-backend:4000
       - ENTERPRISE_CORE_URL=http://statgate-enterprise-core:8096
@@ -986,7 +986,7 @@ services:
       - KNOWLEDGE_DB_PASSWORD=${KNOWLEDGE_DB_PASSWORD:?KNOWLEDGE_DB_PASSWORD must be set}
       - KNOWLEDGE_DB_NAME=knowledge_portal
       - KNOWLEDGE_DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
       - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
@@ -1026,7 +1026,7 @@ services:
       - AIENG_DB_PASSWORD=${AIENG_DB_PASSWORD:?AIENG_DB_PASSWORD must be set}
       - AIENG_DB_NAME=ai_intelligence
       - AIENG_DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
       - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
@@ -1066,7 +1066,7 @@ services:
       - LMS_DB_PASSWORD=${LMS_DB_PASSWORD:?LMS_DB_PASSWORD must be set}
       - LMS_DB_NAME=learning_crm
       - LMS_DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
       - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
@@ -1106,7 +1106,7 @@ services:
       - GIS_DB_PASSWORD=${GIS_DB_PASSWORD:?GIS_DB_PASSWORD must be set}
       - GIS_DB_NAME=gis_intelligence
       - GIS_DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
       - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}
@@ -1146,7 +1146,7 @@ services:
       - BPM_DB_PASSWORD=${BPM_DB_PASSWORD:?BPM_DB_PASSWORD must be set}
       - BPM_DB_NAME=bpm_hub
       - BPM_DB_SSLMODE=disable
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATGATE_EVENT_CHANNEL=${STATGATE_EVENT_CHANNEL:-statgate:events}
       - STATGATE_EVENT_DLQ_CHANNEL=${STATGATE_EVENT_DLQ_CHANNEL:-statgate:events:dlq}

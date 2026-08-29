@@ -18,7 +18,7 @@ type Store interface {
 
 	CreateDataSource(ctx context.Context, src *models.DataSource) error
 	GetDataSourceByID(ctx context.Context, id string) (*models.DataSource, error)
-	ListDataSources(ctx context.Context, tenantID, sourceType string) ([]*models.DataSource, error)
+	ListDataSources(ctx context.Context, tenantID, sourceType, workspaceID string) ([]*models.DataSource, error)
 	UpdateDataSource(ctx context.Context, src *models.DataSource) error
 
 	// ─── Schema Registry (P37) ────────────────────────────────────────────────
@@ -59,7 +59,7 @@ type Store interface {
 
 	CreateStreamingJob(ctx context.Context, job *models.StreamingJob) error
 	GetStreamingJobByID(ctx context.Context, id string) (*models.StreamingJob, error)
-	ListStreamingJobs(ctx context.Context, tenantID, status string) ([]*models.StreamingJob, error)
+	ListStreamingJobs(ctx context.Context, tenantID, status, workspaceID string) ([]*models.StreamingJob, error)
 	UpdateStreamingJob(ctx context.Context, job *models.StreamingJob) error
 
 	// ─── Feature Store (P37) ──────────────────────────────────────────────────

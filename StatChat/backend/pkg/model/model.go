@@ -218,6 +218,40 @@ type CommunityReply struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
+type CollaborationDocument struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId,omitempty"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	CreatedBy string    `json:"createdBy"`
+	Author    string    `json:"author"`
+	UpdatedBy string    `json:"updatedBy"`
+	Version   int       `json:"version"`
+	Role      string    `json:"role"`
+	CanEdit   bool      `json:"canEdit"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type CollaborationDocumentMember struct {
+	DocumentID string    `json:"documentId"`
+	UserID     string    `json:"userId"`
+	Name       string    `json:"name"`
+	Role       string    `json:"role"`
+	Org        string    `json:"org,omitempty"`
+	AddedAt    time.Time `json:"addedAt"`
+}
+
+type CollaborationDocumentRevision struct {
+	ID         int64     `json:"id"`
+	DocumentID string    `json:"documentId"`
+	Version    int       `json:"version"`
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	EditedBy   string    `json:"editedBy"`
+	EditedAt   time.Time `json:"editedAt"`
+}
+
 type Opportunity struct {
 	ID          string `json:"id"`
 	Badge       string `json:"badge"`

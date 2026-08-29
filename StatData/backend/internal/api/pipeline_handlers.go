@@ -113,8 +113,9 @@ func (h *PipelineHandler) ListPipelineRuns(c *gin.Context) {
 // ListStreamingJobs handles GET /api/data/streaming
 func (h *PipelineHandler) ListStreamingJobs(c *gin.Context) {
 	tenantID := getTenantID(c)
+	workspaceID := getWorkspaceID(c)
 	status := c.Query("status")
-	jobs, err := h.store.ListStreamingJobs(c.Request.Context(), tenantID, status)
+	jobs, err := h.store.ListStreamingJobs(c.Request.Context(), tenantID, status, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -130,6 +131,7 @@ func (h *PipelineHandler) CreateStreamingJob(c *gin.Context) {
 		return
 	}
 	job.TenantID = getTenantID(c)
+	job.WorkspaceID = getWorkspaceID(c)
 	job.Status = "RUNNING"
 
 	if err := h.store.CreateStreamingJob(c.Request.Context(), &job); err != nil {

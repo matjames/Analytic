@@ -428,12 +428,15 @@ func (m *MemStore) GetDataSourceByID(ctx context.Context, id string) (*models.Da
 	return src, nil
 }
 
-func (m *MemStore) ListDataSources(ctx context.Context, tenantID, sourceType string) ([]*models.DataSource, error) {
+func (m *MemStore) ListDataSources(ctx context.Context, tenantID, sourceType, workspaceID string) ([]*models.DataSource, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]*models.DataSource, 0)
 	for _, s := range m.dataSources {
 		if tenantID != "" && s.TenantID != tenantID && s.TenantID != "default" {
+			continue
+		}
+		if workspaceID != "" && s.WorkspaceID != workspaceID && s.WorkspaceID != "" {
 			continue
 		}
 		if sourceType != "" && s.SourceType != sourceType {
@@ -869,12 +872,15 @@ func (m *MemStore) GetStreamingJobByID(ctx context.Context, id string) (*models.
 	return job, nil
 }
 
-func (m *MemStore) ListStreamingJobs(ctx context.Context, tenantID, status string) ([]*models.StreamingJob, error) {
+func (m *MemStore) ListStreamingJobs(ctx context.Context, tenantID, status, workspaceID string) ([]*models.StreamingJob, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]*models.StreamingJob, 0)
 	for _, j := range m.streamingJobs {
 		if tenantID != "" && j.TenantID != tenantID && j.TenantID != "default" {
+			continue
+		}
+		if workspaceID != "" && j.WorkspaceID != workspaceID && j.WorkspaceID != "" {
 			continue
 		}
 		if status != "" && j.Status != status {

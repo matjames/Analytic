@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$baseUrl = if ($env:STATCHAT_CERT_BASE_URL) { $env:STATCHAT_CERT_BASE_URL.TrimEnd('/') } else { 'http://localhost:4000' }
 $secretLine = Get-Content (Join-Path $PSScriptRoot '..\..\.env') | Where-Object { $_ -match '^STATGATE_REGISTRY_JWT_SECRET=' } | Select-Object -First 1
 $secret = ($secretLine -split '=', 2)[1].Trim()
 function B64([byte[]]$bytes) { [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
@@ -11,11 +12,17 @@ function Token($id, $name, $tenant) {
 }
 function Request($method, $path, $token, $body = $null) {
   try {
-    $args = @{ Uri="http://localhost:4000$path"; Method=$method; Headers=@{Authorization="Bearer $token"}; UseBasicParsing=$true }
+    $args = @{ Uri="$baseUrl$path"; Method=$method; Headers=@{Authorization="Bearer $token"}; UseBasicParsing=$true }
     if ($null -ne $body) { $args.ContentType='application/json'; $args.Body=$body | ConvertTo-Json -Compress }
     $response = Invoke-WebRequest @args
     [pscustomobject]@{Status=[int]$response.StatusCode; Body=$response.Content}
   } catch { [pscustomobject]@{Status=[int]$_.Exception.Response.StatusCode; Body=''} }
+}
+
+function JsonArray($body) {
+  $value = $body | ConvertFrom-Json
+  if ($value.PSObject.Properties.Name -contains 'value') { return @($value.value) }
+  return @($value)
 }
 
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -30,33 +37,33 @@ $null = Request GET '/users/me' $foreignToken
 
 $postResponse = Request POST '/knowledge/posts' $authorToken @{title='Tenant knowledge protocol'; author='Spoofed Author'; createdBy='spoof'; category='Research'; content='Use a review owner, evidence links, and publication date on every protocol page.'}
 $post = $postResponse.Body | ConvertFrom-Json
-$tenantPosts = @((Request GET '/knowledge/posts' $peerToken).Body | ConvertFrom-Json)
-$foreignPosts = @((Request GET '/knowledge/posts' $foreignToken).Body | ConvertFrom-Json)
+$tenantPosts = JsonArray (Request GET '/knowledge/posts' $peerToken).Body
+$foreignPosts = JsonArray (Request GET '/knowledge/posts' $foreignToken).Body
 
-$articles = @((Request GET '/knowledge/articles' $authorToken).Body | ConvertFrom-Json)
-$articleWithContent = $articles | Where-Object { $_.content -and $_.content.Length -gt 0 } | Select-Object -First 1
+$articles = JsonArray (Request GET '/knowledge/articles' $authorToken).Body
+$articleWithContent = $articles | Where-Object { $_.content -and $_.excerpt -and $_.content.Length -gt $_.excerpt.Length } | Select-Object -First 1
 
-$expertsBefore = @((Request GET '/knowledge/experts' $authorToken).Body | ConvertFrom-Json)
+$expertsBefore = JsonArray (Request GET '/knowledge/experts' $authorToken).Body
 $expert = $expertsBefore | Select-Object -First 1
 $followOne = Request POST "/knowledge/experts/$($expert.id)/follow" $authorToken
 $followTwo = Request POST "/knowledge/experts/$($expert.id)/follow" $authorToken
 $followOneBody = $followOne.Body | ConvertFrom-Json
 $followTwoBody = $followTwo.Body | ConvertFrom-Json
-$expertsAfter = @((Request GET '/knowledge/experts' $authorToken).Body | ConvertFrom-Json)
+$expertsAfter = JsonArray (Request GET '/knowledge/experts' $authorToken).Body
 $followedExpert = $expertsAfter | Where-Object { $_.id -eq $expert.id } | Select-Object -First 1
 
-$ideasBefore = @((Request GET '/knowledge/ideas' $authorToken).Body | ConvertFrom-Json)
+$ideasBefore = JsonArray (Request GET '/knowledge/ideas' $authorToken).Body
 $idea = $ideasBefore | Select-Object -First 1
 $voteOne = Request POST "/knowledge/ideas/$($idea.id)/upvote" $authorToken
 $voteTwo = Request POST "/knowledge/ideas/$($idea.id)/upvote" $authorToken
 $voteOneBody = $voteOne.Body | ConvertFrom-Json
 $voteTwoBody = $voteTwo.Body | ConvertFrom-Json
-$ideasAfter = @((Request GET '/knowledge/ideas' $authorToken).Body | ConvertFrom-Json)
+$ideasAfter = JsonArray (Request GET '/knowledge/ideas' $authorToken).Body
 $votedIdea = $ideasAfter | Where-Object { $_.id -eq $idea.id } | Select-Object -First 1
 
-$peerExperts = @((Request GET '/knowledge/experts' $peerToken).Body | ConvertFrom-Json)
+$peerExperts = JsonArray (Request GET '/knowledge/experts' $peerToken).Body
 $peerExpertState = $peerExperts | Where-Object { $_.id -eq $expert.id } | Select-Object -First 1
-$peerIdeas = @((Request GET '/knowledge/ideas' $peerToken).Body | ConvertFrom-Json)
+$peerIdeas = JsonArray (Request GET '/knowledge/ideas' $peerToken).Body
 $peerIdeaState = $peerIdeas | Where-Object { $_.id -eq $idea.id } | Select-Object -First 1
 
 $missingExpert = Request POST '/knowledge/experts/not-real/follow' $authorToken

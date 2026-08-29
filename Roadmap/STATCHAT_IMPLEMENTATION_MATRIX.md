@@ -59,7 +59,7 @@ Status is evidence-based: a feature is complete only after UI, API, authorizatio
 | Communities and forums | Operational: tenant-scoped public/private communities, creator ownership, owner-managed invitations, public join/leave, member-only topics/replies, authenticated authorship, private visibility, owner/member moderation boundaries, ownership transfer, frontend workspace, typed client coverage, and live certification are implemented |
 | Collaborative documents | Not started |
 | Whiteboards | Not started |
-| Knowledge wiki | Partial knowledge feed only |
+| Knowledge wiki | Operational: tenant-scoped knowledge posts, authenticated authorship, expanded article content, per-user expert follows and idea upvotes, idempotent interaction counts, frontend workflow, and live certification are implemented |
 | Translation | Not started |
 
 ## Batch F — Platform integration

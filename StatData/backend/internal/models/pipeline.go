@@ -108,6 +108,7 @@ type StreamingJob struct {
 	LagRecords      int64                  `json:"lag_records"`
 	Config          map[string]interface{} `json:"config,omitempty"`
 	TenantID        string                 `json:"tenant_id"`
+	WorkspaceID     string                 `json:"workspace_id,omitempty"`
 	LastCheckpoint  time.Time              `json:"last_checkpoint"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
