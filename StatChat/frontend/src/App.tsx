@@ -31,13 +31,16 @@ export type SidebarView =
   | 'communities'
   | 'settings';
 
-export type SubHeaderView = 'home' | 'communities' | 'connect' | 'opportunities' | 'network' | 'jobs';
+export type SubHeaderView = 'home' | 'communities' | 'documents' | 'whiteboards' | 'translation' | 'connect' | 'opportunities' | 'network' | 'jobs';
 
 export type CalendarSubView = 'overview' | 'schedule' | 'rooms' | 'recordings';
 
 const subHeaderTabs: Array<{ id: SubHeaderView; label: string }> = [
   { id: 'home', label: 'Home' },
   { id: 'communities', label: 'Communities' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'whiteboards', label: 'Whiteboards' },
+  { id: 'translation', label: 'Translation' },
   { id: 'connect', label: 'Connect' },
   { id: 'opportunities', label: 'Opportunities' },
   { id: 'network', label: 'My Network' },

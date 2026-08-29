@@ -67,6 +67,12 @@ func Init(dsn string) error {
 	if err = ensureCommunitiesSchema(ctx); err != nil {
 		return err
 	}
+	if err = ensureDocumentsSchema(ctx); err != nil {
+		return err
+	}
+	if err = ensureWhiteboardsSchema(ctx); err != nil {
+		return err
+	}
 	if err = ensureConferencingSchema(ctx); err != nil {
 		return err
 	}

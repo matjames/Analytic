@@ -21,8 +21,9 @@ func NewFeatureStoreHandler(s store.Store) *FeatureStoreHandler {
 // ListFeatureViews handles GET /api/data/features/views
 func (h *FeatureStoreHandler) ListFeatureViews(c *gin.Context) {
 	tenantID := getTenantID(c)
+	workspaceID := getWorkspaceID(c)
 	entity := c.Query("entity_name")
-	views, err := h.store.ListFeatureViews(c.Request.Context(), tenantID, entity)
+	views, err := h.store.ListFeatureViews(c.Request.Context(), tenantID, entity, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -38,6 +39,7 @@ func (h *FeatureStoreHandler) CreateFeatureView(c *gin.Context) {
 		return
 	}
 	fv.TenantID = getTenantID(c)
+	fv.WorkspaceID = getWorkspaceID(c)
 	fv.CreatedBy = getUserID(c)
 
 	if err := h.store.CreateFeatureView(c.Request.Context(), &fv); err != nil {

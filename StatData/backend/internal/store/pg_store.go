@@ -79,6 +79,83 @@ func (p *PGStore) ensureSchema() {
 		`ALTER TABLE statdata.pipelines ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.data_sources ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.streaming_jobs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.feature_views ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		// ── Remaining domains (previously missing entirely) ──
+		`CREATE TABLE IF NOT EXISTS statdata.data_sources (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, source_type VARCHAR(32),
+			connection_uri TEXT, auth_type VARCHAR(32), credentials JSONB, status VARCHAR(32),
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', workspace_id VARCHAR(128),
+			last_tested_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.schema_registry (
+			id VARCHAR(64) PRIMARY KEY, subject VARCHAR(128) NOT NULL, version INT NOT NULL,
+			schema_type VARCHAR(32), schema_content TEXT, compatibility VARCHAR(32),
+			description TEXT, fields JSONB, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.data_contracts (
+			id VARCHAR(64) PRIMARY KEY, dataset_id VARCHAR(64), title VARCHAR(255) NOT NULL,
+			producer_team VARCHAR(128), consumer_team VARCHAR(128), status VARCHAR(32),
+			max_latency_mins INT, min_quality_rate DOUBLE PRECISION, expected_volume BIGINT,
+			sla_config JSONB, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			valid_from TIMESTAMPTZ, valid_until TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.data_quality_rules (
+			id VARCHAR(64) PRIMARY KEY, dataset_id VARCHAR(64), rule_name VARCHAR(128) NOT NULL,
+			rule_type VARCHAR(32), target_field VARCHAR(128), parameters JSONB,
+			severity VARCHAR(16), is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.data_quality_reports (
+			id VARCHAR(64) PRIMARY KEY, dataset_id VARCHAR(64), pipeline_run_id VARCHAR(64),
+			status VARCHAR(32), quality_score DOUBLE PRECISION, total_rules INT,
+			passed_rules INT, failed_rules INT, rule_results JSONB,
+			evaluated_at TIMESTAMPTZ, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.lineage_nodes (
+			id VARCHAR(64) PRIMARY KEY, urn VARCHAR(255), type VARCHAR(32), name VARCHAR(255),
+			domain VARCHAR(64), tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', metadata JSONB)`,
+		`CREATE TABLE IF NOT EXISTS statdata.lineage_edges (
+			id VARCHAR(64) PRIMARY KEY, source_node_id VARCHAR(64), target_node_id VARCHAR(64),
+			relation_type VARCHAR(32), pipeline_id VARCHAR(64), transformation TEXT,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default')`,
+		`CREATE TABLE IF NOT EXISTS statdata.pipeline_runs (
+			id VARCHAR(64) PRIMARY KEY, pipeline_id VARCHAR(64), pipeline_name VARCHAR(255),
+			status VARCHAR(32), trigger_type VARCHAR(32), started_at TIMESTAMPTZ,
+			finished_at TIMESTAMPTZ, duration_ms BIGINT, records_read BIGINT,
+			records_written BIGINT, records_rejected BIGINT, stage_runs JSONB,
+			error_message TEXT, metrics JSONB, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			triggered_by VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.streaming_jobs (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, source_topic VARCHAR(128),
+			target_sink VARCHAR(128), status VARCHAR(32), throughput_msg_sec DOUBLE PRECISION DEFAULT 0,
+			lag_records BIGINT DEFAULT 0, config JSONB,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', workspace_id VARCHAR(128),
+			last_checkpoint TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.feature_views (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, entity_name VARCHAR(128),
+			description TEXT, ttl_seconds BIGINT DEFAULT 0, features JSONB,
+			source_query TEXT, online_store BOOLEAN DEFAULT FALSE, offline_sink TEXT,
+			tags JSONB, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', workspace_id VARCHAR(128),
+			created_by VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.feature_records (
+			entity_key VARCHAR(128) NOT NULL, feature_view_id VARCHAR(64) NOT NULL,
+			"values" JSONB NOT NULL DEFAULT '{}'::jsonb, timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			PRIMARY KEY (entity_key, feature_view_id))`,
+		`CREATE TABLE IF NOT EXISTS statdata.notebook_sessions (
+			id VARCHAR(64) PRIMARY KEY, title VARCHAR(255), language VARCHAR(32),
+			kernel_state VARCHAR(32), dataset_refs JSONB, cells JSONB, variables JSONB,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', created_by VARCHAR(128),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.experiments (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT,
+			domain VARCHAR(64), tags JSONB, artifact_uri TEXT,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', created_by VARCHAR(128),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 	}
 	for _, stmt := range stmts {
 		if _, err := p.db.Exec(stmt); err != nil {
@@ -1217,13 +1294,13 @@ func (p *PGStore) CreateFeatureView(ctx context.Context, fv *models.FeatureView)
 		INSERT INTO statdata.feature_views (
 			id, name, entity_name, description, ttl_seconds,
 			features, source_query, online_store, offline_sink,
-			tags, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			tags, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		fv.ID, fv.Name, fv.EntityName, fv.Description, fv.TTLSeconds,
 		featuresJSON, fv.SourceQuery, fv.OnlineStore, fv.OfflineSink,
-		tagsJSON, fv.TenantID, fv.CreatedBy,
+		tagsJSON, fv.TenantID, fv.CreatedBy, fv.WorkspaceID,
 	)
 	return err
 }
@@ -1232,7 +1309,7 @@ func (p *PGStore) GetFeatureViewByID(ctx context.Context, id string) (*models.Fe
 	query := `
 		SELECT id, name, entity_name, description, ttl_seconds,
 		       features, COALESCE(source_query, ''), online_store, COALESCE(offline_sink, ''),
-		       tags, tenant_id, created_by, created_at, updated_at
+		       tags, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.feature_views WHERE id = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, id)
@@ -1241,7 +1318,7 @@ func (p *PGStore) GetFeatureViewByID(ctx context.Context, id string) (*models.Fe
 	err := row.Scan(
 		&fv.ID, &fv.Name, &fv.EntityName, &fv.Description, &fv.TTLSeconds,
 		&featJSON, &fv.SourceQuery, &fv.OnlineStore, &fv.OfflineSink,
-		&tagsJSON, &fv.TenantID, &fv.CreatedBy, &fv.CreatedAt, &fv.UpdatedAt,
+		&tagsJSON, &fv.TenantID, &fv.CreatedBy, &fv.WorkspaceID, &fv.CreatedAt, &fv.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1251,11 +1328,11 @@ func (p *PGStore) GetFeatureViewByID(ctx context.Context, id string) (*models.Fe
 	return &fv, nil
 }
 
-func (p *PGStore) ListFeatureViews(ctx context.Context, tenantID, entityName string) ([]*models.FeatureView, error) {
+func (p *PGStore) ListFeatureViews(ctx context.Context, tenantID, entityName, workspaceID string) ([]*models.FeatureView, error) {
 	query := `
 		SELECT id, name, entity_name, description, ttl_seconds,
 		       features, COALESCE(source_query, ''), online_store, COALESCE(offline_sink, ''),
-		       tags, tenant_id, created_by, created_at, updated_at
+		       tags, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.feature_views WHERE 1=1
 	`
 	args := make([]interface{}, 0)
@@ -1263,6 +1340,11 @@ func (p *PGStore) ListFeatureViews(ctx context.Context, tenantID, entityName str
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
+		argIdx++
+	}
+	if workspaceID != "" {
+		query += fmt.Sprintf(" AND (workspace_id = $%d OR workspace_id = '')", argIdx)
+		args = append(args, workspaceID)
 		argIdx++
 	}
 	if entityName != "" {
@@ -1285,7 +1367,7 @@ func (p *PGStore) ListFeatureViews(ctx context.Context, tenantID, entityName str
 		if err := rows.Scan(
 			&fv.ID, &fv.Name, &fv.EntityName, &fv.Description, &fv.TTLSeconds,
 			&featJSON, &fv.SourceQuery, &fv.OnlineStore, &fv.OfflineSink,
-			&tagsJSON, &fv.TenantID, &fv.CreatedBy, &fv.CreatedAt, &fv.UpdatedAt,
+			&tagsJSON, &fv.TenantID, &fv.CreatedBy, &fv.WorkspaceID, &fv.CreatedAt, &fv.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1305,10 +1387,10 @@ func (p *PGStore) SaveFeatureRecords(ctx context.Context, records []models.Featu
 
 	query := `
 		INSERT INTO statdata.feature_records (
-			entity_key, feature_view_id, values, timestamp, tenant_id
+			entity_key, feature_view_id, "values", timestamp, tenant_id
 		) VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (entity_key, feature_view_id) DO UPDATE SET
-			values = EXCLUDED.values,
+			"values" = EXCLUDED."values",
 			timestamp = EXCLUDED.timestamp
 	`
 	stmt, err := tx.PrepareContext(ctx, query)
@@ -1332,7 +1414,7 @@ func (p *PGStore) SaveFeatureRecords(ctx context.Context, records []models.Featu
 
 func (p *PGStore) GetOnlineFeatures(ctx context.Context, featureViewID, entityKey, tenantID string) (*models.FeatureVector, error) {
 	query := `
-		SELECT entity_key, values, timestamp
+		SELECT entity_key, "values", timestamp
 		FROM statdata.feature_records
 		WHERE feature_view_id = $1 AND entity_key = $2
 	`

@@ -65,7 +65,7 @@ type Store interface {
 	// ─── Feature Store (P37) ──────────────────────────────────────────────────
 	CreateFeatureView(ctx context.Context, fv *models.FeatureView) error
 	GetFeatureViewByID(ctx context.Context, id string) (*models.FeatureView, error)
-	ListFeatureViews(ctx context.Context, tenantID, entityName string) ([]*models.FeatureView, error)
+	ListFeatureViews(ctx context.Context, tenantID, entityName, workspaceID string) ([]*models.FeatureView, error)
 	SaveFeatureRecords(ctx context.Context, records []models.FeatureRecord) error
 	GetOnlineFeatures(ctx context.Context, featureViewID, entityKey, tenantID string) (*models.FeatureVector, error)
 

@@ -57,10 +57,10 @@ Status is evidence-based: a feature is complete only after UI, API, authorizatio
 | Photo/video/article posts | Not functional |
 | Wellness comments/shares/bookmarks persistence | Not functional |
 | Communities and forums | Operational: tenant-scoped public/private communities, creator ownership, owner-managed invitations, public join/leave, member-only topics/replies, authenticated authorship, private visibility, owner/member moderation boundaries, ownership transfer, frontend workspace, typed client coverage, and live certification are implemented |
-| Collaborative documents | Not started |
-| Whiteboards | Not started |
+| Collaborative documents | Operational: tenant-scoped shared documents, authenticated ownership, editor/viewer membership, optimistic version protection, revision history, owner-managed access, frontend editor workspace, and live certification are implemented |
+| Whiteboards | Operational: tenant-scoped canvas boards, authenticated ownership, editor/viewer membership, persisted stroke data, optimistic version protection, revision history, owner-managed access, frontend canvas workspace, and live certification are implemented |
 | Knowledge wiki | Operational: tenant-scoped knowledge posts, authenticated authorship, expanded article content, per-user expert follows and idea upvotes, idempotent interaction counts, frontend workflow, and live certification are implemented |
-| Translation | Not started |
+| Translation | Operational: authenticated language discovery, validated source/target translation, same-language identity handling, local fallback provider, frontend workspace, and live certification are implemented |
 
 ## Batch F — Platform integration
 

@@ -252,6 +252,40 @@ type CollaborationDocumentRevision struct {
 	EditedAt   time.Time `json:"editedAt"`
 }
 
+type CollaborationWhiteboard struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId,omitempty"`
+	Title     string    `json:"title"`
+	Data      string    `json:"data"`
+	CreatedBy string    `json:"createdBy"`
+	Author    string    `json:"author"`
+	UpdatedBy string    `json:"updatedBy"`
+	Version   int       `json:"version"`
+	Role      string    `json:"role"`
+	CanEdit   bool      `json:"canEdit"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type CollaborationWhiteboardMember struct {
+	WhiteboardID string    `json:"whiteboardId"`
+	UserID       string    `json:"userId"`
+	Name         string    `json:"name"`
+	Role         string    `json:"role"`
+	Org          string    `json:"org,omitempty"`
+	AddedAt      time.Time `json:"addedAt"`
+}
+
+type CollaborationWhiteboardRevision struct {
+	ID           int64     `json:"id"`
+	WhiteboardID string    `json:"whiteboardId"`
+	Version      int       `json:"version"`
+	Title        string    `json:"title"`
+	Data         string    `json:"data"`
+	EditedBy     string    `json:"editedBy"`
+	EditedAt     time.Time `json:"editedAt"`
+}
+
 type Opportunity struct {
 	ID          string `json:"id"`
 	Badge       string `json:"badge"`

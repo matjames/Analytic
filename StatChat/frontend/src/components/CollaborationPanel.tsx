@@ -24,6 +24,24 @@ import {
   fetchCommunityReplies,
   createCommunityReply,
   deleteCommunityReply,
+  fetchDocuments,
+  fetchDocument,
+  createDocument,
+  updateDocument,
+  deleteDocument,
+  fetchDocumentMembers,
+  addDocumentMember,
+  removeDocumentMember,
+  fetchDocumentRevisions,
+  fetchWhiteboards,
+  fetchWhiteboard,
+  createWhiteboard,
+  updateWhiteboard,
+  deleteWhiteboard,
+  fetchWhiteboardMembers,
+  addWhiteboardMember,
+  removeWhiteboardMember,
+  fetchWhiteboardRevisions,
   togglePostLike,
   sharePost,
   addPostComment,
@@ -40,9 +58,17 @@ import {
   type CommunityMember,
   type CommunityTopic,
   type CommunityReply,
+  type CollaborationDocument,
+  type CollaborationDocumentMember,
+  type CollaborationDocumentRevision,
+  type CollaborationWhiteboard,
+  type CollaborationWhiteboardMember,
+  type CollaborationWhiteboardRevision,
 } from '../api/client';
 import type { Poll } from '../types';
 import styles from './CollaborationPanel.module.css';
+import WhiteboardCanvas from './WhiteboardCanvas';
+import TranslationPanel from './TranslationPanel';
 
 interface Props {
   user: User | null;
@@ -88,6 +114,20 @@ const [postDraft, setPostDraft] = useState('');
   const [topicDraft, setTopicDraft] = useState({ title: '', body: '' });
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [inviteTargetId, setInviteTargetId] = useState('');
+  const [documents, setDocuments] = useState<CollaborationDocument[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState('');
+  const [documentDraft, setDocumentDraft] = useState({ title: '', content: '' });
+  const [documentMembers, setDocumentMembers] = useState<CollaborationDocumentMember[]>([]);
+  const [documentRevisions, setDocumentRevisions] = useState<CollaborationDocumentRevision[]>([]);
+  const [documentNotice, setDocumentNotice] = useState('');
+  const [documentInvite, setDocumentInvite] = useState({ userId: '', role: 'viewer' as 'editor' | 'viewer' });
+  const [whiteboards, setWhiteboards] = useState<CollaborationWhiteboard[]>([]);
+  const [selectedWhiteboardId, setSelectedWhiteboardId] = useState('');
+  const [whiteboardDraft, setWhiteboardDraft] = useState({ title: '', data: '[]' });
+  const [whiteboardMembers, setWhiteboardMembers] = useState<CollaborationWhiteboardMember[]>([]);
+  const [whiteboardRevisions, setWhiteboardRevisions] = useState<CollaborationWhiteboardRevision[]>([]);
+  const [whiteboardNotice, setWhiteboardNotice] = useState('');
+  const [whiteboardInvite, setWhiteboardInvite] = useState({ userId: '', role: 'viewer' as 'editor' | 'viewer' });
 
   const connectedIds = new Set(connections.map((c) => c.connectedToId));
 
@@ -106,10 +146,18 @@ const [postDraft, setPostDraft] = useState('');
       setCommunities(items);
       setSelectedCommunityId((current) => current || items[0]?.id || '');
     }).catch(() => {});
+    fetchDocuments().then((items) => {
+      setDocuments(items);
+      setSelectedDocumentId((current) => current || items[0]?.id || '');
+    }).catch(() => {});
+    fetchWhiteboards().then((items) => {
+      setWhiteboards(items);
+      setSelectedWhiteboardId((current) => current || items[0]?.id || '');
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if ((activeSubView === 'connect' || activeSubView === 'network' || activeSubView === 'communities') && allUsers.length === 0) {
+    if ((activeSubView === 'connect' || activeSubView === 'network' || activeSubView === 'communities' || activeSubView === 'documents' || activeSubView === 'whiteboards') && allUsers.length === 0) {
       fetchAllUsers()
         .then((users) => setAllUsers(users.filter((u) => u.id !== user?.id).slice(0, 24)))
         .catch(() => {});
@@ -150,6 +198,182 @@ const [postDraft, setPostDraft] = useState('');
   };
 
   const selectedCommunity = communities.find((community) => community.id === selectedCommunityId);
+  const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
+  const selectedWhiteboard = whiteboards.find((board) => board.id === selectedWhiteboardId);
+
+  useEffect(() => {
+    if (activeSubView === 'documents' && selectedDocumentId && selectedDocument && !documentDraft.title) {
+      loadDocument(selectedDocumentId).catch(() => setDocumentNotice('Document could not be loaded'));
+    }
+  }, [activeSubView, selectedDocumentId, selectedDocument, documentDraft.title]);
+
+  const loadDocument = async (documentId: string) => {
+    const [document, members, revisions] = await Promise.all([
+      fetchDocument(documentId),
+      fetchDocumentMembers(documentId),
+      fetchDocumentRevisions(documentId),
+    ]);
+    setSelectedDocumentId(documentId);
+    setDocumentDraft({ title: document.title, content: document.content });
+    setDocuments((previous) => previous.map((item) => item.id === document.id ? document : item));
+    setDocumentMembers(members);
+    setDocumentRevisions(revisions);
+    setDocumentNotice('');
+  };
+
+  const handleCreateDocument = async () => {
+    if (!documentDraft.title.trim()) return;
+    try {
+      const document = await createDocument({ title: documentDraft.title.trim(), content: documentDraft.content.trim() });
+      setDocuments((previous) => [document, ...previous]);
+      setSelectedDocumentId(document.id);
+      setDocumentMembers([{ documentId: document.id, userId: document.createdBy, name: document.author, role: 'owner', addedAt: document.createdAt }]);
+      setDocumentRevisions([]);
+      setDocumentNotice('Document created');
+    } catch {
+      setDocumentNotice('Document could not be created');
+    }
+  };
+
+  const handleSaveDocument = async () => {
+    if (!selectedDocument || !selectedDocument.canEdit || !documentDraft.title.trim()) return;
+    try {
+      const document = await updateDocument(selectedDocument.id, {
+        title: documentDraft.title.trim(),
+        content: documentDraft.content.trim(),
+        version: selectedDocument.version,
+      });
+      setDocuments((previous) => previous.map((item) => item.id === document.id ? document : item));
+      setDocumentRevisions(await fetchDocumentRevisions(document.id));
+      setDocumentNotice(`Saved as version ${document.version}`);
+    } catch (error) {
+      setDocumentNotice(error instanceof Error && error.message.includes('409') ? 'This document changed elsewhere. Reload it before saving.' : 'Document could not be saved');
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!selectedDocument || selectedDocument.role !== 'owner') return;
+    try {
+      await deleteDocument(selectedDocument.id);
+      const remaining = documents.filter((item) => item.id !== selectedDocument.id);
+      setDocuments(remaining);
+      setSelectedDocumentId(remaining[0]?.id || '');
+      setDocumentDraft({ title: '', content: '' });
+      setDocumentMembers([]);
+      setDocumentRevisions([]);
+      setDocumentNotice('Document deleted');
+    } catch {
+      setDocumentNotice('Document could not be deleted');
+    }
+  };
+
+  const handleInviteDocumentMember = async () => {
+    if (!selectedDocument || selectedDocument.role !== 'owner' || !documentInvite.userId) return;
+    try {
+      const member = await addDocumentMember(selectedDocument.id, documentInvite.userId, documentInvite.role);
+      setDocumentMembers((previous) => [member, ...previous.filter((item) => item.userId !== member.userId)]);
+      setDocumentInvite({ userId: '', role: 'viewer' });
+      setDocumentNotice('Member access updated');
+    } catch {
+      setDocumentNotice('Member access could not be updated');
+    }
+  };
+
+  const handleRemoveDocumentMember = async (userId: string) => {
+    if (!selectedDocument || selectedDocument.role !== 'owner') return;
+    try {
+      await removeDocumentMember(selectedDocument.id, userId);
+      setDocumentMembers((previous) => previous.filter((item) => item.userId !== userId));
+      setDocumentNotice('Member removed');
+    } catch {
+      setDocumentNotice('Member could not be removed');
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubView === 'whiteboards' && selectedWhiteboardId && selectedWhiteboard && !whiteboardDraft.title) {
+      loadWhiteboard(selectedWhiteboardId).catch(() => setWhiteboardNotice('Whiteboard could not be loaded'));
+    }
+  }, [activeSubView, selectedWhiteboardId, selectedWhiteboard, whiteboardDraft.title]);
+
+  const loadWhiteboard = async (whiteboardId: string) => {
+    const [board, members, revisions] = await Promise.all([
+      fetchWhiteboard(whiteboardId),
+      fetchWhiteboardMembers(whiteboardId),
+      fetchWhiteboardRevisions(whiteboardId),
+    ]);
+    setSelectedWhiteboardId(whiteboardId);
+    setWhiteboardDraft({ title: board.title, data: board.data });
+    setWhiteboards((previous) => previous.map((item) => item.id === board.id ? board : item));
+    setWhiteboardMembers(members);
+    setWhiteboardRevisions(revisions);
+    setWhiteboardNotice('');
+  };
+
+  const handleCreateWhiteboard = async () => {
+    if (!whiteboardDraft.title.trim()) return;
+    try {
+      const board = await createWhiteboard({ title: whiteboardDraft.title.trim(), data: whiteboardDraft.data || '[]' });
+      setWhiteboards((previous) => [board, ...previous]);
+      setSelectedWhiteboardId(board.id);
+      setWhiteboardMembers([{ whiteboardId: board.id, userId: board.createdBy, name: board.author, role: 'owner', addedAt: board.createdAt }]);
+      setWhiteboardRevisions([]);
+      setWhiteboardNotice('Whiteboard created');
+    } catch {
+      setWhiteboardNotice('Whiteboard could not be created');
+    }
+  };
+
+  const handleSaveWhiteboard = async () => {
+    if (!selectedWhiteboard || !selectedWhiteboard.canEdit || !whiteboardDraft.title.trim()) return;
+    try {
+      const board = await updateWhiteboard(selectedWhiteboard.id, { title: whiteboardDraft.title.trim(), data: whiteboardDraft.data, version: selectedWhiteboard.version });
+      setWhiteboards((previous) => previous.map((item) => item.id === board.id ? board : item));
+      setWhiteboardRevisions(await fetchWhiteboardRevisions(board.id));
+      setWhiteboardNotice(`Saved as version ${board.version}`);
+    } catch (error) {
+      setWhiteboardNotice(error instanceof Error && error.message.includes('409') ? 'This whiteboard changed elsewhere. Reload it before saving.' : 'Whiteboard could not be saved');
+    }
+  };
+
+  const handleDeleteWhiteboard = async () => {
+    if (!selectedWhiteboard || selectedWhiteboard.role !== 'owner') return;
+    try {
+      await deleteWhiteboard(selectedWhiteboard.id);
+      const remaining = whiteboards.filter((item) => item.id !== selectedWhiteboard.id);
+      setWhiteboards(remaining);
+      setSelectedWhiteboardId(remaining[0]?.id || '');
+      setWhiteboardDraft({ title: '', data: '[]' });
+      setWhiteboardMembers([]);
+      setWhiteboardRevisions([]);
+      setWhiteboardNotice('Whiteboard deleted');
+    } catch {
+      setWhiteboardNotice('Whiteboard could not be deleted');
+    }
+  };
+
+  const handleInviteWhiteboardMember = async () => {
+    if (!selectedWhiteboard || selectedWhiteboard.role !== 'owner' || !whiteboardInvite.userId) return;
+    try {
+      const member = await addWhiteboardMember(selectedWhiteboard.id, whiteboardInvite.userId, whiteboardInvite.role);
+      setWhiteboardMembers((previous) => [member, ...previous.filter((item) => item.userId !== member.userId)]);
+      setWhiteboardInvite({ userId: '', role: 'viewer' });
+      setWhiteboardNotice('Member access updated');
+    } catch {
+      setWhiteboardNotice('Member access could not be updated');
+    }
+  };
+
+  const handleRemoveWhiteboardMember = async (userId: string) => {
+    if (!selectedWhiteboard || selectedWhiteboard.role !== 'owner') return;
+    try {
+      await removeWhiteboardMember(selectedWhiteboard.id, userId);
+      setWhiteboardMembers((previous) => previous.filter((item) => item.userId !== userId));
+      setWhiteboardNotice('Member removed');
+    } catch {
+      setWhiteboardNotice('Member could not be removed');
+    }
+  };
 
   const refreshCommunityTopics = async (communityId: string) => {
     const topics = await fetchCommunityTopics(communityId);
@@ -756,6 +980,165 @@ const [postDraft, setPostDraft] = useState('');
     );
   };
 
+  const renderDocuments = () => {
+    const memberIds = new Set(documentMembers.map((member) => member.userId));
+    const inviteCandidates = allUsers.filter((candidate) => !memberIds.has(candidate.id));
+    return (
+      <div>
+        <h2 className={styles.sectionHeader}>Collaborative documents</h2>
+        <p className={styles.sectionSubheader}>Shared working pages with tenant-scoped access, editor roles, and conflict-safe version history</p>
+        <div className={styles.communityLayout}>
+          <div className={styles.communityList}>
+            <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+              <strong>Create document</strong>
+              <input value={!selectedDocument ? documentDraft.title : ''} onChange={(event) => { setSelectedDocumentId(''); setDocumentDraft((previous) => ({ ...previous, title: event.target.value })); }} placeholder="Document title" className={styles.communityInput} style={{ borderColor }} />
+              <textarea value={!selectedDocument ? documentDraft.content : ''} onChange={(event) => { setSelectedDocumentId(''); setDocumentDraft((previous) => ({ ...previous, content: event.target.value })); }} placeholder="Start with a brief or working note" className={styles.communityTextArea} style={{ borderColor }} />
+              <button type="button" className={styles.connectButton} onClick={handleCreateDocument}>Create</button>
+            </div>
+            {documents.map((document) => (
+              <button key={document.id} type="button" className={`${styles.communityItem} ${selectedDocumentId === document.id ? styles.communityItemActive : ''}`} onClick={() => loadDocument(document.id).catch(() => setDocumentNotice('Document could not be loaded'))} style={{ borderColor }}>
+                <span className={styles.communityName}>{document.title}</span>
+                <span className={styles.communityMeta}>{document.role} Â· v{document.version} Â· {new Date(document.updatedAt).toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+          <div className={styles.communityDetail}>
+            {selectedDocument ? (
+              <>
+                <div className={`${styles.postCard} ${styles.documentEditor}`} style={{ background: bg, borderColor }}>
+                  <div className={styles.communityHeaderRow}>
+                    <div>
+                      <h3 className={styles.sectionHeader} style={{ marginBottom: 6 }}>{selectedDocument.title}</h3>
+                      <p className={styles.sectionSubheader} style={{ marginBottom: 0 }}>Version {selectedDocument.version} Â· {selectedDocument.role}</p>
+                    </div>
+                    {selectedDocument.role === 'owner' && <button type="button" className={styles.linkButton} onClick={handleDeleteDocument}>Delete</button>}
+                  </div>
+                  <input value={documentDraft.title} disabled={!selectedDocument.canEdit} onChange={(event) => setDocumentDraft((previous) => ({ ...previous, title: event.target.value }))} className={styles.communityInput} style={{ borderColor }} />
+                  <textarea value={documentDraft.content} disabled={!selectedDocument.canEdit} onChange={(event) => setDocumentDraft((previous) => ({ ...previous, content: event.target.value }))} className={styles.documentContent} style={{ borderColor }} />
+                  {selectedDocument.canEdit && <button type="button" className={styles.connectButton} onClick={handleSaveDocument}>Save version {selectedDocument.version + 1}</button>}
+                  {documentNotice && <span className={styles.documentNotice}>{documentNotice}</span>}
+                </div>
+                <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                  <div className={styles.communityHeaderRow}>
+                    <strong>Access</strong>
+                    {selectedDocument.role === 'owner' && (
+                      <div className={styles.communityInviteRow}>
+                        <select value={documentInvite.userId} onChange={(event) => setDocumentInvite((previous) => ({ ...previous, userId: event.target.value }))} className={styles.communityInput} style={{ borderColor, marginTop: 0 }}>
+                          <option value="">Select user</option>
+                          {inviteCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                        </select>
+                        <select value={documentInvite.role} onChange={(event) => setDocumentInvite((previous) => ({ ...previous, role: event.target.value as 'editor' | 'viewer' }))} className={styles.communityInput} style={{ borderColor, marginTop: 0 }}>
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                        </select>
+                        <button type="button" className={styles.connectButton} onClick={handleInviteDocumentMember} disabled={!documentInvite.userId}>Share</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.communityMembers}>
+                    {documentMembers.map((member) => (
+                      <div key={member.userId} className={styles.communityMemberRow}>
+                        <div><div className={styles.postAuthorName}>{member.name}</div><div className={styles.postAuthorMeta}>{member.role} Â· {member.org || 'Tenant'}</div></div>
+                        {selectedDocument.role === 'owner' && member.role !== 'owner' && <button type="button" className={styles.linkButton} onClick={() => handleRemoveDocumentMember(member.userId)}>Remove</button>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <details className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                  <summary className={styles.documentSummary}>Version history ({documentRevisions.length})</summary>
+                  <div className={styles.documentRevisionList}>
+                    {documentRevisions.map((revision) => <div key={revision.id} className={styles.documentRevision}><strong>Version {revision.version}</strong><span>{new Date(revision.editedAt).toLocaleString()}</span></div>)}
+                  </div>
+                </details>
+              </>
+            ) : (
+              <div className={styles.postCard} style={{ background: bg, borderColor, padding: 24 }}>Create or select a document to begin.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderWhiteboards = () => {
+    const memberIds = new Set(whiteboardMembers.map((member) => member.userId));
+    const inviteCandidates = allUsers.filter((candidate) => !memberIds.has(candidate.id));
+    return (
+      <div>
+        <h2 className={styles.sectionHeader}>Whiteboards</h2>
+        <p className={styles.sectionSubheader}>Sketch ideas together with tenant-scoped sharing, editor/viewer roles, and recoverable versions</p>
+        <div className={styles.communityLayout}>
+          <div className={styles.communityList}>
+            <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+              <strong>Create whiteboard</strong>
+              <input value={!selectedWhiteboard ? whiteboardDraft.title : ''} onChange={(event) => { setSelectedWhiteboardId(''); setWhiteboardDraft({ title: event.target.value, data: '[]' }); }} placeholder="Whiteboard title" className={styles.communityInput} style={{ borderColor }} />
+              <button type="button" className={styles.connectButton} onClick={handleCreateWhiteboard}>Create</button>
+            </div>
+            {whiteboards.map((board) => (
+              <button key={board.id} type="button" className={`${styles.communityItem} ${selectedWhiteboardId === board.id ? styles.communityItemActive : ''}`} onClick={() => loadWhiteboard(board.id).catch(() => setWhiteboardNotice('Whiteboard could not be loaded'))} style={{ borderColor }}>
+                <span className={styles.communityName}>{board.title}</span>
+                <span className={styles.communityMeta}>{board.role} Â· v{board.version} Â· {new Date(board.updatedAt).toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+          <div className={styles.communityDetail}>
+            {selectedWhiteboard ? (
+              <>
+                <div className={`${styles.postCard} ${styles.documentEditor}`} style={{ background: bg, borderColor }}>
+                  <div className={styles.communityHeaderRow}>
+                    <div>
+                      <h3 className={styles.sectionHeader} style={{ marginBottom: 6 }}>{selectedWhiteboard.title}</h3>
+                      <p className={styles.sectionSubheader} style={{ marginBottom: 0 }}>Version {selectedWhiteboard.version} Â· {selectedWhiteboard.role}</p>
+                    </div>
+                    {selectedWhiteboard.role === 'owner' && <button type="button" className={styles.linkButton} onClick={handleDeleteWhiteboard}>Delete</button>}
+                  </div>
+                  <input value={whiteboardDraft.title} disabled={!selectedWhiteboard.canEdit} onChange={(event) => setWhiteboardDraft((previous) => ({ ...previous, title: event.target.value }))} className={styles.communityInput} style={{ borderColor }} />
+                  <WhiteboardCanvas data={whiteboardDraft.data} editable={selectedWhiteboard.canEdit} onChange={(data) => setWhiteboardDraft((previous) => ({ ...previous, data }))} />
+                  {selectedWhiteboard.canEdit && <button type="button" className={styles.connectButton} onClick={handleSaveWhiteboard}>Save version {selectedWhiteboard.version + 1}</button>}
+                  {whiteboardNotice && <span className={styles.documentNotice}>{whiteboardNotice}</span>}
+                </div>
+                <div className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                  <div className={styles.communityHeaderRow}>
+                    <strong>Access</strong>
+                    {selectedWhiteboard.role === 'owner' && (
+                      <div className={styles.communityInviteRow}>
+                        <select value={whiteboardInvite.userId} onChange={(event) => setWhiteboardInvite((previous) => ({ ...previous, userId: event.target.value }))} className={styles.communityInput} style={{ borderColor, marginTop: 0 }}>
+                          <option value="">Select user</option>
+                          {inviteCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                        </select>
+                        <select value={whiteboardInvite.role} onChange={(event) => setWhiteboardInvite((previous) => ({ ...previous, role: event.target.value as 'editor' | 'viewer' }))} className={styles.communityInput} style={{ borderColor, marginTop: 0 }}>
+                          <option value="viewer">Viewer</option>
+                          <option value="editor">Editor</option>
+                        </select>
+                        <button type="button" className={styles.connectButton} onClick={handleInviteWhiteboardMember} disabled={!whiteboardInvite.userId}>Share</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.communityMembers}>
+                    {whiteboardMembers.map((member) => (
+                      <div key={member.userId} className={styles.communityMemberRow}>
+                        <div><div className={styles.postAuthorName}>{member.name}</div><div className={styles.postAuthorMeta}>{member.role} Â· {member.org || 'Tenant'}</div></div>
+                        {selectedWhiteboard.role === 'owner' && member.role !== 'owner' && <button type="button" className={styles.linkButton} onClick={() => handleRemoveWhiteboardMember(member.userId)}>Remove</button>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <details className={styles.postCard} style={{ background: bg, borderColor, padding: 16 }}>
+                  <summary className={styles.documentSummary}>Version history ({whiteboardRevisions.length})</summary>
+                  <div className={styles.documentRevisionList}>
+                    {whiteboardRevisions.map((revision) => <div key={revision.id} className={styles.documentRevision}><strong>Version {revision.version}</strong><span>{new Date(revision.editedAt).toLocaleString()}</span></div>)}
+                  </div>
+                </details>
+              </>
+            ) : (
+              <div className={styles.postCard} style={{ background: bg, borderColor, padding: 24 }}>Create or select a whiteboard to begin.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderOpportunities = () => (
     <div>
       <h2 className={styles.sectionHeader}>Opportunities</h2>
@@ -805,6 +1188,9 @@ const [postDraft, setPostDraft] = useState('');
     switch (activeSubView) {
       case 'home': return renderHome();
       case 'communities': return renderCommunities();
+      case 'documents': return renderDocuments();
+      case 'whiteboards': return renderWhiteboards();
+      case 'translation': return <TranslationPanel theme={theme} />;
       case 'connect': return renderConnect();
       case 'network': return renderNetwork();
       case 'opportunities': return renderOpportunities();

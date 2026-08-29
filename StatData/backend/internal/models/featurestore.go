@@ -15,6 +15,7 @@ type FeatureView struct {
 	OfflineSink string                 `json:"offline_sink,omitempty"`
 	Tags        []string               `json:"tags,omitempty"`
 	TenantID    string                 `json:"tenant_id"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
 	CreatedBy   string                 `json:"created_by"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`

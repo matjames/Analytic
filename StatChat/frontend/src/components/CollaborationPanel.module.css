@@ -420,6 +420,56 @@
   font: inherit;
 }
 
+.documentEditor {
+  padding: 18px;
+}
+
+.documentContent {
+  width: 100%;
+  min-height: 360px;
+  box-sizing: border-box;
+  margin: 10px 0 12px;
+  padding: 14px;
+  border: 1px solid rgba(107, 162, 195, 0.24);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.documentNotice {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.documentSummary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.documentRevisionList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.documentRevision {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(107, 162, 195, 0.12);
+  font-size: 12px;
+}
+
+.documentRevision span {
+  opacity: 0.62;
+}
+
 .communityTextArea {
   min-height: 76px;
   resize: vertical;

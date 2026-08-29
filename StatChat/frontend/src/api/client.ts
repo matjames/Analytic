@@ -535,6 +535,230 @@ export async function deleteCommunityReply(communityId: string, topicId: string,
   if (!response.ok) throw new Error(`Failed to delete community reply: ${response.status}`);
 }
 
+export interface CollaborationDocument {
+  id: string;
+  tenantId?: string;
+  title: string;
+  content: string;
+  createdBy: string;
+  author: string;
+  updatedBy: string;
+  version: number;
+  role: 'owner' | 'editor' | 'viewer';
+  canEdit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollaborationDocumentMember {
+  documentId: string;
+  userId: string;
+  name: string;
+  role: 'owner' | 'editor' | 'viewer';
+  org?: string;
+  addedAt: string;
+}
+
+export interface CollaborationDocumentRevision {
+  id: number;
+  documentId: string;
+  version: number;
+  title: string;
+  content: string;
+  editedBy: string;
+  editedAt: string;
+}
+
+export async function fetchDocuments(): Promise<CollaborationDocument[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents`);
+  if (!response.ok) throw new Error(`Failed to fetch documents: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchDocument(documentId: string): Promise<CollaborationDocument> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch document: ${response.status}`);
+  return response.json();
+}
+
+export async function createDocument(payload: { title: string; content: string }): Promise<CollaborationDocument> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create document: ${response.status}`);
+  return response.json();
+}
+
+export async function updateDocument(documentId: string, payload: { title: string; content: string; version: number }): Promise<CollaborationDocument> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to update document: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete document: ${response.status}`);
+}
+
+export async function fetchDocumentMembers(documentId: string): Promise<CollaborationDocumentMember[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}/members`);
+  if (!response.ok) throw new Error(`Failed to fetch document members: ${response.status}`);
+  return response.json();
+}
+
+export async function addDocumentMember(documentId: string, userId: string, role: 'editor' | 'viewer'): Promise<CollaborationDocumentMember> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, role }),
+  });
+  if (!response.ok) throw new Error(`Failed to add document member: ${response.status}`);
+  return response.json();
+}
+
+export async function removeDocumentMember(documentId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to remove document member: ${response.status}`);
+}
+
+export async function fetchDocumentRevisions(documentId: string): Promise<CollaborationDocumentRevision[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/documents/${encodeURIComponent(documentId)}/revisions`);
+  if (!response.ok) throw new Error(`Failed to fetch document revisions: ${response.status}`);
+  return response.json();
+}
+
+export interface CollaborationWhiteboard {
+  id: string;
+  tenantId?: string;
+  title: string;
+  data: string;
+  createdBy: string;
+  author: string;
+  updatedBy: string;
+  version: number;
+  role: 'owner' | 'editor' | 'viewer';
+  canEdit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollaborationWhiteboardMember {
+  whiteboardId: string;
+  userId: string;
+  name: string;
+  role: 'owner' | 'editor' | 'viewer';
+  org?: string;
+  addedAt: string;
+}
+
+export interface CollaborationWhiteboardRevision {
+  id: number;
+  whiteboardId: string;
+  version: number;
+  title: string;
+  data: string;
+  editedBy: string;
+  editedAt: string;
+}
+
+export async function fetchWhiteboards(): Promise<CollaborationWhiteboard[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards`);
+  if (!response.ok) throw new Error(`Failed to fetch whiteboards: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchWhiteboard(whiteboardId: string): Promise<CollaborationWhiteboard> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch whiteboard: ${response.status}`);
+  return response.json();
+}
+
+export async function createWhiteboard(payload: { title: string; data: string }): Promise<CollaborationWhiteboard> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create whiteboard: ${response.status}`);
+  return response.json();
+}
+
+export async function updateWhiteboard(whiteboardId: string, payload: { title: string; data: string; version: number }): Promise<CollaborationWhiteboard> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to update whiteboard: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteWhiteboard(whiteboardId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to delete whiteboard: ${response.status}`);
+}
+
+export async function fetchWhiteboardMembers(whiteboardId: string): Promise<CollaborationWhiteboardMember[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}/members`);
+  if (!response.ok) throw new Error(`Failed to fetch whiteboard members: ${response.status}`);
+  return response.json();
+}
+
+export async function addWhiteboardMember(whiteboardId: string, userId: string, role: 'editor' | 'viewer'): Promise<CollaborationWhiteboardMember> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, role }),
+  });
+  if (!response.ok) throw new Error(`Failed to add whiteboard member: ${response.status}`);
+  return response.json();
+}
+
+export async function removeWhiteboardMember(whiteboardId: string, userId: string): Promise<void> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Failed to remove whiteboard member: ${response.status}`);
+}
+
+export async function fetchWhiteboardRevisions(whiteboardId: string): Promise<CollaborationWhiteboardRevision[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/whiteboards/${encodeURIComponent(whiteboardId)}/revisions`);
+  if (!response.ok) throw new Error(`Failed to fetch whiteboard revisions: ${response.status}`);
+  return response.json();
+}
+
+export interface TranslationLanguage {
+  code: string;
+  name: string;
+}
+
+export interface TranslationResult {
+  sourceLanguage: string;
+  targetLanguage: string;
+  text: string;
+  provider: string;
+}
+
+export async function fetchTranslationLanguages(): Promise<TranslationLanguage[]> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/translation/languages`);
+  if (!response.ok) throw new Error(`Failed to fetch translation languages: ${response.status}`);
+  return response.json();
+}
+
+export async function translateText(payload: { text: string; sourceLanguage: string; targetLanguage: string }): Promise<TranslationResult> {
+  const response = await apiFetch(`${BASE_URL}/v1/chat/translation/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to translate text: ${response.status}`);
+  return response.json();
+}
+
 export async function fetchOpportunities(): Promise<Opportunity[]> {
   const response = await apiFetch(`${BASE_URL}/collaboration/opportunities`);
   if (!response.ok) throw new Error(`Failed to fetch opportunities: ${response.status}`);

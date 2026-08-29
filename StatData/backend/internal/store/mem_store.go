@@ -931,12 +931,15 @@ func (m *MemStore) GetFeatureViewByID(ctx context.Context, id string) (*models.F
 	return fv, nil
 }
 
-func (m *MemStore) ListFeatureViews(ctx context.Context, tenantID, entityName string) ([]*models.FeatureView, error) {
+func (m *MemStore) ListFeatureViews(ctx context.Context, tenantID, entityName, workspaceID string) ([]*models.FeatureView, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]*models.FeatureView, 0)
 	for _, fv := range m.featureViews {
 		if tenantID != "" && fv.TenantID != tenantID && fv.TenantID != "default" {
+			continue
+		}
+		if workspaceID != "" && fv.WorkspaceID != workspaceID && fv.WorkspaceID != "" {
 			continue
 		}
 		if entityName != "" && fv.EntityName != entityName {
