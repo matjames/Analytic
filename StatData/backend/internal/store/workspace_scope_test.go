@@ -58,6 +58,40 @@ func TestMemStoreDatasetWorkspaceScoping(t *testing.T) {
 	}
 }
 
+// Stage 2: pipeline resources must also be partitioned by selected workspace.
+func TestMemStorePipelineWorkspaceScoping(t *testing.T) {
+	m := NewMemStore()
+	ctx := context.Background()
+
+	alpha := &models.DataPipeline{ID: "pl-alpha", Name: "Alpha", TenantID: "tenant-alpha", WorkspaceID: "ws-alpha"}
+	beta := &models.DataPipeline{ID: "pl-beta", Name: "Beta", TenantID: "tenant-alpha", WorkspaceID: "ws-beta"}
+	for _, p := range []*models.DataPipeline{alpha, beta} {
+		if err := m.CreatePipeline(ctx, p); err != nil {
+			t.Fatalf("seed %s: %v", p.ID, err)
+		}
+	}
+
+	got, err := m.ListPipelines(ctx, "tenant-alpha", "", "ws-alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "pl-alpha" {
+		t.Fatalf("expected only pl-alpha for ws-alpha, got %d", len(got))
+	}
+
+	got, err = m.ListPipelines(ctx, "tenant-alpha", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, p := range got {
+		seen[p.ID] = true
+	}
+	if !seen["pl-alpha"] || !seen["pl-beta"] {
+		t.Fatalf("expected both seeded pipelines in unscoped listing, got %d", len(got))
+	}
+}
+
 // workspaceAllowsRead mirrors the api helper contract used by handlers.
 func TestWorkspaceReadContract(t *testing.T) {
 	cases := []struct {

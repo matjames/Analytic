@@ -27,8 +27,9 @@ func NewPipelineHandler(s store.Store, pe *pipeline.PipelineEngine) *PipelineHan
 // ListPipelines handles GET /api/data/pipelines
 func (h *PipelineHandler) ListPipelines(c *gin.Context) {
 	tenantID := getTenantID(c)
+	workspaceID := getWorkspaceID(c)
 	status := c.Query("status")
-	pipes, err := h.store.ListPipelines(c.Request.Context(), tenantID, status)
+	pipes, err := h.store.ListPipelines(c.Request.Context(), tenantID, status, workspaceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -44,6 +45,10 @@ func (h *PipelineHandler) GetPipeline(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "pipeline not found"})
 		return
 	}
+	if !workspaceAllowsRead(p.WorkspaceID, getWorkspaceID(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pipeline not found"})
+		return
+	}
 	c.JSON(http.StatusOK, p)
 }
 
@@ -55,6 +60,7 @@ func (h *PipelineHandler) CreatePipeline(c *gin.Context) {
 		return
 	}
 	p.TenantID = getTenantID(c)
+	p.WorkspaceID = getWorkspaceID(c)
 	p.CreatedBy = getUserID(c)
 	p.Status = models.PipelineStatusActive
 
@@ -68,6 +74,15 @@ func (h *PipelineHandler) CreatePipeline(c *gin.Context) {
 // TriggerPipelineRun handles POST /api/data/pipelines/:id/run
 func (h *PipelineHandler) TriggerPipelineRun(c *gin.Context) {
 	id := c.Param("id")
+	pipe, err := h.store.GetPipelineByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pipeline not found"})
+		return
+	}
+	if !workspaceAllowsRead(pipe.WorkspaceID, getWorkspaceID(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pipeline not found"})
+		return
+	}
 	tenantID := getTenantID(c)
 	user := getUserID(c)
 

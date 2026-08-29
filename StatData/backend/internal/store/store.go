@@ -48,7 +48,7 @@ type Store interface {
 	// ─── Data Pipelines & Streaming (P37) ─────────────────────────────────────
 	CreatePipeline(ctx context.Context, p *models.DataPipeline) error
 	GetPipelineByID(ctx context.Context, id string) (*models.DataPipeline, error)
-	ListPipelines(ctx context.Context, tenantID, status string) ([]*models.DataPipeline, error)
+	ListPipelines(ctx context.Context, tenantID, status, workspaceID string) ([]*models.DataPipeline, error)
 	UpdatePipeline(ctx context.Context, p *models.DataPipeline) error
 	DeletePipeline(ctx context.Context, id string) error
 

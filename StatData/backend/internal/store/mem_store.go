@@ -752,12 +752,15 @@ func (m *MemStore) GetPipelineByID(ctx context.Context, id string) (*models.Data
 	return p, nil
 }
 
-func (m *MemStore) ListPipelines(ctx context.Context, tenantID, status string) ([]*models.DataPipeline, error) {
+func (m *MemStore) ListPipelines(ctx context.Context, tenantID, status, workspaceID string) ([]*models.DataPipeline, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	res := make([]*models.DataPipeline, 0)
 	for _, p := range m.pipelines {
 		if tenantID != "" && p.TenantID != tenantID && p.TenantID != "default" {
+			continue
+		}
+		if workspaceID != "" && p.WorkspaceID != workspaceID {
 			continue
 		}
 		if status != "" && string(p.Status) != status {

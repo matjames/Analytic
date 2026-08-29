@@ -49,6 +49,7 @@ type DataPipeline struct {
 	MaxRetries     int                    `json:"max_retries"`
 	TimeoutSeconds int                    `json:"timeout_seconds"`
 	TenantID       string                 `json:"tenant_id"`
+	WorkspaceID    string                 `json:"workspace_id,omitempty"`
 	CreatedBy      string                 `json:"created_by"`
 	LastRunAt      *time.Time             `json:"last_run_at,omitempty"`
 	CreatedAt      time.Time              `json:"created_at"`

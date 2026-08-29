@@ -848,14 +848,14 @@ func (p *PGStore) CreatePipeline(ctx context.Context, pipe *models.DataPipeline)
 			id, name, description, pipeline_type, status,
 			cron_schedule, source_dataset_id, target_dataset_id,
 			stages, config, max_retries, timeout_seconds,
-			tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		pipe.ID, pipe.Name, pipe.Description, string(pipe.PipelineType), string(pipe.Status),
 		pipe.CronSchedule, pipe.SourceDatasetID, pipe.TargetDatasetID,
 		stagesJSON, configJSON, pipe.MaxRetries, pipe.TimeoutSeconds,
-		pipe.TenantID, pipe.CreatedBy,
+		pipe.TenantID, pipe.CreatedBy, pipe.WorkspaceID,
 	)
 	return err
 }
@@ -865,7 +865,7 @@ func (p *PGStore) GetPipelineByID(ctx context.Context, id string) (*models.DataP
 		SELECT id, name, description, pipeline_type, status,
 		       COALESCE(cron_schedule, ''), COALESCE(source_dataset_id, ''), COALESCE(target_dataset_id, ''),
 		       stages, config, max_retries, timeout_seconds,
-		       tenant_id, created_by, last_run_at, created_at, updated_at
+		       tenant_id, created_by, COALESCE(workspace_id, ''), last_run_at, created_at, updated_at
 		FROM statdata.pipelines WHERE id = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, id)
@@ -877,7 +877,7 @@ func (p *PGStore) GetPipelineByID(ctx context.Context, id string) (*models.DataP
 		&pipe.ID, &pipe.Name, &pipe.Description, &pType, &pStat,
 		&pipe.CronSchedule, &pipe.SourceDatasetID, &pipe.TargetDatasetID,
 		&stagesJSON, &configJSON, &pipe.MaxRetries, &pipe.TimeoutSeconds,
-		&pipe.TenantID, &pipe.CreatedBy, &pipe.LastRunAt, &pipe.CreatedAt, &pipe.UpdatedAt,
+		&pipe.TenantID, &pipe.CreatedBy, &pipe.WorkspaceID, &pipe.LastRunAt, &pipe.CreatedAt, &pipe.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -889,12 +889,12 @@ func (p *PGStore) GetPipelineByID(ctx context.Context, id string) (*models.DataP
 	return &pipe, nil
 }
 
-func (p *PGStore) ListPipelines(ctx context.Context, tenantID, status string) ([]*models.DataPipeline, error) {
+func (p *PGStore) ListPipelines(ctx context.Context, tenantID, status, workspaceID string) ([]*models.DataPipeline, error) {
 	query := `
 		SELECT id, name, description, pipeline_type, status,
 		       COALESCE(cron_schedule, ''), COALESCE(source_dataset_id, ''), COALESCE(target_dataset_id, ''),
 		       stages, config, max_retries, timeout_seconds,
-		       tenant_id, created_by, last_run_at, created_at, updated_at
+		       tenant_id, created_by, COALESCE(workspace_id, ''), last_run_at, created_at, updated_at
 		FROM statdata.pipelines WHERE 1=1
 	`
 	args := make([]interface{}, 0)
@@ -902,6 +902,11 @@ func (p *PGStore) ListPipelines(ctx context.Context, tenantID, status string) ([
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
+		argIdx++
+	}
+	if workspaceID != "" {
+		query += fmt.Sprintf(" AND workspace_id = $%d", argIdx)
+		args = append(args, workspaceID)
 		argIdx++
 	}
 	if status != "" {
@@ -927,7 +932,7 @@ func (p *PGStore) ListPipelines(ctx context.Context, tenantID, status string) ([
 			&pipe.ID, &pipe.Name, &pipe.Description, &pType, &pStat,
 			&pipe.CronSchedule, &pipe.SourceDatasetID, &pipe.TargetDatasetID,
 			&stagesJSON, &configJSON, &pipe.MaxRetries, &pipe.TimeoutSeconds,
-			&pipe.TenantID, &pipe.CreatedBy, &pipe.LastRunAt, &pipe.CreatedAt, &pipe.UpdatedAt,
+			&pipe.TenantID, &pipe.CreatedBy, &pipe.WorkspaceID, &pipe.LastRunAt, &pipe.CreatedAt, &pipe.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
