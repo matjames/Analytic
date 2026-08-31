@@ -13,7 +13,7 @@ func TestEnsureObjectConversationForwardsIdentityAndServiceContext(t *testing.T)
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/conversations/object" {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		if r.Header.Get("Authorization") != "Bearer registry-token" || r.Header.Get("X-Internal-API-Key") != "internal-key" || r.Header.Get("X-Workspace-ID") != "workspace-1" {
+		if r.Header.Get("Authorization") != "Bearer registry-token" || r.Header.Get("X-Internal-API-Key") != "internal-key" || r.Header.Get("X-StatGate-User-ID") != "service-user" || r.Header.Get("X-Tenant-ID") != "tenant-1" || r.Header.Get("X-Workspace-ID") != "workspace-1" {
 			t.Fatalf("required integration headers were not forwarded")
 		}
 		var input ObjectConversationRequest
@@ -25,6 +25,8 @@ func TestEnsureObjectConversationForwardsIdentityAndServiceContext(t *testing.T)
 	defer server.Close()
 
 	client := NewClient(server.URL, "internal-key")
+	client.ServiceUserID = "service-user"
+	client.TenantID = "tenant-1"
 	conversation, err := client.EnsureObjectConversation(context.Background(), "Bearer registry-token", "workspace-1", ObjectConversationRequest{ObjectRef: "obj:pms:project:p-1", Name: "Project"})
 	if err != nil || conversation.ID != "conversation-1" {
 		t.Fatalf("unexpected result: %+v, err=%v", conversation, err)

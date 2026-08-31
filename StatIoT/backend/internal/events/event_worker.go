@@ -68,14 +68,14 @@ func (w *EventWorker) PublishDeviceAlert(ctx context.Context, alert *models.IoTA
 }
 
 // PublishTelemetryIngested notifies the platform of high-throughput sensor updates.
-func (w *EventWorker) PublishTelemetryIngested(ctx context.Context, deviceID string, recordCount int) error {
+func (w *EventWorker) PublishTelemetryIngested(ctx context.Context, deviceID, tenantID string, recordCount int) error {
 	evt := events.EnterpriseEvent{
 		EventID:    uuid.New().String(),
-		EventType:  events.EventDatasetUpdated,
+		EventType:  events.EventTelemetryIngested,
 		Source:     w.source,
 		ObjectType: "iot_device",
 		ObjectID:   deviceID,
-		TenantID:   "default",
+		TenantID:   tenantID,
 		Payload: map[string]interface{}{
 			"device_id":    deviceID,
 			"record_count": recordCount,

@@ -54,7 +54,7 @@ Status is evidence-based: a feature is complete only after UI, API, authorizatio
 | Capability | Status |
 |---|---|
 | Social posts/comments/connections | Operational: authenticated author identity, tenant-scoped post/comment/feed and connection access, tenant-isolated likes/shares/comments, explicit pending/accepted/declined requests, idempotent duplicate handling, recipient-only accept/decline, reciprocal accepted edges, reciprocal removal, self/cross-tenant denial, and live certification are implemented |
-| Photo/video/article posts | Operational: authenticated tenant-scoped typed posts support article titles, validated photo/video media URLs, same-tenant feed visibility, frontend composers/rendering, and live certification; dedicated media-provider/upload UX remains a production enhancement |
+| Photo/video/article posts | Operational: authenticated tenant-scoped typed posts support article titles, validated photo/video media URLs, authenticated multipart image/video upload up to 16 MB, same-tenant feed visibility, frontend composers/rendering, and live certification |
 | Wellness comments/shares/bookmarks persistence | Operational: authenticated tenant-scoped wellness authorship, durable comments, per-user idempotent likes/bookmarks, durable shares, default seeded content visibility, frontend controls, and live certification are implemented |
 | Communities and forums | Operational: tenant-scoped public/private communities, creator ownership, owner-managed invitations, public join/leave, member-only topics/replies, authenticated authorship, private visibility, owner/member moderation boundaries, ownership transfer, frontend workspace, typed client coverage, and live certification are implemented |
 | Collaborative documents | Operational: tenant-scoped shared documents, authenticated ownership, editor/viewer membership, optimistic version protection, revision history, owner-managed access, frontend editor workspace, and live certification are implemented |
@@ -69,7 +69,8 @@ Status is evidence-based: a feature is complete only after UI, API, authorizatio
 | PMS object discussions | Operational: canonical `obj:pms:project:<id>` conversations, live write/read proof, deep link, and second-user enrollment |
 | RMS object discussions | Operational: canonical `obj:rms:research:<id>` conversations, live write/read proof, deep link, readiness flag, and second-user enrollment |
 | Enterprise workflow discussions | Implemented and contract-tested against `POST /v1/chat/conversations/object` with tenant-scoped workflow references |
-| Redis/platform event publication | Not started |
+| StatCollect survey discussions | Operational: canonical `obj:statcollect:submission:<id>` conversations, shared service-authenticated create/message requests, optional tenant/workspace context, and isolated HTTP contract coverage are implemented |
+| Redis/platform event publication | Partial: StatCollect now publishes the shared versioned tenant-scoped `EnterpriseEvent` envelope; durable delivery, retries/idempotency, DLQ processing, and broad downstream consumers remain |
 | Shared notification routing | Partial |
 | Cross-app presence | Not started |
 

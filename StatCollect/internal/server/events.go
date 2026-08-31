@@ -3,29 +3,18 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/google/uuid"
+	"github.com/matjames/statgate-lib/events"
 )
 
-// StatGateEvent is the standard event schema for cross-module communication.
-// Per the StatGate Engineering Directive, every module must communicate
-// through the event bus so actions in one module propagate to others.
-type StatGateEvent struct {
-	EventType  string      `json:"event_type"`
-	Source     string      `json:"source"`
-	ObjectType string      `json:"object_type"`
-	ObjectID   string      `json:"object_id"`
-	TenantID   string      `json:"tenant_id"`
-	Payload    interface{} `json:"payload"`
-	Timestamp  time.Time   `json:"timestamp"`
-}
-
-// EventBus publishes StatGate events to Redis for cross-module communication.
+// EventBus is the StatCollect adapter for the canonical shared StatGate bus.
+// The shared library provides the standard envelope and in-process fallback;
+// this wrapper preserves the existing submission lifecycle API.
 type EventBus struct {
-	client  *redis.Client
+	bus     *events.EventBus
 	enabled bool
 }
 
@@ -37,45 +26,42 @@ func InitEventBus(addr, password string, enabled bool) *EventBus {
 		eventBus = &EventBus{enabled: false}
 		return eventBus
 	}
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       0,
+	bus, err := events.NewEventBus(events.Config{
+		RedisAddr: addr,
+		Password:  password,
+		Source:    "statcollect",
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("warning: event bus (Redis) unavailable at %s: %v", addr, err)
+	if err != nil {
+		log.Printf("warning: shared event bus unavailable: %v", err)
 		eventBus = &EventBus{enabled: false}
 		return eventBus
 	}
-	eventBus = &EventBus{client: client, enabled: true}
-	log.Printf("StatGate event bus connected to Redis at %s", addr)
+	eventBus = &EventBus{bus: bus, enabled: true}
+	log.Printf("StatGate shared event bus initialized for statcollect")
 	return eventBus
 }
 
 // Publish sends an event to the StatGate event channel.
 func (eb *EventBus) Publish(eventType, objectType, objectID string, payload interface{}) {
-	if eb == nil || !eb.enabled || eb.client == nil {
+	if eb == nil || !eb.enabled || eb.bus == nil {
 		return
 	}
-	evt := StatGateEvent{
+	tenantID := "default"
+	if cfg != nil && cfg.TenantID != "" {
+		tenantID = cfg.TenantID
+	}
+	err := eb.bus.Publish(context.Background(), events.EnterpriseEvent{
+		EventID:    uuid.NewString(),
 		EventType:  eventType,
 		Source:     "statcollect",
 		ObjectType: objectType,
 		ObjectID:   objectID,
-		TenantID:   cfg.TenantID,
-		Payload:    payload,
+		TenantID:   tenantID,
+		Payload:    payloadMap(payload),
 		Timestamp:  time.Now().UTC(),
-	}
-	b, err := json.Marshal(evt)
+		Version:    "1.0",
+	})
 	if err != nil {
-		log.Printf("event marshal failed: %v", err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if err := eb.client.Publish(ctx, "statgate:events", b).Err(); err != nil {
 		log.Printf("event publish failed: %v", err)
 		return
 	}
@@ -84,9 +70,26 @@ func (eb *EventBus) Publish(eventType, objectType, objectID string, payload inte
 
 // Close closes the Redis connection.
 func (eb *EventBus) Close() {
-	if eb != nil && eb.client != nil {
-		eb.client.Close()
+	if eb != nil && eb.bus != nil {
+		_ = eb.bus.Close()
 	}
+}
+
+func payloadMap(payload interface{}) map[string]interface{} {
+	if payload == nil {
+		return map[string]interface{}{}
+	}
+	if values, ok := payload.(map[string]interface{}); ok {
+		return values
+	}
+	encoded, err := json.Marshal(payload)
+	if err == nil {
+		var values map[string]interface{}
+		if json.Unmarshal(encoded, &values) == nil && values != nil {
+			return values
+		}
+	}
+	return map[string]interface{}{"data": payload}
 }
 
 // EventType constants for StatCollect events
@@ -165,5 +168,10 @@ func (eb *EventBus) String() string {
 	if eb == nil || !eb.enabled {
 		return "disabled"
 	}
-	return fmt.Sprintf("enabled (Redis at %s)", eb.client.Options().Addr)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if eb.bus.RedisAvailable(ctx) {
+		return "enabled (shared Redis event bus)"
+	}
+	return "enabled (shared event bus fallback)"
 }

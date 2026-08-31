@@ -113,10 +113,11 @@ const (
 	EventDiscussionUpdated = "discussion.updated"
 
 	// Analytics
-	EventDatasetCreated  = "dataset.created"
-	EventDatasetUpdated  = "dataset.updated"
-	EventReportGenerated = "report.generated"
-	EventAnomalyDetected = "anomaly.detected"
+	EventDatasetCreated    = "dataset.created"
+	EventDatasetUpdated    = "dataset.updated"
+	EventTelemetryIngested = "telemetry.ingested"
+	EventReportGenerated   = "report.generated"
+	EventAnomalyDetected   = "anomaly.detected"
 
 	// StatGovernance
 	EventRiskCreated       = "risk.created"
@@ -195,6 +196,8 @@ type EventBus struct {
 	seenMu       sync.RWMutex
 	pruneTimeout time.Duration
 	localStop    chan struct{} // closes the in-memory consumer goroutine
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 // Config holds EventBus initialization options.
@@ -399,6 +402,23 @@ func (b *EventBus) Subscribe(ctx context.Context, handler SubscribeHandler) erro
 	}()
 
 	return nil
+}
+
+// Close releases the transport and stops an in-process subscription, if one
+// was started. It is safe to call more than once during service shutdown.
+func (b *EventBus) Close() error {
+	if b == nil {
+		return nil
+	}
+	b.closeOnce.Do(func() {
+		if b.localStop != nil {
+			close(b.localStop)
+		}
+		if b.client != nil {
+			b.closeErr = b.client.Close()
+		}
+	})
+	return b.closeErr
 }
 
 // InitFromEnv creates an EventBus using standard StatGate environment variables.

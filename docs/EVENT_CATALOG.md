@@ -95,6 +95,45 @@ All domain events emitted across StatGate conform to the standardized JSON struc
 - `spatial.feature.updated` — Boundary or polygon coordinates modified.
 - `spatial.node.synced` — Federated district or agency data synchronized.
 
+### 2.10 StatData Domain (P37 Data Engineering, P38 Scientific Computing)
+- `dataset.imported` — Dataset created or refreshed through the ingestion pipeline.
+- `pipeline.completed` — Batch pipeline run finished (payload carries status).
+- `model.registered` — ML model registered in the model registry.
+- `cdc.table.mutation` / `cdc.event` — Change-data-capture stream mutation.
+
+### 2.11 StatIoT Domain (P27 IoT, P43 Field Ops)
+- `telemetry.ingested` — Authenticated device telemetry batch processed. Consumed by: Analytics (index refresh). NOTE: was historically mis-emitted as `dataset.updated`; corrected 2026-08-29.
+- `anomaly.detected` — Sensor threshold breach (also published by Analytics).
+- `field_data.submitted` — Mobile field form submission synchronized (also StatCollect).
+
+### 2.12 GeoIntel Domain (P44)
+- `spatial.layer.created` / `spatial.layer.deleted` — GIS layer lifecycle.
+- `tile.registered` / `tile.published` — XYZ tile generated / published.
+- `drone.flight.completed` — Drone flight finished.
+
+### 2.13 BPM-Hub Domain (P48)
+- `process.started` / `process.completed` — Workflow instance lifecycle.
+- `task.created` / `task.completed` — Human work items.
+- `case.created` — Case instance opened.
+- `automation.triggered` — Automation rule fired.
+
+### 2.14 Learning-CRM Domain (P24/P26)
+- `lead.converted` — Lead marked won; emits object link to account.
+- `partner.registered` / `service_request.created` — Community/partner lifecycle.
+- `enrollment.created` / `course.completed` / `certificate.issued` — LMS progression.
+
+### 2.15 AI-Autonomy Domain (P22/P31)
+- `agent.task.created` — Agent task spawned by an event trigger. Consumers: ai-autonomy internal workers.
+- `twin.registered` — Digital twin instantiated for an object.
+- `graph.entity.registered` — Knowledge-graph entity registered.
+
+### 2.16 Knowledge-Portal Domain (P17/P40/P41)
+- `content.published` / `dataset.published` — Public portal content/dataset publication.
+- `repository.item.archived` — Repository item archived.
+- `subscription.created` — Public subscription registered.
+- `feedback.received` — Public feedback submitted.
+
+
 ---
 
 ## 3. Event Consumption Matrix

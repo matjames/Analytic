@@ -75,6 +75,16 @@ func TestInternalObjectConversationIdentityIsNarrowlyScoped(t *testing.T) {
 	if _, _, ok := internalObjectConversationIdentity(req); ok {
 		t.Fatal("expected internal identity to be denied outside object-conversation creation")
 	}
+	if _, _, ok := internalServiceIdentity(req); !ok {
+		t.Fatal("expected trusted service identity for message delivery")
+	}
+	req = httptest.NewRequest(http.MethodGet, "/v1/chat/messages", nil)
+	req.Header.Set("X-Internal-API-Key", "internal-key")
+	req.Header.Set("X-StatGate-User-ID", "enterprise-workflow")
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+	if _, _, ok := internalServiceIdentity(req); ok {
+		t.Fatal("expected service identity to be denied for non-message methods")
+	}
 }
 
 func TestAuthMiddlewareAcceptsWebSocketQueryToken(t *testing.T) {

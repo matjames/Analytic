@@ -11,9 +11,11 @@ import (
 )
 
 type Client struct {
-	BaseURL     string
-	InternalKey string
-	HTTPClient  *http.Client
+	BaseURL       string
+	InternalKey   string
+	ServiceUserID string
+	TenantID      string
+	HTTPClient    *http.Client
 }
 
 type ObjectConversationRequest struct {
@@ -99,6 +101,12 @@ func (c *Client) doJSON(ctx context.Context, method, requestPath, authorization,
 	}
 	req.Header.Set("Authorization", authorization)
 	req.Header.Set("X-Internal-API-Key", c.InternalKey)
+	if c.ServiceUserID != "" {
+		req.Header.Set("X-StatGate-User-ID", c.ServiceUserID)
+	}
+	if c.TenantID != "" {
+		req.Header.Set("X-Tenant-ID", c.TenantID)
+	}
 	if workspaceID != "" {
 		req.Header.Set("X-Workspace-ID", workspaceID)
 	}

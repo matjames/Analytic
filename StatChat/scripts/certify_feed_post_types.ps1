@@ -35,8 +35,15 @@ $null = Request GET '/users/me' $aliceToken
 $null = Request GET '/users/me' $bobToken
 $null = Request GET '/users/me' $foreignToken
 
+$mediaPath = Join-Path $PSScriptRoot '..\frontend\public\logo.png'
+$uploadResponsePath = Join-Path $env:TEMP "statchat-feed-media-$stamp.json"
+$uploadStatus = [int](curl.exe --silent --output $uploadResponsePath --write-out '%{http_code}' --header "Authorization: Bearer $aliceToken" --form "file=@$mediaPath" "$baseUrl/collaboration/post-media")
+$uploadBody = if (Test-Path -LiteralPath $uploadResponsePath) { Get-Content -Raw -LiteralPath $uploadResponsePath } else { '{}' }
+Remove-Item -LiteralPath $uploadResponsePath -Force -ErrorAction SilentlyContinue
+$uploadedMedia = $uploadBody | ConvertFrom-Json
+$uploadedMediaUrl = if ($uploadStatus -eq 200) { $uploadedMedia.url } else { '' }
 $article = Request POST '/collaboration/posts' $aliceToken @{author='Spoofed'; type='article'; title='A useful field note'; text='Article body'}
-$photo = Request POST '/collaboration/posts' $aliceToken @{type='photo'; mediaUrl='https://example.test/photo.jpg'; text='Photo caption'}
+$photo = Request POST '/collaboration/posts' $aliceToken @{type='photo'; mediaUrl=$uploadedMediaUrl; text='Photo caption'}
 $video = Request POST '/collaboration/posts' $aliceToken @{type='video'; mediaUrl='https://example.test/video.mp4'; text='Video caption'}
 $missingMedia = Request POST '/collaboration/posts' $aliceToken @{type='photo'; text='Missing media'}
 $missingTitle = Request POST '/collaboration/posts' $aliceToken @{type='article'; text='Missing title'}
@@ -49,7 +56,8 @@ $photoBody = $photo.Body | ConvertFrom-Json
 $videoBody = $video.Body | ConvertFrom-Json
 $result = [ordered]@{
   articleIdentityAndMetadata = $article.Status -eq 200 -and $articleBody.author -eq 'Alice Feed' -and $articleBody.authorId -eq $aliceId -and $articleBody.type -eq 'article' -and $articleBody.title -eq 'A useful field note'
-  photoPost = $photo.Status -eq 200 -and $photoBody.type -eq 'photo' -and $photoBody.mediaUrl -eq 'https://example.test/photo.jpg'
+  mediaUpload = $uploadStatus -eq 200 -and $uploadedMedia.mimeType -like 'image/*' -and $uploadedMediaUrl -like '/uploads/*'
+  photoPost = $photo.Status -eq 200 -and $photoBody.type -eq 'photo' -and $photoBody.mediaUrl -eq $uploadedMediaUrl
   videoPost = $video.Status -eq 200 -and $videoBody.type -eq 'video' -and $videoBody.mediaUrl -eq 'https://example.test/video.mp4'
   validation = $missingMedia.Status -eq 400 -and $missingTitle.Status -eq 400 -and $invalidType.Status -eq 400
   tenantIsolation = ($sameTenant.id -contains $articleBody.id) -and ($sameTenant.id -contains $photoBody.id) -and ($sameTenant.id -contains $videoBody.id) -and -not ($foreign.id -contains $articleBody.id)

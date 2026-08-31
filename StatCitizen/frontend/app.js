@@ -3,9 +3,10 @@
  * Sovereign Citizen Participation, Public Evidence & Institutional Feedback
  */
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-  ? 'http://localhost:8097/api/statcitizen/v1' 
-  : '/api/statcitizen/v1';
+const API_BASE = (window.location.origin && window.location.origin !== 'null')
+  ? `${window.location.origin}/api/statcitizen/v1`
+  : 'http://localhost:8115/api/statcitizen/v1';
+
 
 const state = {
   session: null,

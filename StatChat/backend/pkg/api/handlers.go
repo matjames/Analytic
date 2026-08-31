@@ -221,6 +221,7 @@ func RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/groups/templates", groupTemplatesHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/posts", postsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/collaboration/posts", createPostHandler).Methods(http.MethodPost)
+	router.HandleFunc("/collaboration/post-media", uploadPostMediaHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/posts/{id}/like", togglePostLikeHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/posts/{id}/share", sharePostHandler).Methods(http.MethodPost)
 	router.HandleFunc("/collaboration/posts/{id}/comments", postCommentsHandler).Methods(http.MethodGet)
@@ -1496,7 +1497,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if identity, workspaceID, ok := internalObjectConversationIdentity(r); ok {
+		if identity, workspaceID, ok := internalServiceIdentity(r); ok {
 			ctx := context.WithValue(r.Context(), requestUserIDKey, identity.ID)
 			ctx = context.WithValue(ctx, requestIdentityKey, identity)
 			ctx = context.WithValue(ctx, requestWorkspaceIDKey, workspaceID)
@@ -1605,6 +1606,30 @@ func authMiddleware(next http.Handler) http.Handler {
 
 func internalObjectConversationIdentity(r *http.Request) (model.User, string, bool) {
 	if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/conversations/object" {
+		return model.User{}, "", false
+	}
+	expected := strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY"))
+	supplied := strings.TrimSpace(r.Header.Get("X-Internal-API-Key"))
+	userID := strings.TrimSpace(r.Header.Get("X-StatGate-User-ID"))
+	tenantID := strings.TrimSpace(r.Header.Get("X-Tenant-ID"))
+	workspaceID := strings.TrimSpace(r.Header.Get("X-Workspace-ID"))
+	if expected == "" || supplied == "" || !hmac.Equal([]byte(expected), []byte(supplied)) || userID == "" || tenantID == "" {
+		return model.User{}, "", false
+	}
+	if len(workspaceID) > 128 || strings.ContainsAny(workspaceID, " /\\\t\r\n") {
+		return model.User{}, "", false
+	}
+	return model.User{ID: userID, Name: userID, OrganizationID: tenantID, Presence: "online"}, workspaceID, true
+}
+
+// internalServiceIdentity allows narrowly scoped service-to-service writes for
+// canonical object conversations and their messages. The caller must provide
+// the shared key, an explicit service identity, and a tenant scope.
+func internalServiceIdentity(r *http.Request) (model.User, string, bool) {
+	if r.URL.Path == "/v1/chat/conversations/object" {
+		return internalObjectConversationIdentity(r)
+	}
+	if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/messages" {
 		return model.User{}, "", false
 	}
 	expected := strings.TrimSpace(os.Getenv("STATGATE_INTERNAL_API_KEY"))

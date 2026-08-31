@@ -26,14 +26,14 @@ StatCollect is fully integrated into the StatGate ecosystem:
 - Admin operations can be authorized via Registry JWT roles
 
 ### 2. Event Bus (Redis pub/sub)
-- Publishes cross-module events to `statgate:events` channel
+- Publishes tenant-scoped events through the shared `statgate-lib/events` envelope on `statgate:events`
 - Event types: `submission.received`, `submission.validated`, `submission.rejected`, `submission.linked`
-- Standard event schema: `{event_type, source, object_type, object_id, tenant_id, payload, timestamp}`
+- Shared schema includes `event_id`, `event_type`, `source`, `object_type`, `object_id`, `tenant_id`, `payload`, `timestamp`, and `version`
 
 ### 3. StatChat Communication Backbone
-- Every submission gets an object-linked StatChat discussion conversation
+- Every submission can get a canonical `obj:statcollect:submission:<instance_id>` StatChat discussion conversation
 - Validation/rejection notifications are posted to the discussion
-- Conversation ID: `obj:submission:{instance_id}`
+- Service requests use the shared internal key, service identity, tenant, and optional workspace context; messages target the conversation ID returned by StatChat
 
 ### 4. Object Linkage
 - Submissions can be linked to any StatGate platform object
@@ -71,6 +71,7 @@ See `.env.example` for all configuration options.
 | `STATGATE_REGISTRY_JWT_SECRET` | Unified identity JWT secret | `statgate_field_secret_key_2026` |
 | `STATGATE_INTERNAL_API_KEY` | Service-to-service key | `Kb7Qx3pV9mL2rT8wY4nC6dF1hJ5sA0eR` |
 | `STATGATE_TENANT_ID` | Tenant for multi-tenant isolation | `default` |
+| `STATGATE_WORKSPACE_ID` | Optional workspace context for StatChat object discussions | empty |
 | `STATCOLLECT_ENABLE_EVENTS` | Enable Redis event bus | `false` |
 | `REDIS_ADDR` | Redis address | `localhost:6379` |
 | `STATCOLLECT_ENABLE_STATCHAT` | Enable StatChat integration | `false` |

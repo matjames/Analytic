@@ -32,6 +32,7 @@ type Config struct {
 	InternalAPIKey    string
 	InternalKey       string // alias used by platform_integration.go
 	TenantID          string
+	WorkspaceID       string
 	EnableEvents      bool
 	EnableStatChat    bool
 
@@ -197,6 +198,7 @@ func LoadConfig() *Config {
 		InternalAPIKey:    internalKey,
 		InternalKey:       internalKey,
 		TenantID:          tenantID,
+		WorkspaceID:       strings.TrimSpace(os.Getenv("STATGATE_WORKSPACE_ID")),
 		EnableEvents:      os.Getenv("STATCOLLECT_ENABLE_EVENTS") == "true",
 		EnableStatChat:    os.Getenv("STATCOLLECT_ENABLE_STATCHAT") == "true",
 		// Directive 22 module endpoints (default to "-" = disabled until configured)

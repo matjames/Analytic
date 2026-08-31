@@ -20,7 +20,7 @@ type GatewayEngine struct {
 
 type AlertPublisher interface {
 	PublishDeviceAlert(ctx context.Context, alert *models.IoTAlert) error
-	PublishTelemetryIngested(ctx context.Context, deviceID string, recordCount int) error
+	PublishTelemetryIngested(ctx context.Context, deviceID, tenantID string, recordCount int) error
 }
 
 func NewGatewayEngine(st store.Store, pub AlertPublisher) *GatewayEngine {
@@ -139,7 +139,7 @@ func (g *GatewayEngine) ProcessTelemetryBatch(ctx context.Context, req *models.T
 	_ = g.store.UpdateDeviceHeartbeat(ctx, dev.ID, dev.BatteryLevel, dev.SignalStrengthDBM, dev.Latitude, dev.Longitude)
 
 	if g.alertPublisher != nil && len(processedRecords) > 0 {
-		_ = g.alertPublisher.PublishTelemetryIngested(ctx, dev.ID, len(processedRecords))
+		_ = g.alertPublisher.PublishTelemetryIngested(ctx, dev.ID, dev.TenantID, len(processedRecords))
 	}
 
 	log.Printf("[IoTGateway] Successfully ingested %d telemetry records for device %s (%s)", len(processedRecords), dev.Name, dev.DeviceUID)

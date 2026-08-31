@@ -5,6 +5,7 @@ import {
   fetchAllUsers,
   fetchPosts,
   createPost,
+  uploadPostMedia,
   fetchConnections,
   createConnection,
   removeConnection,
@@ -102,6 +103,9 @@ const [postDraft, setPostDraft] = useState('');
   const [postType, setPostType] = useState<'text' | 'photo' | 'video' | 'article'>('text');
   const [postTitle, setPostTitle] = useState('');
   const [postMediaUrl, setPostMediaUrl] = useState('');
+  const [postMediaMime, setPostMediaMime] = useState('');
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [mediaError, setMediaError] = useState('');
   const [showPostForm, setShowPostForm] = useState(false);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -183,7 +187,7 @@ const [postDraft, setPostDraft] = useState('');
         type: postType,
         title: postTitle.trim(),
         mediaUrl: postMediaUrl.trim(),
-        mediaMime: postType === 'photo' ? 'image/*' : postType === 'video' ? 'video/*' : '',
+        mediaMime: postMediaMime,
         likes: 0,
         comments: 0,
         shares: 0,
@@ -192,6 +196,8 @@ const [postDraft, setPostDraft] = useState('');
       setPostDraft('');
       setPostTitle('');
       setPostMediaUrl('');
+      setPostMediaMime('');
+      setMediaError('');
       setPostType('text');
       setShowPostForm(false);
     } catch {
@@ -209,6 +215,22 @@ const [postDraft, setPostDraft] = useState('');
       setPollOptions(['', '']);
       setShowPollForm(false);
     } catch { /* Keep the collaboration feed usable. */ }
+  };
+
+  const handlePostMedia = async (file: File) => {
+    setMediaUploading(true);
+    setMediaError('');
+    try {
+      const uploaded = await uploadPostMedia(file);
+      setPostMediaUrl(uploaded.url);
+      setPostMediaMime(uploaded.mimeType);
+    } catch {
+      setPostMediaUrl('');
+      setPostMediaMime('');
+      setMediaError('Media upload failed. Choose an image or video up to 16 MB.');
+    } finally {
+      setMediaUploading(false);
+    }
   };
 
   const selectedCommunity = communities.find((community) => community.id === selectedCommunityId);
@@ -662,20 +684,25 @@ const [postDraft, setPostDraft] = useState('');
                 />
               )}
               {(postType === 'photo' || postType === 'video') && (
-                <input
-                  type="url"
-                  value={postMediaUrl}
-                  onChange={(event) => setPostMediaUrl(event.target.value)}
-                  placeholder={`Paste a ${postType} URL`}
-                  aria-label={`${postType} URL`}
-                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor }}
-                />
+                <div style={{ marginTop: 8 }}>
+                  <input type="file" accept={postType === 'photo' ? 'image/*' : 'video/*'} onChange={(event) => { const file = event.target.files?.[0]; if (file) handlePostMedia(file); }} aria-label={`Upload ${postType}`} />
+                  <input
+                    type="url"
+                    value={postMediaUrl}
+                    onChange={(event) => { setPostMediaUrl(event.target.value); setPostMediaMime(''); }}
+                    placeholder={`Or paste a ${postType} URL`}
+                    aria-label={`${postType} URL`}
+                    style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor }}
+                  />
+                  {mediaUploading && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>Uploading media...</div>}
+                  {mediaError && <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c' }}>{mediaError}</div>}
+                </div>
               )}
-              {postType !== 'text' && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>Media URLs can be public HTTPS links or files already uploaded to StatChat.</div>}
+              {postType !== 'text' && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.65 }}>Uploaded media is stored with the StatChat media service; public HTTPS links are also supported.</div>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <button
                   type="button"
-                  onClick={() => { setShowPostForm(false); setPostDraft(''); setPostTitle(''); setPostMediaUrl(''); setPostType('text'); }}
+                  onClick={() => { setShowPostForm(false); setPostDraft(''); setPostTitle(''); setPostMediaUrl(''); setPostMediaMime(''); setMediaError(''); setPostType('text'); }}
                   style={{ padding: '8px 16px', borderRadius: 999, border: `1px solid ${borderColor}`, background: 'transparent', color: textColor, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
                 >
                   Cancel
@@ -683,7 +710,7 @@ const [postDraft, setPostDraft] = useState('');
                 <button
                   type="button"
                   onClick={handlePost}
-                  disabled={!postDraft.trim()}
+                  disabled={!postDraft.trim() || mediaUploading || (postType === 'article' && !postTitle.trim()) || ((postType === 'photo' || postType === 'video') && !postMediaUrl.trim())}
                   style={{ padding: '8px 20px', borderRadius: 999, border: 'none', background: '#165c92', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: postDraft.trim() ? 1 : 0.5 }}
                 >
                   Post

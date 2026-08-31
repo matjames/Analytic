@@ -447,6 +447,23 @@ export async function fetchConnectionRequests(): Promise<Connection[]> {
   return response.json();
 }
 
+export interface PostMediaUpload {
+  url: string;
+  fileName: string;
+  mimeType: string;
+}
+
+export async function uploadPostMedia(file: File): Promise<PostMediaUpload> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiFetch(`${BASE_URL}/collaboration/post-media`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`Failed to upload post media: ${response.status}`);
+  return response.json();
+}
+
 export async function respondToConnectionRequest(requestId: string, action: 'accept' | 'decline'): Promise<Connection> {
   const response = await apiFetch(`${BASE_URL}/collaboration/connection-requests/${encodeURIComponent(requestId)}/${action}`, { method: 'POST' });
   if (!response.ok) throw new Error(`Failed to ${action} connection request: ${response.status}`);

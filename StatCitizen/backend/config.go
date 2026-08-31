@@ -68,8 +68,8 @@ type Config struct {
 func loadConfig() *Config {
 	return &Config{
 		Env:    getEnv("STATGATE_ENV", "development"),
-		Port:   getEnv("STATCITIZEN_API_PORT", "8097"),
-		UIPort: getEnv("STATCITIZEN_UI_PORT", "3015"),
+		Port:   getEnv("STATCITIZEN_API_PORT", "8115"),
+		UIPort: getEnv("STATCITIZEN_UI_PORT", "8115"),
 
 		DBHost:     getEnv("STATCITIZEN_DB_HOST", "localhost"),
 		DBPort:     getEnv("STATCITIZEN_DB_PORT", "5432"),
