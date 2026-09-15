@@ -4,6 +4,7 @@ const actions = [
   { id: 'health_review', label: 'Run health review' },
   { id: 'risk_prediction', label: 'Predict delivery risk' },
   { id: 'schedule_optimization', label: 'Review schedule' },
+  { id: 'budget_forecast', label: 'Forecast budget' },
 ];
 
 export default function ProjectHealthAssistant({ project, apiBase }) {
@@ -53,6 +54,13 @@ export default function ProjectHealthAssistant({ project, apiBase }) {
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Confidence: {Math.round(Number(assistant.confidence || 0) * 100)}%</span>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{assistant.forecast_variance}</span>
           </div>
+          {assistant.forecast && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+              <div className="metric-card"><span>Projected total</span><strong>${Number(assistant.forecast.projected_total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></div>
+              <div className="metric-card"><span>Forecast variance</span><strong>{Number(assistant.forecast.variance_percent || 0).toFixed(1)}%</strong></div>
+              <div className="metric-card"><span>Budget consumed</span><strong>{Number(assistant.forecast.utilization_percent || 0).toFixed(1)}%</strong></div>
+            </div>
+          )}
           <ul style={{ margin: '0 0 10px 18px', color: 'var(--text-secondary)', fontSize: '12px', lineHeight: '1.7' }}>
             {(assistant.recommendations || []).map(recommendation => <li key={recommendation}>{recommendation}</li>)}
           </ul>

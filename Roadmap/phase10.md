@@ -29,9 +29,7 @@ Maps become the primary visualisation and analysis interface for field operation
 
 ## Current State
 
-⚠️ **StatSpatial is currently a stub.** The directory structure exists (`StatSpatial/backend/pkg/api`, `model`, `store`) but no routes, handlers, or database schema have been implemented.
-
-This entire phase must be built from scratch following the standard StatGate service pattern.
+**Current implementation status:** StatSpatial has an authenticated Go API, PostgreSQL-backed spatial ownership records, workspace propagation, health/readiness endpoints, a React map surface, and project-location routes consumed by PMS. The project-location slice is live-certified; the wider GIS scope below remains in progress and must be completed incrementally.
 
 ---
 
@@ -251,7 +249,7 @@ StatSpatial/frontend/           ← React 18 + Vite + TypeScript (:3014)
 - [ ] Vector tile serving operational (Mapbox Vector Tile format)
 - [ ] Map Explorer React UI operational (Leaflet/MapLibre)
 - [ ] Layer Manager UI operational
-- [ ] PMS project locations on map operational
+- [x] PMS project locations on map operational
 - [ ] StatCollect submission heat map operational
 - [ ] Registry facility mapping on admin boundaries operational
 

@@ -2369,13 +2369,14 @@ func dbGetProjectHealthAssistant(c *gin.Context) {
 		ID       string  `json:"projectId"`
 		Name     string  `json:"projectName"`
 		Budget   float64 `json:"budget"`
+		Spent    float64 `json:"spent"`
 		Progress float64 `json:"progress"`
 	}
 	if err := DB.QueryRow(`
-		SELECT id, name, COALESCE(budget_total, 0), COALESCE(progress, 0)
+		SELECT id, name, COALESCE(budget_total, 0), COALESCE(spent_total, 0), COALESCE(progress, 0)
 		FROM pms.projects
 		WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
-	`, projectID, workspaceIDContext(c)).Scan(&project.ID, &project.Name, &project.Budget, &project.Progress); err != nil {
+	`, projectID, workspaceIDContext(c)).Scan(&project.ID, &project.Name, &project.Budget, &project.Spent, &project.Progress); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return
 	}
@@ -2397,6 +2398,7 @@ func dbGetProjectHealthAssistant(c *gin.Context) {
 		"risk_prediction":       true,
 		"schedule_optimization": true,
 		"milestone_review":      true,
+		"budget_forecast":       true,
 	}
 	if !allowedActions[input.Action] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported assistant action"})
@@ -2407,6 +2409,7 @@ func dbGetProjectHealthAssistant(c *gin.Context) {
 		"action":     input.Action,
 		"project_id": project.ID,
 		"budget":     project.Budget,
+		"spent":      project.Spent,
 		"progress":   project.Progress,
 	})
 	if err != nil {

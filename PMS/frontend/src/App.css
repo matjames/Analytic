@@ -71,6 +71,26 @@ body {
   min-width: 0;
 }
 
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-light);
+}
+
+.metric-card span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.metric-card strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
 @media (max-width: 900px) {
   .portfolio-dashboard-columns {
     grid-template-columns: 1fr !important;

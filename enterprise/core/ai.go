@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-
 func handleAICatalog(c *gin.Context) {
 	apps := []map[string]interface{}{
 		{"app": "pms", "entities": []string{"projects", "surveys", "meetings", "tasks", "approvals", "documents"}},
@@ -105,14 +104,14 @@ func handleLLMComplete(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"response":             output.Recommendation,
-		"reasoning_summary":    output.ReasoningSummary,
-		"confidence":           output.Confidence,
-		"risk_level":           output.RiskLevel,
-		"recommended_actions":  output.RecommendedActions,
-		"supporting_evidence":  output.SupportingEvidence,
-		"model_used":           provider.Name(),
-		"governance_notice":    "AI advisory only. Consequential decisions require human authorization.",
+		"response":            output.Recommendation,
+		"reasoning_summary":   output.ReasoningSummary,
+		"confidence":          output.Confidence,
+		"risk_level":          output.RiskLevel,
+		"recommended_actions": output.RecommendedActions,
+		"supporting_evidence": output.SupportingEvidence,
+		"model_used":          provider.Name(),
+		"governance_notice":   "AI advisory only. Consequential decisions require human authorization.",
 	})
 }
 
@@ -129,9 +128,9 @@ func handleResearchAIAssist(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"action":        req.Action,
-		"title":         req.Title,
-		"suggestions":   []string{
+		"action": req.Action,
+		"title":  req.Title,
+		"suggestions": []string{
 			"Align methodology with WHO/UNICEF standard evidence guidelines.",
 			"Include cross-sectional stratification by urban/rural districts.",
 			"Ensure human-subject informed consent protocols comply with National Ethics Guidelines.",
@@ -149,6 +148,7 @@ func handleProjectAIAssist(c *gin.Context) {
 		Action    string  `json:"action"` // risk_prediction, schedule_optimization, milestone_review
 		ProjectID string  `json:"project_id"`
 		Budget    float64 `json:"budget"`
+		Spent     float64 `json:"spent"`
 		Progress  float64 `json:"progress"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -156,7 +156,7 @@ func handleProjectAIAssist(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
+	response := gin.H{
 		"project_id":        req.ProjectID,
 		"action":            req.Action,
 		"predicted_risk":    "Medium",
@@ -167,7 +167,37 @@ func handleProjectAIAssist(c *gin.Context) {
 			"Execute interim budget reconciliation before Stage 4 approval.",
 		},
 		"confidence": 0.84,
-	})
+	}
+	if req.Action == "budget_forecast" {
+		progress := req.Progress
+		if progress < 1 {
+			progress = 1
+		}
+		projectedTotal := req.Spent / (progress / 100)
+		varianceAmount := projectedTotal - req.Budget
+		variancePercent := 0.0
+		if req.Budget > 0 {
+			variancePercent = (varianceAmount / req.Budget) * 100
+		}
+		response["forecast"] = gin.H{
+			"projected_total":  projectedTotal,
+			"variance_amount":  varianceAmount,
+			"variance_percent": variancePercent,
+			"utilization_percent": func() float64 {
+				if req.Budget <= 0 {
+					return 0
+				}
+				return (req.Spent / req.Budget) * 100
+			}(),
+			"method": "run-rate projection from spend-to-date and delivery progress",
+		}
+		response["recommendations"] = []string{
+			"Validate the spend-to-date baseline before approving a revised forecast.",
+			"Review remaining work packages where cost consumption is ahead of delivery progress.",
+			"Require finance-owner approval before changing the approved project budget.",
+		}
+	}
+	c.JSON(200, response)
 }
 
 func handleSurveyAIAssist(c *gin.Context) {
@@ -206,11 +236,11 @@ func handleAnalyticsAIAssist(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"query":           req.Query,
-		"interpreted_sql": "SELECT district, COUNT(*) as facilities FROM registry.facilities GROUP BY district ORDER BY facilities DESC LIMIT 10",
+		"query":             req.Query,
+		"interpreted_sql":   "SELECT district, COUNT(*) as facilities FROM registry.facilities GROUP BY district ORDER BY facilities DESC LIMIT 10",
 		"narrative_summary": fmt.Sprintf("Querying statistical assets for %q. Highest concentration observed in Kampala and Wakiso districts with 98.2%% reporting regularity.", req.Query),
-		"visualization":   "bar_chart",
-		"confidence":      0.92,
+		"visualization":     "bar_chart",
+		"confidence":        0.92,
 	})
 }
 
@@ -230,7 +260,7 @@ func handleGovernanceAIAssist(c *gin.Context) {
 			"DPA-2019: Data Protection and Privacy Act (Section 7)",
 		},
 		"compliance_determination": "Requires DPIA certification before microdata extraction.",
-		"human_control_required":  true,
+		"human_control_required":   true,
 	})
 }
 
@@ -258,7 +288,6 @@ func handleRAGQuery(c *gin.Context) {
 			{"title": "MFL Facility Registry Standards v2", "score": 0.81, "source": "Registry", "id": "reg-doc-004"},
 		},
 		"synthesized_answer": fmt.Sprintf("Based on verified institutional documents: for query %q, all statistical field procedures must adhere to ISO 20252 market and social research quality standards and verified via the StatGate Evidence Vault.", req.Query),
-		"provenance": "Enterprise RAG Pipeline v1.0",
+		"provenance":         "Enterprise RAG Pipeline v1.0",
 	})
 }
-

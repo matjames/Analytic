@@ -216,7 +216,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - **Donor reporting templates** — not implemented
 
 ### GIS Integration
-- **Map project locations** — not wired to StatSpatial
+- **Map project locations** — implemented through workspace-scoped StatSpatial project-location persistence, PMS coordinate editing, and an OSM map preview
 - **Field activity tracking on map** — not implemented
 
 ---
@@ -229,7 +229,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 | Enterprise Core | Activity timeline, approval workflows, file management |
 | RMS | Cross-module object links via `object_links` table |
 | StatCollect | Survey submissions linked to project via `object_links` |
-| StatSpatial | (planned) Project location mapping |
+| StatSpatial | Workspace-scoped project location mapping and map preview |
 
 ---
 
@@ -253,7 +253,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - [x] Portfolio/programme dashboard with aggregated KPIs
 - [x] Donor management operational
 - [x] AI project health assistant operational
-- [ ] GIS project location mapping operational
+- [x] GIS project location mapping operational
 
 ---
 
@@ -268,7 +268,11 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 
 ### Phase 4 Portfolio Dashboard Checkpoint - 15 September 2026
 
-The workspace-scoped `GET /api/portfolio-dashboard` endpoint now aggregates project count, average progress, budgets, spend, risks, issues, lifecycle stages, portfolio groups, programme groups, and project rows. The global PMS view exposes these KPIs with portfolio and programme filters; authenticated live probes returned the expected scoped project and filter counts, separate workspaces remained isolated, and unauthenticated access returned `401`. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint now provides governed risk, schedule, and milestone advisory through Enterprise Core; invalid actions return `400` and foreign-workspace projects return `404`. GIS project location mapping remains open.
+The workspace-scoped `GET /api/portfolio-dashboard` endpoint now aggregates project count, average progress, budgets, spend, risks, issues, lifecycle stages, portfolio groups, programme groups, and project rows. The global PMS view exposes these KPIs with portfolio and programme filters; authenticated live probes returned the expected scoped project and filter counts, separate workspaces remained isolated, and unauthenticated access returned `401`. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint now provides governed risk, schedule, and milestone advisory through Enterprise Core; invalid actions return `400` and foreign-workspace projects return `404`.
+
+### Phase 4 GIS Checkpoint - 15 September 2026
+
+PMS now integrates with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview provides coordinate and administrative-unit editing plus an OSM preview; live certification saved and read back project `proj-66626` in workspace `ws-1789477440495211553` with `201` and `200` responses, rejected latitude `100` with `400`, returned no rows from the other workspace, and rejected unauthenticated access with `401`. The broader GIS roadmap remains open for geocoding, GPS streaming, PostGIS analysis, vector tiles, and field-activity mapping; PMS budget forecasting also remains open.
 
 ## Estimated Duration
 

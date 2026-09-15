@@ -12,7 +12,7 @@ COPY StatSpatial/backend/go.mod StatSpatial/backend/go.sum ./
 RUN go mod download 2>/dev/null || true
 
 COPY StatSpatial/backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/statspatial-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -o /app/statspatial-server ./cmd/server
 
 # Runtime stage
 FROM alpine:latest
