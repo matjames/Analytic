@@ -23,6 +23,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA statfederation GRANT ALL ON SEQUENCES TO "Sta
 ALTER ROLE "StatFederation" SET search_path TO statfederation, public;
 
 SET search_path TO statfederation, public;
+SET ROLE "StatFederation";
 
 -- 1. Federated Nodes Registry (NSS & International)
 CREATE TABLE IF NOT EXISTS federated_nodes (
@@ -235,3 +236,17 @@ CREATE TABLE IF NOT EXISTS compliance_audit_logs (
 CREATE INDEX IF NOT EXISTS idx_comp_audit_actor ON compliance_audit_logs(actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_comp_audit_action ON compliance_audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_comp_audit_time ON compliance_audit_logs(event_timestamp);
+
+-- 10. Cross-Application Object Links
+CREATE TABLE IF NOT EXISTS object_links (
+    id            SERIAL PRIMARY KEY,
+    source_type   VARCHAR(64)  NOT NULL,
+    source_id     VARCHAR(255) NOT NULL,
+    target_type   VARCHAR(64)  NOT NULL,
+    target_id     VARCHAR(255) NOT NULL,
+    relationship  VARCHAR(64)  NOT NULL DEFAULT 'related',
+    tenant_id     VARCHAR(64)  NOT NULL DEFAULT 'tenant-alpha',
+    workspace_id  VARCHAR(128),
+    created_by    VARCHAR(128),
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

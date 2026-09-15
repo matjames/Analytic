@@ -123,14 +123,16 @@ func main() {
 		notebookRunner, experimentTracker, modelRegistry, clusterOrchestrator,
 		searchEngine, indexer, eventWorker,
 	)
+	discussionHandler := api.NewDiscussionHandler(appStore, api.NewStatChatIntegration(os.Getenv("STATCHAT_API_URL"), os.Getenv("STATGATE_INTERNAL_API_KEY")))
 
 	router := api.SetupRouter(api.RouterConfig{
-		Handlers:      handlers,
-		HealthChecker: healthChecker,
-		Metrics:       promMetrics,
-		AuthValidator: authVal,
-		CORSOrigin:    cfg.CORSAllowedOrigin,
-		Env:           cfg.Env,
+		Handlers:          handlers,
+		DiscussionHandler: discussionHandler,
+		HealthChecker:     healthChecker,
+		Metrics:           promMetrics,
+		AuthValidator:     authVal,
+		CORSOrigin:        cfg.CORSAllowedOrigin,
+		Env:               cfg.Env,
 	})
 
 	// 8. Start HTTP Server

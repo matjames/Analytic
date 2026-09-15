@@ -105,8 +105,10 @@ func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
 	if req.Status == "" {
 		req.Status = models.GatewayStatusOnline
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 	req.WorkspaceID = getWorkspaceID(c)
 
@@ -120,7 +122,7 @@ func (h *IoTHandlers) RegisterGateway(c *gin.Context) {
 
 // ListGateways lists all gateways for a tenant, scoped to the selected workspace.
 func (h *IoTHandlers) ListGateways(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	workspaceID := getWorkspaceID(c)
 	gateways, err := h.store.ListGateways(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
@@ -177,8 +179,10 @@ func (h *IoTHandlers) RegisterDevice(c *gin.Context) {
 	if req.Status == "" {
 		req.Status = models.DeviceStatusActive
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 	req.WorkspaceID = getWorkspaceID(c)
 
@@ -196,7 +200,7 @@ func (h *IoTHandlers) RegisterDevice(c *gin.Context) {
 
 // ListDevices returns all registered devices, scoped to the selected workspace.
 func (h *IoTHandlers) ListDevices(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	workspaceID := getWorkspaceID(c)
 	devs, err := h.store.ListDevices(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
@@ -367,7 +371,7 @@ func (h *IoTHandlers) SetDesiredConfig(c *gin.Context) {
 		DeviceID:      deviceID,
 		DesiredConfig: req.DesiredConfig,
 		Version:       req.Version,
-		TenantID:      "default",
+		TenantID:      c.GetString("tenant_id"),
 	}
 
 	if err := h.store.SetDesiredConfig(c.Request.Context(), edgeCfg); err != nil {
@@ -436,7 +440,7 @@ func (h *IoTHandlers) GetLatestFirmware(c *gin.Context) {
 
 // ListAlerts returns active and resolved IoT alerts.
 func (h *IoTHandlers) ListAlerts(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	status := c.Query("status")
 	workspaceID := getWorkspaceID(c)
 

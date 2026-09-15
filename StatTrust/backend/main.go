@@ -82,15 +82,15 @@ func main() {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
 			return
 		}
-		for i, r := range workspaceID {
-			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && i > 0) || r == '_') {
-				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
-				return
-			}
+		if !tenant.ValidWorkspaceID(workspaceID) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+			return
 		}
 		c.Set("workspace_id", workspaceID)
 		c.Next()
 	})
+	statTrustDiscussions := newStatTrustDiscussionHandler(newStatTrustStatChat(getEnv("STATCHAT_API_URL", ""), getEnv("STATGATE_INTERNAL_API_KEY", "")))
+	v1.POST("/discussions", statTrustDiscussions.create)
 
 	{
 		v1.GET("/summary", SummaryHandler)

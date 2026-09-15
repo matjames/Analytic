@@ -4,16 +4,17 @@ import "time"
 
 // ObjectLink defines cross-application relationships in the StatGate ecosystem
 type ObjectLink struct {
-	ID             int                    `json:"id"`
-	SourceType     string                 `json:"source_type"`
-	SourceID       string                 `json:"source_id"`
-	TargetType     string                 `json:"target_type"`
-	TargetID       string                 `json:"target_id"`
-	RelationType   string                 `json:"relation_type"`
-	TenantID       string                 `json:"tenant_id"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
-	CreatedBy      string                 `json:"created_by,omitempty"`
-	CreatedAt      time.Time              `json:"created_at"`
+	ID           int                    `json:"id"`
+	SourceType   string                 `json:"source_type"`
+	SourceID     string                 `json:"source_id"`
+	TargetType   string                 `json:"target_type"`
+	TargetID     string                 `json:"target_id"`
+	RelationType string                 `json:"relation_type"`
+	TenantID     string                 `json:"tenant_id"`
+	WorkspaceID  string                 `json:"workspace_id,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	CreatedBy    string                 `json:"created_by,omitempty"`
+	CreatedAt    time.Time              `json:"created_at"`
 }
 
 // AuditLog captures security and operational activities across App 12
@@ -24,6 +25,7 @@ type AuditLog struct {
 	ResourceID     string                 `json:"resource_id"`
 	ActorID        string                 `json:"actor_id"`
 	ActorTenantID  string                 `json:"actor_tenant_id"`
+	WorkspaceID    string                 `json:"workspace_id,omitempty"`
 	Status         string                 `json:"status"` // SUCCESS, FAILED, DENIED
 	Details        map[string]interface{} `json:"details,omitempty"`
 	IPAddress      string                 `json:"ip_address,omitempty"`

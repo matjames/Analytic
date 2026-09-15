@@ -21,6 +21,9 @@ func RegisterRoutes(r *mux.Router) {
 	// Stage 2: workspace context + Enterprise Core membership enforcement.
 	api.Use(tenant.WorkspaceContext)
 	api.Use(tenant.WorkspaceMembership("", nil))
+	if discussionHandler != nil {
+		api.HandleFunc("/discussions", discussionHandler.Create).Methods("POST")
+	}
 
 	// ── GIS Service & Vector Engine (P44) ──
 	api.HandleFunc("/layers", ListLayersHandler).Methods("GET")
@@ -72,4 +75,11 @@ func RegisterRoutes(r *mux.Router) {
 	api.HandleFunc("/links", CreateLinkHandler).Methods("POST")
 	api.HandleFunc("/links", ListLinksHandler).Methods("GET")
 	api.HandleFunc("/summary", SummaryHandler).Methods("GET")
+}
+
+var discussionHandler *DiscussionHandler
+
+// ConfigureStatChat enables the canonical object-discussion boundary.
+func ConfigureStatChat(baseURL, internalKey string) {
+	discussionHandler = NewDiscussionHandler(NewStatChatIntegration(baseURL, internalKey))
 }

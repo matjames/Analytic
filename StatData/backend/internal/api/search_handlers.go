@@ -71,6 +71,7 @@ func (h *SearchHandler) IndexDocument(c *gin.Context) {
 	}
 
 	doc.TenantID = getTenantID(c)
+	doc.WorkspaceID = getWorkspaceID(c)
 	if doc.IndexName == "" {
 		doc.IndexName = "statgate_global"
 	}
@@ -103,6 +104,7 @@ func (h *SearchHandler) CreateSavedSearch(c *gin.Context) {
 		return
 	}
 	ss.TenantID = getTenantID(c)
+	ss.WorkspaceID = getWorkspaceID(c)
 	ss.CreatedBy = getUserID(c)
 
 	if err := h.store.CreateSavedSearch(c.Request.Context(), &ss); err != nil {

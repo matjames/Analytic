@@ -50,7 +50,7 @@ func (w *EventWorker) PublishDeviceAlert(ctx context.Context, alert *models.IoTA
 	}
 
 	if w.eventBus != nil {
-		_ = w.eventBus.Publish(ctx, evt)
+		_ = w.eventBus.PublishDurable(ctx, evt)
 	}
 
 	// Register in object links
@@ -86,7 +86,7 @@ func (w *EventWorker) PublishTelemetryIngested(ctx context.Context, deviceID, te
 	}
 
 	if w.eventBus != nil {
-		return w.eventBus.Publish(ctx, evt)
+		return w.eventBus.PublishDurable(ctx, evt)
 	}
 	return nil
 }
@@ -112,7 +112,7 @@ func (w *EventWorker) PublishFieldSubmission(ctx context.Context, sub *models.Mo
 	}
 
 	if w.eventBus != nil {
-		_ = w.eventBus.Publish(ctx, evt)
+		_ = w.eventBus.PublishDurable(ctx, evt)
 	}
 
 	// Register in object links
@@ -149,7 +149,7 @@ func (w *EventWorker) PublishSyncCompleted(ctx context.Context, workerID, device
 	}
 
 	if w.eventBus != nil {
-		return w.eventBus.Publish(ctx, evt)
+		return w.eventBus.PublishDurable(ctx, evt)
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func (w *EventWorker) PublishConflictDetected(ctx context.Context, conflict *mod
 	}
 
 	if w.eventBus != nil {
-		return w.eventBus.Publish(ctx, evt)
+		return w.eventBus.PublishDurable(ctx, evt)
 	}
 	return nil
 }
@@ -187,7 +187,7 @@ func (w *EventWorker) StartEventListener(ctx context.Context) {
 		return
 	}
 
-	_ = w.eventBus.Subscribe(ctx, func(c context.Context, evt events.EnterpriseEvent) error {
+	_ = w.eventBus.SubscribeDurable(ctx, "statiot", "runtime", func(c context.Context, evt events.EnterpriseEvent) error {
 		log.Printf("[EventWorker] StatIoT received event %s (%s) on object %s:%s",
 			evt.EventType, evt.EventID, evt.ObjectType, evt.ObjectID)
 

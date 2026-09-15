@@ -22,6 +22,9 @@ func RegisterRoutes(r *mux.Router) {
 	// Stage 2: workspace context + Enterprise Core membership enforcement.
 	api.Use(tenant.WorkspaceContext)
 	api.Use(tenant.WorkspaceMembership("", nil))
+	if discussionHandler != nil {
+		api.HandleFunc("/discussions", discussionHandler.Create).Methods("POST")
+	}
 
 	// ── P24: LMS, Courses, Exams, CPD Certificates & Badges ──
 	api.HandleFunc("/courses", ListCoursesHandler).Methods("GET")
@@ -92,4 +95,11 @@ func RegisterRoutes(r *mux.Router) {
 
 	// ── Overview ──
 	api.HandleFunc("/summary", SummaryHandler).Methods("GET")
+}
+
+var discussionHandler *DiscussionHandler
+
+// ConfigureStatChat enables tenant-scoped object discussions.
+func ConfigureStatChat(baseURL, internalKey string) {
+	discussionHandler = NewDiscussionHandler(NewStatChatIntegration(baseURL, internalKey))
 }

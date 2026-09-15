@@ -26,6 +26,7 @@ func (h *LinkHandler) CreateObjectLink(c *gin.Context) {
 		return
 	}
 	link.TenantID = getTenantID(c)
+	link.WorkspaceID = getWorkspaceID(c)
 	link.CreatedBy = getUserID(c)
 
 	if err := h.store.CreateObjectLink(c.Request.Context(), &link); err != nil {

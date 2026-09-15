@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	platformevents "github.com/matjames/statgate-lib/events"
 )
 
-var redisClient *redis.Client
+var trustEventBus *platformevents.EventBus
 
 func initRedis() error {
 	host := getEnv("REDIS_HOST", "redis")
@@ -22,41 +22,29 @@ func initRedis() error {
 		return nil
 	}
 
-	redisClient = redis.NewClient(&redis.Options{
-		Addr:     host + ":" + port,
-		Password: "",
-		DB:       0,
+	bus, err := platformevents.NewEventBus(platformevents.Config{
+		RedisAddr: host + ":" + port,
+		Source:    "stattrust",
+		Group:     "stattrust",
+		Consumer:  "runtime",
 	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Printf("Warning: Redis connection failed on %s:%s (continuing with in-memory bus): %v", host, port, err)
+	if err != nil {
+		log.Printf("Warning: shared Redis event bus initialization failed: %v", err)
 		return err
 	}
+	if !bus.RedisAvailable(context.Background()) {
+		log.Printf("Warning: shared Redis event bus is unavailable on %s:%s", host, port)
+		return fmt.Errorf("shared Redis event bus unavailable on %s:%s", host, port)
+	}
 
+	trustEventBus = bus
 	log.Printf("Connected to Redis event bus on %s:%s", host, port)
 	go startEventListener()
 	return nil
 }
 
-// EnterpriseEvent represents the universal message schema across StatGate.
-type EnterpriseEvent struct {
-	ID          string                 `json:"id"`
-	EventType   string                 `json:"event_type"`
-	Source      string                 `json:"source"`
-	ObjectType  string                 `json:"object_type"`
-	ObjectID    string                 `json:"object_id"`
-	Actor       string                 `json:"actor"`
-	TenantID    string                 `json:"tenant_id"`
-	Payload     map[string]interface{} `json:"payload"`
-	Timestamp   string                 `json:"timestamp"`
-	Correlation string                 `json:"correlation_id,omitempty"`
-}
-
 func publishEvent(eventType, objectType, objectID, actor, tenantID string, payload map[string]interface{}) {
-	if redisClient == nil {
+	if trustEventBus == nil {
 		return
 	}
 
@@ -68,67 +56,52 @@ func publishEvent(eventType, objectType, objectID, actor, tenantID string, paylo
 		tenantID = "tenant-alpha"
 	}
 
-	event := EnterpriseEvent{
-		ID:          eventID,
-		EventType:   eventType,
-		Source:      "stattrust",
-		ObjectType:  objectType,
-		ObjectID:    objectID,
-		Actor:       actor,
-		TenantID:    tenantID,
-		Payload:     payload,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
-		Correlation: fmt.Sprintf("corr_%d", time.Now().UnixNano()),
+	event := platformevents.EnterpriseEvent{
+		EventID:       eventID,
+		EventType:     eventType,
+		Source:        "stattrust",
+		ObjectType:    objectType,
+		ObjectID:      objectID,
+		UserID:        actor,
+		TenantID:      tenantID,
+		Payload:       payload,
+		CorrelationID: fmt.Sprintf("corr_%d", time.Now().UnixNano()),
+		Timestamp:     time.Now().UTC(),
+		Version:       "1.0",
 	}
 
-	data, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("Error marshalling event %s: %v", eventType, err)
-		return
+	if err := trustEventBus.PublishDurable(context.Background(), event); err != nil {
+		log.Printf("Error publishing durable event %s: %v", eventType, err)
 	}
-
-	channel := getEnv("STATGATE_EVENT_CHANNEL", "statgate:events")
-	ctx := context.Background()
-	_ = redisClient.Publish(ctx, channel, string(data)).Err()
-	_ = redisClient.LPush(ctx, "statgate:event:history", string(data)).Err()
-	_ = redisClient.LTrim(ctx, "statgate:event:history", 0, 999).Err()
 }
 
 func startEventListener() {
-	if redisClient == nil {
+	if trustEventBus == nil {
 		return
 	}
-	channel := getEnv("STATGATE_EVENT_CHANNEL", "statgate:events")
-	pubsub := redisClient.Subscribe(context.Background(), channel)
-	ch := pubsub.Channel()
 
-	log.Printf("StatTrust listening for enterprise events on channel: %s", channel)
-
-	for msg := range ch {
-		var evt EnterpriseEvent
-		if err := json.Unmarshal([]byte(msg.Payload), &evt); err != nil {
-			continue
-		}
-
-		// Don't loop over own events
+	log.Printf("StatTrust listening for durable enterprise events in group stattrust")
+	if err := trustEventBus.SubscribeDurable(context.Background(), "stattrust", "runtime", func(ctx context.Context, evt platformevents.EnterpriseEvent) error {
+		// Don't loop over own events.
 		if evt.Source == "stattrust" {
-			continue
+			return nil
 		}
 
-		// Process cross-app events:
-		// 1. High-integrity mutations are automatically notarized into the Immutable Audit Ledger
+		// High-integrity mutations are automatically notarized into the ledger.
 		if strings.HasSuffix(evt.EventType, ".created") || strings.HasSuffix(evt.EventType, ".approved") || strings.HasSuffix(evt.EventType, ".published") {
 			if globalStore != nil {
-				globalStore.AppendLedger(evt.EventType, evt.Source, evt.Actor, evt.Payload)
+				globalStore.AppendLedger(evt.EventType, evt.Source, evt.UserID, evt.Payload)
 			}
 		}
 
-		// 2. Perform automated DLP & Anomaly inspection on incoming payloads
 		inspectEventForThreats(evt)
+		return nil
+	}); err != nil {
+		log.Printf("StatTrust durable event listener failed: %v", err)
 	}
 }
 
-func inspectEventForThreats(evt EnterpriseEvent) {
+func inspectEventForThreats(evt platformevents.EnterpriseEvent) {
 	// Simple pattern scanning across event payloads
 	b, _ := json.Marshal(evt.Payload)
 	raw := string(b)
@@ -146,8 +119,8 @@ func inspectEventForThreats(evt EnterpriseEvent) {
 			AffectedAsset:  evt.EventType,
 			AssignedTo:     "Automated SecOps Guard",
 			Details: map[string]interface{}{
-				"event_id":   evt.ID,
-				"actor":      evt.Actor,
+				"event_id":   evt.EventID,
+				"actor":      evt.UserID,
 				"rule_fired": "SECRET_IN_EVENT_PAYLOAD",
 			},
 			RemediationLog: []string{"Flagged for audit review", "Alert broadcasted to SecOps"},

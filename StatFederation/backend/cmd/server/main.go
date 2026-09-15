@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -57,6 +59,9 @@ func main() {
 		appStore = store.NewMemStore()
 	} else {
 		log.Println("[Database] PostgreSQL connection pool established successfully.")
+		if err := applyMigrations(dbConn); err != nil {
+			log.Fatalf("[Database] Migration failed: %v", err)
+		}
 		appStore = store.NewPGStore(dbConn)
 	}
 
@@ -120,12 +125,13 @@ func main() {
 	)
 
 	router := api.SetupRouter(api.RouterConfig{
-		Handlers:      handlers,
-		HealthChecker: healthChecker,
-		Metrics:       promMetrics,
-		AuthValidator: authVal,
-		CORSOrigin:    cfg.CORSAllowedOrigin,
-		Env:           cfg.Env,
+		Handlers:          handlers,
+		DiscussionHandler: api.NewDiscussionHandler(appStore, api.NewStatChatIntegration(os.Getenv("STATCHAT_API_URL"), os.Getenv("STATGATE_INTERNAL_API_KEY"))),
+		HealthChecker:     healthChecker,
+		Metrics:           promMetrics,
+		AuthValidator:     authVal,
+		CORSOrigin:        cfg.CORSAllowedOrigin,
+		Env:               cfg.Env,
 	})
 
 	// 8. Start HTTP Server
@@ -165,4 +171,26 @@ func main() {
 	}
 
 	log.Println("[Shutdown] StatFederation service stopped.")
+}
+
+func applyMigrations(db *sql.DB) error {
+	migrationsDir := os.Getenv("STATFEDERATION_MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+	}
+	// The base schema is provisioned by postgres-init as the owning role. The
+	// service applies only additive migrations so startup never needs ownership
+	// of existing tables.
+	for _, name := range []string{"002_workspace_scope.sql"} {
+		path := filepath.Join(migrationsDir, name)
+		script, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		if _, err := db.Exec(string(script)); err != nil {
+			return fmt.Errorf("apply %s: %w", path, err)
+		}
+		log.Printf("[Database] Applied migration %s", name)
+	}
+	return nil
 }

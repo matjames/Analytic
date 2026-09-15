@@ -10,16 +10,18 @@ import (
 	"github.com/matjames/statgate-lib/health"
 	"github.com/matjames/statgate-lib/metrics"
 	"github.com/matjames/statgate-lib/tenant"
+	"statdata-backend/internal/store"
 )
 
 // RouterConfig holds initialization requirements for the Gin router
 type RouterConfig struct {
-	Handlers      *Handlers
-	HealthChecker *health.Checker
-	Metrics       *metrics.Metrics
-	AuthValidator *auth.Validator
-	CORSOrigin    string
-	Env           string
+	Handlers          *Handlers
+	DiscussionHandler *DiscussionHandler
+	HealthChecker     *health.Checker
+	Metrics           *metrics.Metrics
+	AuthValidator     *auth.Validator
+	CORSOrigin        string
+	Env               string
 }
 
 // SetupRouter initializes the Gin engine with all routes, middleware, and metrics
@@ -79,6 +81,13 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	// Enterprise Core (no-op when no workspace is selected or unauthenticated).
 	api.Use(tenant.GinWorkspaceContext())
 	api.Use(tenant.GinWorkspaceMembership("", nil))
+	api.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(store.WithWorkspace(c.Request.Context(), getWorkspaceID(c)))
+		c.Next()
+	})
+	if cfg.DiscussionHandler != nil {
+		api.POST("/discussions", cfg.DiscussionHandler.Create)
+	}
 
 	h := cfg.Handlers
 

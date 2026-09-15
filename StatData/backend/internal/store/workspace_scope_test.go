@@ -100,12 +100,58 @@ func TestWorkspaceReadContract(t *testing.T) {
 	}{
 		{"ws-1", "ws-1", true},
 		{"ws-1", "ws-2", false},
-		{"", "ws-2", true},  // legacy resource visible
-		{"ws-1", "", true},  // no selection: tenant-wide view
+		{"", "ws-2", true}, // legacy resource visible
+		{"ws-1", "", true}, // no selection: tenant-wide view
 	}
 	for i, tc := range cases {
 		if got := tc.existing == tc.selected || tc.selected == "" || tc.existing == ""; got != tc.expect {
 			t.Fatalf("case %d: got %v want %v", i, got, tc.expect)
 		}
+	}
+}
+
+func TestMemStoreLegacyDomainsRespectWorkspaceContext(t *testing.T) {
+	m := NewMemStore()
+	ctxAlpha := WithWorkspace(context.Background(), "ws-alpha")
+	ctxBeta := WithWorkspace(context.Background(), "ws-beta")
+
+	exp := &models.Experiment{ID: "exp-alpha", Name: "Alpha", TenantID: "tenant", WorkspaceID: "ws-alpha"}
+	if err := m.CreateExperiment(ctxAlpha, exp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.GetExperimentByID(ctxBeta, exp.ID); err == nil {
+		t.Fatal("cross-workspace experiment read was allowed")
+	}
+
+	model := &models.RegisteredModel{ID: "model-alpha", Name: "Alpha Model", Domain: "STAT", TenantID: "tenant", WorkspaceID: "ws-alpha"}
+	if err := m.CreateRegisteredModel(ctxAlpha, model); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.GetRegisteredModelByID(ctxBeta, model.ID); err == nil {
+		t.Fatal("cross-workspace model read was allowed")
+	}
+
+	doc := &models.IndexedDocument{ID: "doc-alpha", IndexName: "global", ResourceID: "exp-alpha", ResourceType: "EXPERIMENT", Title: "Alpha", Content: "alpha", Domain: "STAT", TenantID: "tenant", WorkspaceID: "ws-alpha"}
+	if err := m.IndexDocument(ctxAlpha, doc); err != nil {
+		t.Fatal(err)
+	}
+	results, err := m.Search(ctxBeta, &models.HybridSearchRequest{TenantID: "tenant", Query: "", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range results.Results {
+		if result.DocumentID == doc.ID {
+			t.Fatal("cross-workspace indexed document leaked into search")
+		}
+	}
+
+	ss := &models.SavedSearch{ID: "saved-alpha", Name: "Alpha", Query: "alpha", TenantID: "tenant", CreatedBy: "user"}
+	if err := m.CreateSavedSearch(ctxAlpha, ss); err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := m.ListSavedSearches(ctxBeta, "tenant", "user"); err != nil {
+		t.Fatal(err)
+	} else if len(saved) != 0 {
+		t.Fatal("cross-workspace saved search leaked")
 	}
 }

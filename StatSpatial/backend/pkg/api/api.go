@@ -15,6 +15,9 @@ func RegisterRoutes(r *mux.Router) {
 	apiV1.Use(CORSMiddleware)
 	apiV1.Use(LoggingMiddleware)
 	apiV1.Use(AuthMiddleware)
+	if discussionHandler != nil {
+		apiV1.HandleFunc("/discussions", discussionHandler.Create).Methods("POST")
+	}
 
 	// Admin Units
 	apiV1.HandleFunc("/admin-units", ListAdminUnitsHandler).Methods("GET")
@@ -93,3 +96,9 @@ func RegisterRoutes(r *mux.Router) {
 	apiSpatial.HandleFunc("/summary", GetSummaryHandler).Methods("GET")
 }
 
+var discussionHandler *DiscussionHandler
+
+// ConfigureStatChat enables tenant-scoped object discussions.
+func ConfigureStatChat(baseURL, internalKey string) {
+	discussionHandler = NewDiscussionHandler(NewStatChatIntegration(baseURL, internalKey))
+}

@@ -62,7 +62,7 @@ func emitEvent(ctx context.Context, eventType, objectType, objectID string, payl
 		Version:    "1.0",
 	}
 
-	if err := EnterpriseBus.Publish(ctx, evt); err != nil {
+	if err := EnterpriseBus.PublishDurable(ctx, evt); err != nil {
 		log.Printf("[%s] enterprise event publish failed (%s %s:%s): %v", SourceApplication, eventType, objectType, objectID, err)
 	}
 }

@@ -15,12 +15,13 @@ import (
 
 // RouterConfig holds initialization requirements for the Gin router
 type RouterConfig struct {
-	Handlers      *Handlers
-	HealthChecker *health.Checker
-	Metrics       *metrics.Metrics
-	AuthValidator *auth.Validator
-	CORSOrigin    string
-	Env           string
+	Handlers          *Handlers
+	DiscussionHandler *DiscussionHandler
+	HealthChecker     *health.Checker
+	Metrics           *metrics.Metrics
+	AuthValidator     *auth.Validator
+	CORSOrigin        string
+	Env               string
 }
 
 // SetupRouter initializes the Gin engine with all routes, middleware, and metrics
@@ -88,6 +89,9 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "workspace_id", workspaceID))
 		c.Next()
 	})
+	if cfg.DiscussionHandler != nil {
+		api.POST("/discussions", cfg.DiscussionHandler.Create)
+	}
 
 	h := cfg.Handlers
 

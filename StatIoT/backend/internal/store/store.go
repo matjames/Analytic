@@ -101,7 +101,7 @@ type MemStore struct {
 	devices     map[string]*models.IoTDevice
 	devicesUID  map[string]string // UID -> ID
 	sensors     map[string][]models.SensorRegistryItem
-	telemetry   map[string][]models.TelemetryRecord // DeviceID -> Records
+	telemetry   map[string][]models.TelemetryRecord  // DeviceID -> Records
 	configs     map[string]*models.EdgeConfiguration // DeviceID -> Config
 	firmwares   map[string]*models.FirmwareRelease   // DeviceType -> Release
 	alerts      map[string]*models.IoTAlert
@@ -110,9 +110,9 @@ type MemStore struct {
 	visits      map[string]*models.FieldVisit
 	tasks       map[string]*models.VisitTask
 	forms       map[string]*models.MobileFormDefinition
-	formsCode   map[string]string // Code -> ID
+	formsCode   map[string]string                   // Code -> ID
 	submissions map[string]*models.MobileSubmission // ClientSubmissionID -> Submission
-	breadcrumbs map[string][]models.GPSBreadcrumb // WorkerID -> Breadcrumbs
+	breadcrumbs map[string][]models.GPSBreadcrumb   // WorkerID -> Breadcrumbs
 	geofences   map[string]*models.GeofenceZone
 	conflicts   map[string]*models.ConflictRecord
 	objectLinks []models.ObjectLink
@@ -980,19 +980,20 @@ func (p *PGStore) RegisterDevice(ctx context.Context, dev *models.IoTDevice) err
 		INSERT INTO statiot.iot_devices (
 			id, device_uid, name, device_type, protocol, gateway_id, auth_token_hash,
 			firmware_version, status, battery_level, signal_strength_dbm, latitude,
-			longitude, altitude, tenant_id, org_id, config_payload, last_seen_at, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			longitude, altitude, tenant_id, workspace_id, org_id, config_payload, last_seen_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT (device_uid) DO UPDATE SET
 			name = EXCLUDED.name,
 			status = EXCLUDED.status,
 			firmware_version = EXCLUDED.firmware_version,
+			workspace_id = EXCLUDED.workspace_id,
 			last_seen_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		dev.ID, dev.DeviceUID, dev.Name, dev.DeviceType, dev.Protocol, dev.GatewayID, dev.AuthTokenHash,
 		dev.FirmwareVersion, dev.Status, dev.BatteryLevel, dev.SignalStrengthDBM, dev.Latitude,
-		dev.Longitude, dev.Altitude, dev.TenantID, dev.OrgID, cfgJSON,
+		dev.Longitude, dev.Altitude, dev.TenantID, dev.WorkspaceID, dev.OrgID, cfgJSON,
 	)
 	return err
 }
@@ -1001,7 +1002,7 @@ func (p *PGStore) GetDevice(ctx context.Context, id string) (*models.IoTDevice, 
 	query := `
 		SELECT id, device_uid, name, device_type, protocol, gateway_id, firmware_version,
 		       status, battery_level, signal_strength_dbm, latitude, longitude, altitude,
-		       tenant_id, org_id, config_payload, last_seen_at, created_at, updated_at
+		       tenant_id, workspace_id, org_id, config_payload, last_seen_at, created_at, updated_at
 		FROM statiot.iot_devices WHERE id = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, id)
@@ -1010,7 +1011,7 @@ func (p *PGStore) GetDevice(ctx context.Context, id string) (*models.IoTDevice, 
 	err := row.Scan(
 		&dev.ID, &dev.DeviceUID, &dev.Name, &dev.DeviceType, &dev.Protocol, &dev.GatewayID,
 		&dev.FirmwareVersion, &dev.Status, &dev.BatteryLevel, &dev.SignalStrengthDBM,
-		&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.OrgID,
+		&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.WorkspaceID, &dev.OrgID,
 		&cfgJSON, &dev.LastSeenAt, &dev.CreatedAt, &dev.UpdatedAt,
 	)
 	if err != nil {
@@ -1026,7 +1027,7 @@ func (p *PGStore) GetDeviceByUID(ctx context.Context, uid string) (*models.IoTDe
 	query := `
 		SELECT id, device_uid, name, device_type, protocol, gateway_id, firmware_version,
 		       status, battery_level, signal_strength_dbm, latitude, longitude, altitude,
-		       tenant_id, org_id, config_payload, last_seen_at, created_at, updated_at
+		       tenant_id, workspace_id, org_id, config_payload, last_seen_at, created_at, updated_at
 		FROM statiot.iot_devices WHERE device_uid = $1
 	`
 	row := p.db.QueryRowContext(ctx, query, uid)
@@ -1035,7 +1036,7 @@ func (p *PGStore) GetDeviceByUID(ctx context.Context, uid string) (*models.IoTDe
 	err := row.Scan(
 		&dev.ID, &dev.DeviceUID, &dev.Name, &dev.DeviceType, &dev.Protocol, &dev.GatewayID,
 		&dev.FirmwareVersion, &dev.Status, &dev.BatteryLevel, &dev.SignalStrengthDBM,
-		&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.OrgID,
+		&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.WorkspaceID, &dev.OrgID,
 		&cfgJSON, &dev.LastSeenAt, &dev.CreatedAt, &dev.UpdatedAt,
 	)
 	if err != nil {
@@ -1051,7 +1052,7 @@ func (p *PGStore) ListDevices(ctx context.Context, tenantID, workspaceID string)
 	query := `
 		SELECT id, device_uid, name, device_type, protocol, gateway_id, firmware_version,
 		       status, battery_level, signal_strength_dbm, latitude, longitude, altitude,
-		       tenant_id, org_id, config_payload, last_seen_at, created_at, updated_at
+		       tenant_id, workspace_id, org_id, config_payload, last_seen_at, created_at, updated_at
 		FROM statiot.iot_devices WHERE ($1 = '' OR tenant_id = $1)
 		AND ($2 = '' OR workspace_id = $2 OR workspace_id = '')
 		ORDER BY created_at DESC
@@ -1069,7 +1070,7 @@ func (p *PGStore) ListDevices(ctx context.Context, tenantID, workspaceID string)
 		if err := rows.Scan(
 			&dev.ID, &dev.DeviceUID, &dev.Name, &dev.DeviceType, &dev.Protocol, &dev.GatewayID,
 			&dev.FirmwareVersion, &dev.Status, &dev.BatteryLevel, &dev.SignalStrengthDBM,
-			&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.OrgID,
+			&dev.Latitude, &dev.Longitude, &dev.Altitude, &dev.TenantID, &dev.WorkspaceID, &dev.OrgID,
 			&cfgJSON, &dev.LastSeenAt, &dev.CreatedAt, &dev.UpdatedAt,
 		); err != nil {
 			return nil, err

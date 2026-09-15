@@ -16,62 +16,62 @@ import (
 
 // MemStore provides a high-fidelity in-memory implementation of Store
 type MemStore struct {
-	mu           sync.RWMutex
-	datasets     map[string]*models.Dataset
-	dataSources  map[string]*models.DataSource
-	schemas      map[string]*models.SchemaDefinition
-	contracts    map[string]*models.DataContract
-	qualityRules map[string]*models.DataQualityRule
-	qualityReps  map[string]*models.DataQualityReport
-	lineageNodes map[string]*models.LineageNode
-	lineageEdges map[string]*models.LineageEdge
-	pipelines    map[string]*models.DataPipeline
-	pipelineRuns map[string]*models.PipelineRun
+	mu            sync.RWMutex
+	datasets      map[string]*models.Dataset
+	dataSources   map[string]*models.DataSource
+	schemas       map[string]*models.SchemaDefinition
+	contracts     map[string]*models.DataContract
+	qualityRules  map[string]*models.DataQualityRule
+	qualityReps   map[string]*models.DataQualityReport
+	lineageNodes  map[string]*models.LineageNode
+	lineageEdges  map[string]*models.LineageEdge
+	pipelines     map[string]*models.DataPipeline
+	pipelineRuns  map[string]*models.PipelineRun
 	streamingJobs map[string]*models.StreamingJob
-	featureViews map[string]*models.FeatureView
-	features     map[string]map[string]*models.FeatureRecord // featureViewID -> entityKey -> record
-	notebooks    map[string]*models.NotebookSession
-	experiments  map[string]*models.Experiment
-	expRuns      map[string]*models.ExperimentRun
-	models       map[string]*models.RegisteredModel
-	modelVers    map[string]*models.ModelVersion
-	computeNodes map[string]*models.ComputeNode
-	computeJobs  map[string]*models.ComputeJob
-	searchIdxs   map[string]*models.SearchIndex
-	indexedDocs  map[string]*models.IndexedDocument // docID -> doc
+	featureViews  map[string]*models.FeatureView
+	features      map[string]map[string]*models.FeatureRecord // featureViewID -> entityKey -> record
+	notebooks     map[string]*models.NotebookSession
+	experiments   map[string]*models.Experiment
+	expRuns       map[string]*models.ExperimentRun
+	models        map[string]*models.RegisteredModel
+	modelVers     map[string]*models.ModelVersion
+	computeNodes  map[string]*models.ComputeNode
+	computeJobs   map[string]*models.ComputeJob
+	searchIdxs    map[string]*models.SearchIndex
+	indexedDocs   map[string]*models.IndexedDocument // docID -> doc
 	savedSearches map[string]*models.SavedSearch
-	auditLogs    []*models.AuditLog
-	objectLinks  []*models.ObjectLink
+	auditLogs     []*models.AuditLog
+	objectLinks   []*models.ObjectLink
 }
 
 // NewMemStore instantiates MemStore and seeds default baseline records
 func NewMemStore() *MemStore {
 	m := &MemStore{
-		datasets:     make(map[string]*models.Dataset),
-		dataSources:  make(map[string]*models.DataSource),
-		schemas:      make(map[string]*models.SchemaDefinition),
-		contracts:    make(map[string]*models.DataContract),
-		qualityRules: make(map[string]*models.DataQualityRule),
-		qualityReps:  make(map[string]*models.DataQualityReport),
-		lineageNodes: make(map[string]*models.LineageNode),
-		lineageEdges: make(map[string]*models.LineageEdge),
-		pipelines:    make(map[string]*models.DataPipeline),
-		pipelineRuns: make(map[string]*models.PipelineRun),
+		datasets:      make(map[string]*models.Dataset),
+		dataSources:   make(map[string]*models.DataSource),
+		schemas:       make(map[string]*models.SchemaDefinition),
+		contracts:     make(map[string]*models.DataContract),
+		qualityRules:  make(map[string]*models.DataQualityRule),
+		qualityReps:   make(map[string]*models.DataQualityReport),
+		lineageNodes:  make(map[string]*models.LineageNode),
+		lineageEdges:  make(map[string]*models.LineageEdge),
+		pipelines:     make(map[string]*models.DataPipeline),
+		pipelineRuns:  make(map[string]*models.PipelineRun),
 		streamingJobs: make(map[string]*models.StreamingJob),
-		featureViews: make(map[string]*models.FeatureView),
-		features:     make(map[string]map[string]*models.FeatureRecord),
-		notebooks:    make(map[string]*models.NotebookSession),
-		experiments:  make(map[string]*models.Experiment),
-		expRuns:      make(map[string]*models.ExperimentRun),
-		models:       make(map[string]*models.RegisteredModel),
-		modelVers:    make(map[string]*models.ModelVersion),
-		computeNodes: make(map[string]*models.ComputeNode),
-		computeJobs:  make(map[string]*models.ComputeJob),
-		searchIdxs:   make(map[string]*models.SearchIndex),
-		indexedDocs:  make(map[string]*models.IndexedDocument),
+		featureViews:  make(map[string]*models.FeatureView),
+		features:      make(map[string]map[string]*models.FeatureRecord),
+		notebooks:     make(map[string]*models.NotebookSession),
+		experiments:   make(map[string]*models.Experiment),
+		expRuns:       make(map[string]*models.ExperimentRun),
+		models:        make(map[string]*models.RegisteredModel),
+		modelVers:     make(map[string]*models.ModelVersion),
+		computeNodes:  make(map[string]*models.ComputeNode),
+		computeJobs:   make(map[string]*models.ComputeJob),
+		searchIdxs:    make(map[string]*models.SearchIndex),
+		indexedDocs:   make(map[string]*models.IndexedDocument),
 		savedSearches: make(map[string]*models.SavedSearch),
-		auditLogs:    make([]*models.AuditLog, 0),
-		objectLinks:  make([]*models.ObjectLink, 0),
+		auditLogs:     make([]*models.AuditLog, 0),
+		objectLinks:   make([]*models.ObjectLink, 0),
 	}
 	m.seedDefaultData()
 	return m
@@ -992,6 +992,7 @@ func (m *MemStore) CreateNotebookSession(ctx context.Context, nb *models.Noteboo
 	if nb.ID == "" {
 		nb.ID = "nb-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &nb.WorkspaceID)
 	nb.CreatedAt = time.Now().UTC()
 	nb.UpdatedAt = nb.CreatedAt
 	m.notebooks[nb.ID] = nb
@@ -1002,7 +1003,7 @@ func (m *MemStore) GetNotebookSessionByID(ctx context.Context, id string) (*mode
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	nb, exists := m.notebooks[id]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, nb.WorkspaceID) {
 		return nil, errors.New("notebook session not found")
 	}
 	return nb, nil
@@ -1013,6 +1014,9 @@ func (m *MemStore) ListNotebookSessions(ctx context.Context, tenantID, language 
 	defer m.mu.RUnlock()
 	res := make([]*models.NotebookSession, 0)
 	for _, nb := range m.notebooks {
+		if !workspaceVisible(ctx, nb.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && nb.TenantID != tenantID && nb.TenantID != "default" {
 			continue
 		}
@@ -1028,7 +1032,7 @@ func (m *MemStore) UpdateNotebookSession(ctx context.Context, nb *models.Noteboo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	existing, exists := m.notebooks[nb.ID]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, existing.WorkspaceID) {
 		return errors.New("notebook session not found")
 	}
 	nb.UpdatedAt = time.Now().UTC()
@@ -1043,6 +1047,7 @@ func (m *MemStore) CreateExperiment(ctx context.Context, exp *models.Experiment)
 	if exp.ID == "" {
 		exp.ID = "exp-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &exp.WorkspaceID)
 	exp.CreatedAt = time.Now().UTC()
 	exp.UpdatedAt = exp.CreatedAt
 	m.experiments[exp.ID] = exp
@@ -1053,7 +1058,7 @@ func (m *MemStore) GetExperimentByID(ctx context.Context, id string) (*models.Ex
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	exp, exists := m.experiments[id]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, exp.WorkspaceID) {
 		return nil, errors.New("experiment not found")
 	}
 	return exp, nil
@@ -1064,6 +1069,9 @@ func (m *MemStore) ListExperiments(ctx context.Context, tenantID, domain string)
 	defer m.mu.RUnlock()
 	res := make([]*models.Experiment, 0)
 	for _, e := range m.experiments {
+		if !workspaceVisible(ctx, e.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && e.TenantID != tenantID && e.TenantID != "default" {
 			continue
 		}
@@ -1081,6 +1089,10 @@ func (m *MemStore) RecordExperimentRun(ctx context.Context, run *models.Experime
 	if run.ID == "" {
 		run.ID = "exprun-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &run.WorkspaceID)
+	if exp, ok := m.experiments[run.ExperimentID]; ok && !workspaceVisible(ctx, exp.WorkspaceID) {
+		return errors.New("experiment not found")
+	}
 	if run.StartTime.IsZero() {
 		run.StartTime = time.Now().UTC()
 	}
@@ -1092,7 +1104,7 @@ func (m *MemStore) GetExperimentRunByID(ctx context.Context, id string) (*models
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	run, exists := m.expRuns[id]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, run.WorkspaceID) {
 		return nil, errors.New("experiment run not found")
 	}
 	return run, nil
@@ -1103,6 +1115,9 @@ func (m *MemStore) ListExperimentRuns(ctx context.Context, experimentID, tenantI
 	defer m.mu.RUnlock()
 	res := make([]*models.ExperimentRun, 0)
 	for _, r := range m.expRuns {
+		if !workspaceVisible(ctx, r.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && r.TenantID != tenantID && r.TenantID != "default" {
 			continue
 		}
@@ -1120,6 +1135,7 @@ func (m *MemStore) CreateRegisteredModel(ctx context.Context, rm *models.Registe
 	if rm.ID == "" {
 		rm.ID = "model-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &rm.WorkspaceID)
 	rm.CreatedAt = time.Now().UTC()
 	rm.UpdatedAt = rm.CreatedAt
 	m.models[rm.ID] = rm
@@ -1140,7 +1156,7 @@ func (m *MemStore) GetRegisteredModelByID(ctx context.Context, id string) (*mode
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	model, exists := m.models[id]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, model.WorkspaceID) {
 		return nil, errors.New("registered model not found")
 	}
 	return model, nil
@@ -1151,6 +1167,9 @@ func (m *MemStore) ListRegisteredModels(ctx context.Context, tenantID, domain st
 	defer m.mu.RUnlock()
 	res := make([]*models.RegisteredModel, 0)
 	for _, mod := range m.models {
+		if !workspaceVisible(ctx, mod.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && mod.TenantID != tenantID && mod.TenantID != "default" {
 			continue
 		}
@@ -1167,6 +1186,15 @@ func (m *MemStore) CreateModelVersion(ctx context.Context, mv *models.ModelVersi
 	defer m.mu.Unlock()
 	if mv.ID == "" {
 		mv.ID = fmt.Sprintf("%s-v%d", mv.ModelID, mv.Version)
+	}
+	bindWorkspace(ctx, &mv.WorkspaceID)
+	if model, ok := m.models[mv.ModelID]; ok {
+		if !workspaceVisible(ctx, model.WorkspaceID) {
+			return errors.New("registered model not found")
+		}
+		if mv.WorkspaceID == "" {
+			mv.WorkspaceID = model.WorkspaceID
+		}
 	}
 	mv.CreatedAt = time.Now().UTC()
 	mv.UpdatedAt = mv.CreatedAt
@@ -1185,6 +1213,9 @@ func (m *MemStore) ListModelVersions(ctx context.Context, modelID, tenantID stri
 	defer m.mu.RUnlock()
 	res := make([]*models.ModelVersion, 0)
 	for _, v := range m.modelVers {
+		if !workspaceVisible(ctx, v.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && v.TenantID != tenantID && v.TenantID != "default" {
 			continue
 		}
@@ -1200,7 +1231,7 @@ func (m *MemStore) UpdateModelStage(ctx context.Context, versionID string, stage
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	v, exists := m.modelVers[versionID]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, v.WorkspaceID) {
 		return errors.New("model version not found")
 	}
 	v.Stage = stage
@@ -1218,6 +1249,7 @@ func (m *MemStore) RegisterComputeNode(ctx context.Context, node *models.Compute
 	if node.ID == "" {
 		node.ID = "node-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &node.WorkspaceID)
 	node.LastPing = time.Now().UTC()
 	m.computeNodes[node.ID] = node
 	return nil
@@ -1228,6 +1260,9 @@ func (m *MemStore) ListComputeNodes(ctx context.Context, tenantID string) ([]*mo
 	defer m.mu.RUnlock()
 	res := make([]*models.ComputeNode, 0)
 	for _, n := range m.computeNodes {
+		if !workspaceVisible(ctx, n.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && n.TenantID != tenantID && n.TenantID != "default" {
 			continue
 		}
@@ -1242,6 +1277,7 @@ func (m *MemStore) CreateComputeJob(ctx context.Context, job *models.ComputeJob)
 	if job.ID == "" {
 		job.ID = "cjob-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &job.WorkspaceID)
 	job.CreatedAt = time.Now().UTC()
 	job.Status = "QUEUED"
 	m.computeJobs[job.ID] = job
@@ -1252,7 +1288,7 @@ func (m *MemStore) GetComputeJobByID(ctx context.Context, id string) (*models.Co
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	job, exists := m.computeJobs[id]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, job.WorkspaceID) {
 		return nil, errors.New("compute job not found")
 	}
 	return job, nil
@@ -1263,6 +1299,9 @@ func (m *MemStore) ListComputeJobs(ctx context.Context, tenantID, status string)
 	defer m.mu.RUnlock()
 	res := make([]*models.ComputeJob, 0)
 	for _, j := range m.computeJobs {
+		if !workspaceVisible(ctx, j.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && j.TenantID != tenantID && j.TenantID != "default" {
 			continue
 		}
@@ -1277,6 +1316,9 @@ func (m *MemStore) ListComputeJobs(ctx context.Context, tenantID, status string)
 func (m *MemStore) UpdateComputeJob(ctx context.Context, job *models.ComputeJob) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if existing, ok := m.computeJobs[job.ID]; !ok || !workspaceVisible(ctx, existing.WorkspaceID) {
+		return errors.New("compute job not found")
+	}
 	m.computeJobs[job.ID] = job
 	return nil
 }
@@ -1289,6 +1331,7 @@ func (m *MemStore) CreateSearchIndex(ctx context.Context, idx *models.SearchInde
 	if idx.ID == "" {
 		idx.ID = "idx-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &idx.WorkspaceID)
 	idx.CreatedAt = time.Now().UTC()
 	idx.LastIndexedAt = idx.CreatedAt
 	m.searchIdxs[idx.IndexName] = idx
@@ -1299,7 +1342,7 @@ func (m *MemStore) GetSearchIndex(ctx context.Context, indexName, tenantID strin
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	idx, exists := m.searchIdxs[indexName]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, idx.WorkspaceID) {
 		return nil, errors.New("search index not found")
 	}
 	return idx, nil
@@ -1311,6 +1354,7 @@ func (m *MemStore) IndexDocument(ctx context.Context, doc *models.IndexedDocumen
 	if doc.ID == "" {
 		doc.ID = "doc-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &doc.WorkspaceID)
 	doc.IndexedAt = time.Now().UTC()
 	m.indexedDocs[doc.ID] = doc
 
@@ -1324,6 +1368,9 @@ func (m *MemStore) IndexDocument(ctx context.Context, doc *models.IndexedDocumen
 func (m *MemStore) DeleteIndexedDocument(ctx context.Context, indexName, documentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if doc, ok := m.indexedDocs[documentID]; !ok || !workspaceVisible(ctx, doc.WorkspaceID) {
+		return errors.New("indexed document not found")
+	}
 	delete(m.indexedDocs, documentID)
 	return nil
 }
@@ -1332,7 +1379,7 @@ func (m *MemStore) GetIndexedDocument(ctx context.Context, indexName, documentID
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	doc, exists := m.indexedDocs[documentID]
-	if !exists {
+	if !exists || !workspaceVisible(ctx, doc.WorkspaceID) {
 		return nil, errors.New("indexed document not found")
 	}
 	return doc, nil
@@ -1354,6 +1401,9 @@ func (m *MemStore) Search(ctx context.Context, req *models.HybridSearchRequest) 
 	facetType := make(map[string]int64)
 
 	for _, doc := range m.indexedDocs {
+		if !workspaceVisible(ctx, doc.WorkspaceID) {
+			continue
+		}
 		if req.TenantID != "" && doc.TenantID != req.TenantID && doc.TenantID != "default" {
 			continue
 		}
@@ -1458,6 +1508,9 @@ func (m *MemStore) GetSuggestions(ctx context.Context, prefix, tenantID string, 
 	p := strings.ToLower(prefix)
 	res := make([]string, 0)
 	for _, doc := range m.indexedDocs {
+		if !workspaceVisible(ctx, doc.WorkspaceID) {
+			continue
+		}
 		if strings.HasPrefix(strings.ToLower(doc.Title), p) {
 			res = append(res, doc.Title)
 		}
@@ -1479,6 +1532,7 @@ func (m *MemStore) CreateSavedSearch(ctx context.Context, ss *models.SavedSearch
 	if ss.ID == "" {
 		ss.ID = "ss-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &ss.WorkspaceID)
 	ss.CreatedAt = time.Now().UTC()
 	m.savedSearches[ss.ID] = ss
 	return nil
@@ -1489,6 +1543,9 @@ func (m *MemStore) ListSavedSearches(ctx context.Context, tenantID, createdBy st
 	defer m.mu.RUnlock()
 	res := make([]*models.SavedSearch, 0)
 	for _, ss := range m.savedSearches {
+		if !workspaceVisible(ctx, ss.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && ss.TenantID != tenantID && ss.TenantID != "default" {
 			continue
 		}
@@ -1508,6 +1565,7 @@ func (m *MemStore) LogAuditEvent(ctx context.Context, entry *models.AuditLog) er
 	if entry.ID == "" {
 		entry.ID = "audit-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &entry.WorkspaceID)
 	if entry.EventTimestamp.IsZero() {
 		entry.EventTimestamp = time.Now().UTC()
 	}
@@ -1521,6 +1579,9 @@ func (m *MemStore) ListAuditLogs(ctx context.Context, tenantID, resourceType str
 	res := make([]*models.AuditLog, 0, len(m.auditLogs))
 	for i := len(m.auditLogs) - 1; i >= 0; i-- {
 		entry := m.auditLogs[i]
+		if !workspaceVisible(ctx, entry.WorkspaceID) {
+			continue
+		}
 		if tenantID != "" && entry.ActorTenantID != tenantID && entry.ActorTenantID != "default" && entry.ActorTenantID != "" {
 			continue
 		}
@@ -1541,6 +1602,7 @@ func (m *MemStore) CreateObjectLink(ctx context.Context, link *models.ObjectLink
 	if link.CreatedAt.IsZero() {
 		link.CreatedAt = time.Now().UTC()
 	}
+	bindWorkspace(ctx, &link.WorkspaceID)
 	link.ID = len(m.objectLinks) + 1
 	m.objectLinks = append(m.objectLinks, link)
 	return nil
@@ -1551,6 +1613,9 @@ func (m *MemStore) GetObjectLinks(ctx context.Context, sourceType, sourceID, ten
 	defer m.mu.RUnlock()
 	res := make([]*models.ObjectLink, 0)
 	for _, l := range m.objectLinks {
+		if !workspaceVisible(ctx, l.WorkspaceID) {
+			continue
+		}
 		if (l.SourceType == sourceType && l.SourceID == sourceID) ||
 			(l.TargetType == sourceType && l.TargetID == sourceID) {
 			if tenantID != "" && l.TenantID != tenantID && l.TenantID != "default" && l.TenantID != "" {

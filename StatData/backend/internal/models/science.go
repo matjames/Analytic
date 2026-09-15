@@ -14,29 +14,30 @@ const (
 
 // NotebookSession represents an active or saved scientific notebook workspace
 type NotebookSession struct {
-	ID          string                 `json:"id"`
-	Title       string                 `json:"title"`
-	Language    string                 `json:"language"` // PYTHON, R, JULIA, SQL
-	KernelState string                 `json:"kernel_state"` // IDLE, BUSY, STOPPED, DEAD
-	DatasetRefs []string               `json:"dataset_refs,omitempty"`
-	Cells       []NotebookCell         `json:"cells"`
-	Variables   map[string]string      `json:"variables,omitempty"`
-	TenantID    string                 `json:"tenant_id"`
-	CreatedBy   string                 `json:"created_by"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	ID          string            `json:"id"`
+	Title       string            `json:"title"`
+	Language    string            `json:"language"`     // PYTHON, R, JULIA, SQL
+	KernelState string            `json:"kernel_state"` // IDLE, BUSY, STOPPED, DEAD
+	DatasetRefs []string          `json:"dataset_refs,omitempty"`
+	Cells       []NotebookCell    `json:"cells"`
+	Variables   map[string]string `json:"variables,omitempty"`
+	TenantID    string            `json:"tenant_id"`
+	WorkspaceID string            `json:"workspace_id,omitempty"`
+	CreatedBy   string            `json:"created_by"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 // NotebookCell represents a unit of computation in a scientific notebook
 type NotebookCell struct {
-	ID           string                 `json:"id"`
-	CellType     string                 `json:"cell_type"` // CODE, MARKDOWN, RAW
-	Source       string                 `json:"source"`
-	Output       string                 `json:"output,omitempty"`
-	RichOutput   map[string]interface{} `json:"rich_output,omitempty"` // charts, tables, HTML
-	ExecutionCount int                  `json:"execution_count"`
-	Status       string                 `json:"status"` // IDLE, RUNNING, SUCCESS, ERROR
-	ExecutionTimeMs int64               `json:"execution_time_ms"`
+	ID              string                 `json:"id"`
+	CellType        string                 `json:"cell_type"` // CODE, MARKDOWN, RAW
+	Source          string                 `json:"source"`
+	Output          string                 `json:"output,omitempty"`
+	RichOutput      map[string]interface{} `json:"rich_output,omitempty"` // charts, tables, HTML
+	ExecutionCount  int                    `json:"execution_count"`
+	Status          string                 `json:"status"` // IDLE, RUNNING, SUCCESS, ERROR
+	ExecutionTimeMs int64                  `json:"execution_time_ms"`
 }
 
 // NotebookCellExecution represents an incoming code execution request
@@ -49,16 +50,17 @@ type NotebookCellExecution struct {
 
 // Experiment represents a trackable scientific or ML experiment
 type Experiment struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Domain      string                 `json:"domain"` // EPIDEMIOLOGY, ECONOMETRICS, DEMOGRAPHICS, LLM_FINE_TUNING
-	Tags        []string               `json:"tags,omitempty"`
-	ArtifactURI string                 `json:"artifact_uri,omitempty"`
-	TenantID    string                 `json:"tenant_id"`
-	CreatedBy   string                 `json:"created_by"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Domain      string    `json:"domain"` // EPIDEMIOLOGY, ECONOMETRICS, DEMOGRAPHICS, LLM_FINE_TUNING
+	Tags        []string  `json:"tags,omitempty"`
+	ArtifactURI string    `json:"artifact_uri,omitempty"`
+	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // ExperimentRun represents a single trial / training run
@@ -75,6 +77,7 @@ type ExperimentRun struct {
 	EndTime      *time.Time             `json:"end_time,omitempty"`
 	DurationMs   int64                  `json:"duration_ms"`
 	TenantID     string                 `json:"tenant_id"`
+	WorkspaceID  string                 `json:"workspace_id,omitempty"`
 	CreatedBy    string                 `json:"created_by"`
 }
 
@@ -88,35 +91,37 @@ type ModelArtifact struct {
 
 // RegisteredModel represents a centralized ML/Statistical model in the model registry
 type RegisteredModel struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Domain      string                 `json:"domain"`
-	Framework   string                 `json:"framework"` // PYTORCH, TENSORFLOW, SCIKIT_LEARN, STAN, R_STAT
-	LatestStage ModelStage             `json:"latest_stage"`
-	Versions    []ModelVersion         `json:"versions,omitempty"`
-	TenantID    string                 `json:"tenant_id"`
-	CreatedBy   string                 `json:"created_by"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Domain      string         `json:"domain"`
+	Framework   string         `json:"framework"` // PYTORCH, TENSORFLOW, SCIKIT_LEARN, STAN, R_STAT
+	LatestStage ModelStage     `json:"latest_stage"`
+	Versions    []ModelVersion `json:"versions,omitempty"`
+	TenantID    string         `json:"tenant_id"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	CreatedBy   string         `json:"created_by"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 // ModelVersion represents an immutable tagged model release
 type ModelVersion struct {
-	ID             string                 `json:"id"`
-	ModelID        string                 `json:"model_id"`
-	Version        int                    `json:"version"`
-	Stage          ModelStage             `json:"stage"` // NONE, STAGING, PRODUCTION, ARCHIVED
-	SourceRunID    string                 `json:"source_run_id,omitempty"`
-	ArtifactURI    string                 `json:"artifact_uri"`
-	MetricsSummary map[string]float64     `json:"metrics_summary,omitempty"`
-	InputSchema    string                 `json:"input_schema,omitempty"`
-	OutputSchema   string                 `json:"output_schema,omitempty"`
-	Description    string                 `json:"description,omitempty"`
-	TenantID       string                 `json:"tenant_id"`
-	CreatedBy      string                 `json:"created_by"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	ID             string             `json:"id"`
+	ModelID        string             `json:"model_id"`
+	Version        int                `json:"version"`
+	Stage          ModelStage         `json:"stage"` // NONE, STAGING, PRODUCTION, ARCHIVED
+	SourceRunID    string             `json:"source_run_id,omitempty"`
+	ArtifactURI    string             `json:"artifact_uri"`
+	MetricsSummary map[string]float64 `json:"metrics_summary,omitempty"`
+	InputSchema    string             `json:"input_schema,omitempty"`
+	OutputSchema   string             `json:"output_schema,omitempty"`
+	Description    string             `json:"description,omitempty"`
+	TenantID       string             `json:"tenant_id"`
+	WorkspaceID    string             `json:"workspace_id,omitempty"`
+	CreatedBy      string             `json:"created_by"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
 // ComputeNode represents a cluster node available for scientific workloads
@@ -132,23 +137,25 @@ type ComputeNode struct {
 	AllocGPUs   int       `json:"alloc_gpus"`
 	Status      string    `json:"status"` // READY, BUSY, OFFLINE, MAINTENANCE
 	TenantID    string    `json:"tenant_id"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
 	LastPing    time.Time `json:"last_ping"`
 }
 
 // ComputeJob represents a scheduled computational task dispatched to the cluster
 type ComputeJob struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	JobType     string                 `json:"job_type"` // MONTE_CARLO, BAYESIAN_INFERENCE, EPIDEMIOLOGICAL_SIM, MODEL_TRAINING
-	AssignedNode string                `json:"assigned_node,omitempty"`
-	RequiredCPUs int                   `json:"required_cpus"`
-	RequiredRAMGB float64              `json:"required_ram_gb"`
-	RequiredGPUs int                   `json:"required_gpus"`
-	Status      string                 `json:"status"` // QUEUED, RUNNING, COMPLETED, FAILED
-	Params      map[string]interface{} `json:"params,omitempty"`
-	OutputData  map[string]interface{} `json:"output_data,omitempty"`
-	TenantID    string                 `json:"tenant_id"`
-	CreatedBy   string                 `json:"created_by"`
-	CreatedAt   time.Time              `json:"created_at"`
-	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	JobType       string                 `json:"job_type"` // MONTE_CARLO, BAYESIAN_INFERENCE, EPIDEMIOLOGICAL_SIM, MODEL_TRAINING
+	AssignedNode  string                 `json:"assigned_node,omitempty"`
+	RequiredCPUs  int                    `json:"required_cpus"`
+	RequiredRAMGB float64                `json:"required_ram_gb"`
+	RequiredGPUs  int                    `json:"required_gpus"`
+	Status        string                 `json:"status"` // QUEUED, RUNNING, COMPLETED, FAILED
+	Params        map[string]interface{} `json:"params,omitempty"`
+	OutputData    map[string]interface{} `json:"output_data,omitempty"`
+	TenantID      string                 `json:"tenant_id"`
+	WorkspaceID   string                 `json:"workspace_id,omitempty"`
+	CreatedBy     string                 `json:"created_by"`
+	CreatedAt     time.Time              `json:"created_at"`
+	CompletedAt   *time.Time             `json:"completed_at,omitempty"`
 }

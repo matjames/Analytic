@@ -37,7 +37,7 @@ func scanProcessDef(row row) (*model.ProcessDefinition, error) {
 	return &p, nil
 }
 
-const pdCols = `id, tenant_id, name, key, version, description, start_node, nodes, transitions, status, created_by, COALESCE(workspace_id, ''), created_at, updated_at`
+const pdCols = `id, tenant_id, COALESCE(workspace_id, ''), name, key, version, description, start_node, nodes, transitions, status, created_by, created_at, updated_at`
 
 func ListProcessDefinitions(ctx context.Context, tenantID, workspaceID string) ([]model.ProcessDefinition, error) {
 	query := `SELECT ` + pdCols + ` FROM process_definitions WHERE tenant_id=$1`

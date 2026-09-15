@@ -44,7 +44,7 @@ func StartEventConsumer(ctx context.Context) {
 		return
 	}
 	go func() {
-		err := EnterpriseBus.Subscribe(ctx, func(ctx context.Context, evt events.EnterpriseEvent) error {
+		err := EnterpriseBus.SubscribeDurable(ctx, "ai-autonomy", "runtime", func(ctx context.Context, evt events.EnterpriseEvent) error {
 			return HandleDomainEvent(ctx, evt)
 		})
 		if err != nil {
@@ -75,7 +75,7 @@ func emitEvent(ctx context.Context, eventType, objectType, objectID string, payl
 		Timestamp:  time.Now().UTC(),
 		Version:    "1.0",
 	}
-	if err := EnterpriseBus.Publish(ctx, evt); err != nil {
+	if err := EnterpriseBus.PublishDurable(ctx, evt); err != nil {
 		log.Printf("[%s] enterprise event publish failed (%s %s:%s): %v", SourceApplication, eventType, objectType, objectID, err)
 	}
 }

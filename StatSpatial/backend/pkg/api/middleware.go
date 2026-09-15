@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/matjames/statgate-lib/auth"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 type userContextKey string
@@ -139,11 +140,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "{\"error\":\"invalid_workspace\",\"message\":\"Workspace ID is too long\"}", http.StatusBadRequest)
 				return
 			}
-			for i, ch := range workspaceID {
-				if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9' && i > 0) || ch == '_') {
-					http.Error(w, "{\"error\":\"invalid_workspace\",\"message\":\"Workspace ID has invalid format\"}", http.StatusBadRequest)
-					return
-				}
+			if !tenant.ValidWorkspaceID(workspaceID) {
+				http.Error(w, "{\"error\":\"invalid_workspace\",\"message\":\"Workspace ID has invalid format\"}", http.StatusBadRequest)
+				return
 			}
 		}
 

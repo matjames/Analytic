@@ -41,8 +41,10 @@ func (h *FieldOpsHandlers) CreateWorker(c *gin.Context) {
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 	req.WorkspaceID = getWorkspaceID(c)
 	if req.Role == "" {
@@ -59,7 +61,7 @@ func (h *FieldOpsHandlers) CreateWorker(c *gin.Context) {
 
 // ListWorkers returns field workers in a tenant.
 func (h *FieldOpsHandlers) ListWorkers(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	workspaceID := getWorkspaceID(c)
 	workers, err := h.store.ListFieldWorkers(c.Request.Context(), tenantID, workspaceID)
 	if err != nil {
@@ -95,8 +97,10 @@ func (h *FieldOpsHandlers) RegisterMobileDevice(c *gin.Context) {
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 
 	if err := h.store.RegisterMobileDevice(c.Request.Context(), &req); err != nil {
@@ -125,8 +129,10 @@ func (h *FieldOpsHandlers) CreateVisit(c *gin.Context) {
 	if req.Status == "" {
 		req.Status = "SCHEDULED"
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 	if req.ScheduledStart.IsZero() {
 		req.ScheduledStart = time.Now().UTC()
@@ -212,8 +218,10 @@ func (h *FieldOpsHandlers) CreateFormDefinition(c *gin.Context) {
 	if req.Version == 0 {
 		req.Version = 1
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 
 	if err := h.store.CreateFormDefinition(c.Request.Context(), &req); err != nil {
@@ -226,7 +234,7 @@ func (h *FieldOpsHandlers) CreateFormDefinition(c *gin.Context) {
 
 // ListFormDefinitions returns active mobile form templates.
 func (h *FieldOpsHandlers) ListFormDefinitions(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	forms, err := h.store.ListFormDefinitions(c.Request.Context(), tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list forms", "details": err.Error()})
@@ -346,8 +354,10 @@ func (h *FieldOpsHandlers) CreateGeofence(c *gin.Context) {
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.TenantID = c.GetString("tenant_id")
 	if req.TenantID == "" {
-		req.TenantID = "default"
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated tenant is required"})
+		return
 	}
 
 	if err := h.store.CreateGeofence(c.Request.Context(), &req); err != nil {
@@ -360,7 +370,7 @@ func (h *FieldOpsHandlers) CreateGeofence(c *gin.Context) {
 
 // ListGeofences lists active geofences.
 func (h *FieldOpsHandlers) ListGeofences(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	zones, err := h.store.ListGeofences(c.Request.Context(), tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list geofences", "details": err.Error()})
@@ -371,7 +381,7 @@ func (h *FieldOpsHandlers) ListGeofences(c *gin.Context) {
 
 // ListConflicts lists sync conflict records.
 func (h *FieldOpsHandlers) ListConflicts(c *gin.Context) {
-	tenantID := c.Query("tenant_id")
+	tenantID := c.GetString("tenant_id")
 	status := c.Query("status")
 
 	conflicts, err := h.store.ListConflicts(c.Request.Context(), tenantID, status)
@@ -387,7 +397,7 @@ func (h *FieldOpsHandlers) ResolveConflict(c *gin.Context) {
 	conflictID := c.Param("id")
 	var req struct {
 		Strategy   models.ConflictResolutionStrategy `json:"strategy"`
-		ResolvedBy string                             `json:"resolved_by"`
+		ResolvedBy string                            `json:"resolved_by"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid resolution payload", "details": err.Error()})

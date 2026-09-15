@@ -39,6 +39,7 @@ func (ui *UniversalIndexer) IndexDataset(ctx context.Context, ds *models.Dataset
 		Tags:           ds.Tags,
 		Vector:         vec,
 		TenantID:       ds.TenantID,
+		WorkspaceID:    store.WorkspaceID(ctx),
 		IndexedAt:      time.Now().UTC(),
 		Metadata: map[string]interface{}{
 			"format":        ds.Format,
@@ -67,6 +68,7 @@ func (ui *UniversalIndexer) IndexModel(ctx context.Context, model *models.Regist
 		Tags:           []string{model.Domain, model.Framework, string(model.LatestStage)},
 		Vector:         vec,
 		TenantID:       model.TenantID,
+		WorkspaceID:    store.WorkspaceID(ctx),
 		IndexedAt:      time.Now().UTC(),
 		Metadata: map[string]interface{}{
 			"framework":    model.Framework,
@@ -94,6 +96,7 @@ func (ui *UniversalIndexer) IndexGeneric(ctx context.Context, resourceID, resour
 		Tags:           tags,
 		Vector:         vec,
 		TenantID:       tenantID,
+		WorkspaceID:    store.WorkspaceID(ctx),
 		IndexedAt:      time.Now().UTC(),
 	}
 	return ui.store.IndexDocument(ctx, doc)

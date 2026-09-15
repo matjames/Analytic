@@ -588,6 +588,7 @@ services:
       - ENTERPRISE_CORE_URL=http://statgate-enterprise-core:8096
       - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
     depends_on:
       postgres:
         condition: service_healthy
@@ -804,6 +805,13 @@ services:
       - ENTERPRISE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
       - ENTERPRISE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - ENTERPRISE_DB_SSLMODE=disable
+      - STATGATE_DB_HOST=postgres
+      - STATGATE_DB_PORT=5432
+      - STATGATE_DB_NAME=${KAGGLE_DB_NAME:-statgate_ml_staging}
+      - STATGATE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
+      - STATGATE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
+      - STATGATE_DB_SSLMODE=disable
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - PMS_API_URL=http://statgate-pms-api:8080
       - RMS_API_URL=http://statgate-rms-api:8080
       - REGISTRY_API_URL=http://statgate-registry-api:9090
@@ -980,6 +988,8 @@ services:
       - "8099:8099"
     environment:
       - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - KNOWLEDGE_PORT=8099
       - KNOWLEDGE_DB_HOST=postgres
       - KNOWLEDGE_DB_PORT=5432
@@ -1020,6 +1030,8 @@ services:
       - "8101:8101"
     environment:
       - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - AIENG_PORT=8101
       - AIENG_DB_HOST=postgres
       - AIENG_DB_PORT=5432
@@ -1060,6 +1072,8 @@ services:
       - "8102:8102"
     environment:
       - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - LMS_PORT=8102
       - LMS_DB_HOST=postgres
       - LMS_DB_PORT=5432
@@ -1100,6 +1114,8 @@ services:
       - "8103:8103"
     environment:
       - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - GIS_PORT=8103
       - GIS_DB_HOST=postgres
       - GIS_DB_PORT=5432
@@ -1140,6 +1156,8 @@ services:
       - "8104:8104"
     environment:
       - STATGATE_ENTERPRISE_API_URL=http://statgate-enterprise-core:8096/api
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - BPM_PORT=8104
       - BPM_DB_HOST=postgres
       - BPM_DB_PORT=5432
@@ -1187,6 +1205,8 @@ services:
       - STATFEDERATION_DB_USER=StatFederation
       - STATFEDERATION_DB_PASSWORD=${STATFEDERATION_DB_PASSWORD:?STATFEDERATION_DB_PASSWORD must be set}
       - STATFEDERATION_DB_NAME=statfederation
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATFEDERATION_DB_SSLMODE=disable
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
@@ -1233,6 +1253,8 @@ services:
     ports:
       - "8106:8106"
     environment:
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATIOT_PORT=8106
       - STATGATE_ENV=${STATGATE_ENV:-production}
       - STATIOT_DB_HOST=postgres
@@ -1272,6 +1294,8 @@ services:
     ports:
       - "8107:8107"
     environment:
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - PORT=8107
       - APP_ENV=${STATGATE_ENV:-production}
       - DB_HOST=postgres
@@ -1314,6 +1338,9 @@ services:
     ports:
       - "8108:4200"
     environment:
+      - STATCHAT_API_URL=http://statchat-backend:4000
+      - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - BACKEND_PORT=4200
       - STATSPATIAL_DB_HOST=postgres
       - STATSPATIAL_DB_PORT=5432
@@ -1398,13 +1425,14 @@ services:
   # ─── STATCITIZEN (Citizen Participation & Public Evidence Platform) ───
   statcitizen-api:
     build:
-      context: ./StatCitizen
+      context: .
+      dockerfile: StatCitizen/Dockerfile
     ports:
-      - "8097:8097"
+      - "8115:8115"
     environment:
       - STATGATE_ENV=production
-      - STATCITIZEN_API_PORT=8097
-      - STATCITIZEN_UI_PORT=3015
+      - STATCITIZEN_API_PORT=8115
+      - STATCITIZEN_UI_PORT=8115
       - STATCITIZEN_DB_HOST=postgres
       - STATCITIZEN_DB_PORT=5432
       - STATCITIZEN_DB_NAME=statcitizen
@@ -1415,9 +1443,10 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - STATGATE_EVENT_CHANNEL=statgate:events
+      - STATCITIZEN_CITIZEN_SESSION_SECRET=${STATCITIZEN_CITIZEN_SESSION_SECRET:?STATCITIZEN_CITIZEN_SESSION_SECRET must be set}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
-      - ENTERPRISE_CORE_URL=http://enterprise-core:8096
+      - ENTERPRISE_CORE_URL=http://statgate-enterprise-core:8096
       - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
     depends_on:
       postgres:
@@ -1426,7 +1455,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8097/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8115/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5

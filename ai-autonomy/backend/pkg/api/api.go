@@ -24,6 +24,9 @@ func RegisterRoutes(r *mux.Router) {
 	// Stage 2: workspace context + Enterprise Core membership enforcement.
 	api.Use(tenant.WorkspaceContext)
 	api.Use(tenant.WorkspaceMembership("", nil))
+	if discussionHandler != nil {
+		api.HandleFunc("/discussions", discussionHandler.Create).Methods("POST")
+	}
 
 	// ── P22: Digital Twins & Simulations ──
 	api.HandleFunc("/twins", ListTwinsHandler).Methods("GET")
@@ -87,4 +90,11 @@ func RegisterRoutes(r *mux.Router) {
 // muxVars is an alias used by handlers for readability.
 func varsOf(r *http.Request) map[string]string {
 	return mux.Vars(r)
+}
+
+var discussionHandler *DiscussionHandler
+
+// ConfigureStatChat enables tenant-scoped object discussions.
+func ConfigureStatChat(baseURL, internalKey string) {
+	discussionHandler = NewDiscussionHandler(NewStatChatIntegration(baseURL, internalKey))
 }

@@ -54,6 +54,7 @@ func main() {
 	if err := api.InitEnterprise(); err != nil {
 		log.Printf("warning: failed to initialise enterprise services: %v", err)
 	}
+	api.ConfigureStatChat(os.Getenv("STATCHAT_API_URL"), os.Getenv("STATGATE_INTERNAL_API_KEY"))
 
 	// Mandatory system hook: listen on statgate:events to auto-trigger agent
 	// tasks and simulations from other apps' domain events.

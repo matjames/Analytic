@@ -105,15 +105,17 @@ func main() {
 	// 7. API Handlers & Router Setup
 	iotHandlers := api.NewIoTHandlers(appStore, gatewayEngine)
 	fieldHandlers := api.NewFieldOpsHandlers(appStore, syncEngine, spatialTracker)
+	discussionHandler := api.NewDiscussionHandler(appStore, api.NewStatChatIntegration(os.Getenv("STATCHAT_API_URL"), os.Getenv("STATGATE_INTERNAL_API_KEY")))
 
 	router := api.SetupRouter(api.RouterConfig{
-		IoTHandlers:      iotHandlers,
-		FieldOpsHandlers: fieldHandlers,
-		HealthChecker:    healthChecker,
-		Metrics:          promMetrics,
-		AuthValidator:    authVal,
-		CORSOrigin:       cfg.CORSAllowedOrigin,
-		Env:              cfg.Env,
+		IoTHandlers:       iotHandlers,
+		FieldOpsHandlers:  fieldHandlers,
+		DiscussionHandler: discussionHandler,
+		HealthChecker:     healthChecker,
+		Metrics:           promMetrics,
+		AuthValidator:     authVal,
+		CORSOrigin:        cfg.CORSAllowedOrigin,
+		Env:               cfg.Env,
 	})
 
 	// 8. Start HTTP Server

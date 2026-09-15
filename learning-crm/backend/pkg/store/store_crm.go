@@ -36,7 +36,7 @@ func scanLead(row row) (*model.Lead, error) {
 	return &l, nil
 }
 
-const leadCols = `id, tenant_id, name, email, company, source, stage, value, owner_id, converted, converted_at, COALESCE(workspace_id, ''), created_at`
+const leadCols = `id, tenant_id, COALESCE(workspace_id, ''), name, email, company, source, stage, value, owner_id, converted, converted_at, created_at`
 
 func ListLeads(ctx context.Context, tenantID, stage, workspaceID string) ([]model.Lead, error) {
 	query := `SELECT ` + leadCols + ` FROM leads WHERE tenant_id=$1`

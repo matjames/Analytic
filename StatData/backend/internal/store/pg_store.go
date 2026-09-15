@@ -18,6 +18,20 @@ type PGStore struct {
 	db *sql.DB
 }
 
+func addWorkspaceFilter(ctx context.Context, query string, args []interface{}, argIdx int) (string, []interface{}, int) {
+	workspaceID := WorkspaceID(ctx)
+	if workspaceID == "" {
+		return query, args, argIdx
+	}
+	clause := fmt.Sprintf(" AND (COALESCE(workspace_id, '') = $%d OR COALESCE(workspace_id, '') = '')", argIdx)
+	if orderIdx := strings.Index(strings.ToUpper(query), " ORDER BY "); orderIdx >= 0 {
+		query = query[:orderIdx] + clause + query[orderIdx:]
+	} else {
+		query += clause
+	}
+	return query, append(args, workspaceID), argIdx + 1
+}
+
 // NewPGStore creates PostgreSQL storage adapter
 func NewPGStore(db *sql.DB) *PGStore {
 	p := &PGStore{db: db}
@@ -80,6 +94,19 @@ func (p *PGStore) ensureSchema() {
 		`ALTER TABLE statdata.data_sources ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.streaming_jobs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.feature_views ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.notebook_sessions ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.experiments ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.experiment_runs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.registered_models ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.model_versions ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.compute_nodes ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.compute_jobs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.search_indexes ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.indexed_documents ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.saved_searches ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.audit_logs ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.object_links ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE statdata.data_quality_rules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
 		// ── Remaining domains (previously missing entirely) ──
 		`CREATE TABLE IF NOT EXISTS statdata.data_sources (
 			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, source_type VARCHAR(32),
@@ -106,7 +133,8 @@ func (p *PGStore) ensureSchema() {
 			rule_type VARCHAR(32), target_field VARCHAR(128), parameters JSONB,
 			severity VARCHAR(16), is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS statdata.data_quality_reports (
 			id VARCHAR(64) PRIMARY KEY, dataset_id VARCHAR(64), pipeline_run_id VARCHAR(64),
 			status VARCHAR(32), quality_score DOUBLE PRECISION, total_rules INT,
@@ -150,12 +178,82 @@ func (p *PGStore) ensureSchema() {
 			id VARCHAR(64) PRIMARY KEY, title VARCHAR(255), language VARCHAR(32),
 			kernel_state VARCHAR(32), dataset_refs JSONB, cells JSONB, variables JSONB,
 			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', created_by VARCHAR(128),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+			workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS statdata.experiments (
 			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, description TEXT,
 			domain VARCHAR(64), tags JSONB, artifact_uri TEXT,
 			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', created_by VARCHAR(128),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+			workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.experiment_runs (
+			id VARCHAR(64) PRIMARY KEY, experiment_id VARCHAR(64) NOT NULL,
+			run_name VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'RUNNING',
+			parameters JSONB DEFAULT '{}'::jsonb, metrics JSONB DEFAULT '{}'::jsonb,
+			tags JSONB DEFAULT '{}'::jsonb, artifacts JSONB DEFAULT '[]'::jsonb,
+			start_time TIMESTAMPTZ NOT NULL DEFAULT NOW(), end_time TIMESTAMPTZ,
+			duration_ms BIGINT DEFAULT 0, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128) NOT NULL, workspace_id VARCHAR(128))`,
+		`CREATE TABLE IF NOT EXISTS statdata.registered_models (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL UNIQUE, description TEXT,
+			domain VARCHAR(64) NOT NULL, framework VARCHAR(64) NOT NULL DEFAULT 'PYTORCH',
+			latest_stage VARCHAR(32) NOT NULL DEFAULT 'NONE',
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', created_by VARCHAR(128) NOT NULL,
+			workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.model_versions (
+			id VARCHAR(128) PRIMARY KEY, model_id VARCHAR(64) NOT NULL,
+			version INT NOT NULL, stage VARCHAR(32) NOT NULL DEFAULT 'STAGING',
+			source_run_id VARCHAR(64), artifact_uri TEXT NOT NULL,
+			metrics_summary JSONB DEFAULT '{}'::jsonb, input_schema TEXT, output_schema TEXT,
+			description TEXT, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128) NOT NULL, workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(model_id, version))`,
+		`CREATE TABLE IF NOT EXISTS statdata.compute_nodes (
+			id VARCHAR(64) PRIMARY KEY, hostname VARCHAR(255) NOT NULL UNIQUE,
+			ip_address VARCHAR(64) NOT NULL, total_cpus INT NOT NULL DEFAULT 16,
+			alloc_cpus INT NOT NULL DEFAULT 0, total_ram_gb NUMERIC(8,2) NOT NULL DEFAULT 64.0,
+			alloc_ram_gb NUMERIC(8,2) NOT NULL DEFAULT 0.0, total_gpus INT NOT NULL DEFAULT 0,
+			alloc_gpus INT NOT NULL DEFAULT 0, status VARCHAR(32) NOT NULL DEFAULT 'READY',
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default', workspace_id VARCHAR(128), last_ping TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.compute_jobs (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, job_type VARCHAR(64) NOT NULL,
+			assigned_node VARCHAR(255), required_cpus INT DEFAULT 2,
+			required_ram_gb NUMERIC(8,2) DEFAULT 8.0, required_gpus INT DEFAULT 0,
+			status VARCHAR(32) NOT NULL DEFAULT 'QUEUED', params JSONB DEFAULT '{}'::jsonb,
+			output_data JSONB DEFAULT '{}'::jsonb, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128) NOT NULL, workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ)`,
+		`CREATE TABLE IF NOT EXISTS statdata.search_indexes (
+			id VARCHAR(64) PRIMARY KEY, index_name VARCHAR(128) NOT NULL UNIQUE,
+			document_count BIGINT DEFAULT 0, dimension INT DEFAULT 384,
+			status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE', tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			workspace_id VARCHAR(128), last_indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.indexed_documents (
+			id VARCHAR(128) PRIMARY KEY, index_name VARCHAR(128) NOT NULL DEFAULT 'statgate_global',
+			resource_id VARCHAR(128) NOT NULL, resource_type VARCHAR(64) NOT NULL,
+			title VARCHAR(255) NOT NULL, content TEXT NOT NULL, domain VARCHAR(64) NOT NULL,
+			classification VARCHAR(32) NOT NULL DEFAULT 'INTERNAL', owner VARCHAR(128) NOT NULL DEFAULT 'system',
+			tags JSONB DEFAULT '[]'::jsonb, metadata JSONB DEFAULT '{}'::jsonb,
+			vector JSONB DEFAULT '[]'::jsonb, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			workspace_id VARCHAR(128), indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE INDEX IF NOT EXISTS idx_statdata_indexed_documents_type ON statdata.indexed_documents(resource_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_statdata_indexed_documents_domain ON statdata.indexed_documents(domain)`,
+		`CREATE TABLE IF NOT EXISTS statdata.saved_searches (
+			id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, query TEXT NOT NULL,
+			filters JSONB DEFAULT '{}'::jsonb, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_by VARCHAR(128) NOT NULL, workspace_id VARCHAR(128), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.audit_logs (
+			id VARCHAR(64) PRIMARY KEY, action VARCHAR(64) NOT NULL,
+			resource_type VARCHAR(64) NOT NULL, resource_id VARCHAR(64) NOT NULL,
+			actor_id VARCHAR(128) NOT NULL, actor_tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			status VARCHAR(32) NOT NULL DEFAULT 'SUCCESS', details JSONB DEFAULT '{}'::jsonb,
+			ip_address VARCHAR(64), workspace_id VARCHAR(128), event_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE TABLE IF NOT EXISTS statdata.object_links (
+			id SERIAL PRIMARY KEY, source_type VARCHAR(64) NOT NULL, source_id VARCHAR(64) NOT NULL,
+			target_type VARCHAR(64) NOT NULL, target_id VARCHAR(64) NOT NULL,
+			relation_type VARCHAR(64) NOT NULL, tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			metadata JSONB DEFAULT '{}'::jsonb, created_by VARCHAR(128), workspace_id VARCHAR(128),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+		`CREATE INDEX IF NOT EXISTS idx_statdata_object_links_src ON statdata.object_links(source_type, source_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_statdata_object_links_tgt ON statdata.object_links(target_type, target_id)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := p.db.Exec(stmt); err != nil {
@@ -414,6 +512,7 @@ func (p *PGStore) ListDataSources(ctx context.Context, tenantID, sourceType, wor
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1435,6 +1534,7 @@ func (p *PGStore) CreateNotebookSession(ctx context.Context, nb *models.Notebook
 	if nb.ID == "" {
 		nb.ID = "nb-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &nb.WorkspaceID)
 	cellsJSON, _ := json.Marshal(nb.Cells)
 	refsJSON, _ := json.Marshal(nb.DatasetRefs)
 	varsJSON, _ := json.Marshal(nb.Variables)
@@ -1442,12 +1542,12 @@ func (p *PGStore) CreateNotebookSession(ctx context.Context, nb *models.Notebook
 	query := `
 		INSERT INTO statdata.notebook_sessions (
 			id, title, language, kernel_state, dataset_refs,
-			cells, variables, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			cells, variables, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		nb.ID, nb.Title, nb.Language, nb.KernelState, refsJSON,
-		cellsJSON, varsJSON, nb.TenantID, nb.CreatedBy,
+		cellsJSON, varsJSON, nb.TenantID, nb.CreatedBy, nb.WorkspaceID,
 	)
 	return err
 }
@@ -1455,16 +1555,18 @@ func (p *PGStore) CreateNotebookSession(ctx context.Context, nb *models.Notebook
 func (p *PGStore) GetNotebookSessionByID(ctx context.Context, id string) (*models.NotebookSession, error) {
 	query := `
 		SELECT id, title, language, kernel_state, dataset_refs,
-		       cells, variables, tenant_id, created_by, created_at, updated_at
+		       cells, variables, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.notebook_sessions WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	args := []interface{}{id}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var nb models.NotebookSession
 	var cellsJSON, refsJSON, varsJSON []byte
 
 	err := row.Scan(
 		&nb.ID, &nb.Title, &nb.Language, &nb.KernelState, &refsJSON,
-		&cellsJSON, &varsJSON, &nb.TenantID, &nb.CreatedBy, &nb.CreatedAt, &nb.UpdatedAt,
+		&cellsJSON, &varsJSON, &nb.TenantID, &nb.CreatedBy, &nb.WorkspaceID, &nb.CreatedAt, &nb.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1478,11 +1580,12 @@ func (p *PGStore) GetNotebookSessionByID(ctx context.Context, id string) (*model
 func (p *PGStore) ListNotebookSessions(ctx context.Context, tenantID, language string) ([]*models.NotebookSession, error) {
 	query := `
 		SELECT id, title, language, kernel_state, dataset_refs,
-		       cells, variables, tenant_id, created_by, created_at, updated_at
+		       cells, variables, tenant_id, created_by, COALESCE(workspace_id, ''), created_at, updated_at
 		FROM statdata.notebook_sessions WHERE 1=1
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1507,7 +1610,7 @@ func (p *PGStore) ListNotebookSessions(ctx context.Context, tenantID, language s
 		var cellsJSON, refsJSON, varsJSON []byte
 		if err := rows.Scan(
 			&nb.ID, &nb.Title, &nb.Language, &nb.KernelState, &refsJSON,
-			&cellsJSON, &varsJSON, &nb.TenantID, &nb.CreatedBy, &nb.CreatedAt, &nb.UpdatedAt,
+			&cellsJSON, &varsJSON, &nb.TenantID, &nb.CreatedBy, &nb.WorkspaceID, &nb.CreatedAt, &nb.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1527,7 +1630,9 @@ func (p *PGStore) UpdateNotebookSession(ctx context.Context, nb *models.Notebook
 			title = $1, kernel_state = $2, cells = $3, variables = $4, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $5
 	`
-	_, err := p.db.ExecContext(ctx, query, nb.Title, nb.KernelState, cellsJSON, varsJSON, nb.ID)
+	args := []interface{}{nb.Title, nb.KernelState, cellsJSON, varsJSON, nb.ID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 6)
+	_, err := p.db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -1535,15 +1640,16 @@ func (p *PGStore) CreateExperiment(ctx context.Context, exp *models.Experiment) 
 	if exp.ID == "" {
 		exp.ID = "exp-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &exp.WorkspaceID)
 	tagsJSON, _ := json.Marshal(exp.Tags)
 	query := `
 		INSERT INTO statdata.experiments (
-			id, name, description, domain, tags, artifact_uri, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			id, name, description, domain, tags, artifact_uri, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		exp.ID, exp.Name, exp.Description, exp.Domain,
-		tagsJSON, exp.ArtifactURI, exp.TenantID, exp.CreatedBy,
+		tagsJSON, exp.ArtifactURI, exp.TenantID, exp.CreatedBy, exp.WorkspaceID,
 	)
 	return err
 }
@@ -1554,7 +1660,9 @@ func (p *PGStore) GetExperimentByID(ctx context.Context, id string) (*models.Exp
 		       tenant_id, created_by, created_at, updated_at
 		FROM statdata.experiments WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	args := []interface{}{id}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var exp models.Experiment
 	var tagsJSON []byte
 	err := row.Scan(
@@ -1576,6 +1684,7 @@ func (p *PGStore) ListExperiments(ctx context.Context, tenantID, domain string) 
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1614,6 +1723,7 @@ func (p *PGStore) RecordExperimentRun(ctx context.Context, run *models.Experimen
 	if run.ID == "" {
 		run.ID = "exprun-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &run.WorkspaceID)
 	paramJSON, _ := json.Marshal(run.Parameters)
 	metricsJSON, _ := json.Marshal(run.Metrics)
 	tagsJSON, _ := json.Marshal(run.Tags)
@@ -1623,13 +1733,13 @@ func (p *PGStore) RecordExperimentRun(ctx context.Context, run *models.Experimen
 		INSERT INTO statdata.experiment_runs (
 			id, experiment_id, run_name, status, parameters,
 			metrics, tags, artifacts, start_time, end_time,
-			duration_ms, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			duration_ms, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		run.ID, run.ExperimentID, run.RunName, run.Status, paramJSON,
 		metricsJSON, tagsJSON, artifactsJSON, run.StartTime, run.EndTime,
-		run.DurationMs, run.TenantID, run.CreatedBy,
+		run.DurationMs, run.TenantID, run.CreatedBy, run.WorkspaceID,
 	)
 	return err
 }
@@ -1641,7 +1751,9 @@ func (p *PGStore) GetExperimentRunByID(ctx context.Context, id string) (*models.
 		       duration_ms, tenant_id, created_by
 		FROM statdata.experiment_runs WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	args := []interface{}{id}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var run models.ExperimentRun
 	var paramJSON, metricsJSON, tagsJSON, artifactsJSON []byte
 	err := row.Scan(
@@ -1668,6 +1780,7 @@ func (p *PGStore) ListExperimentRuns(ctx context.Context, experimentID, tenantID
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1710,14 +1823,15 @@ func (p *PGStore) CreateRegisteredModel(ctx context.Context, rm *models.Register
 	if rm.ID == "" {
 		rm.ID = "model-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &rm.WorkspaceID)
 	query := `
 		INSERT INTO statdata.registered_models (
-			id, name, description, domain, framework, latest_stage, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			id, name, description, domain, framework, latest_stage, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		rm.ID, rm.Name, rm.Description, rm.Domain,
-		rm.Framework, string(rm.LatestStage), rm.TenantID, rm.CreatedBy,
+		rm.Framework, string(rm.LatestStage), rm.TenantID, rm.CreatedBy, rm.WorkspaceID,
 	)
 	return err
 }
@@ -1728,7 +1842,9 @@ func (p *PGStore) GetRegisteredModelByID(ctx context.Context, id string) (*model
 		       tenant_id, created_by, created_at, updated_at
 		FROM statdata.registered_models WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	args := []interface{}{id}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var rm models.RegisteredModel
 	var stageStr string
 	err := row.Scan(
@@ -1750,6 +1866,7 @@ func (p *PGStore) ListRegisteredModels(ctx context.Context, tenantID, domain str
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1788,18 +1905,19 @@ func (p *PGStore) CreateModelVersion(ctx context.Context, mv *models.ModelVersio
 	if mv.ID == "" {
 		mv.ID = fmt.Sprintf("%s-v%d", mv.ModelID, mv.Version)
 	}
+	bindWorkspace(ctx, &mv.WorkspaceID)
 	metricsJSON, _ := json.Marshal(mv.MetricsSummary)
 	query := `
 		INSERT INTO statdata.model_versions (
 			id, model_id, version, stage, source_run_id,
 			artifact_uri, metrics_summary, input_schema, output_schema,
-			description, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			description, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		mv.ID, mv.ModelID, mv.Version, string(mv.Stage), mv.SourceRunID,
 		mv.ArtifactURI, metricsJSON, mv.InputSchema, mv.OutputSchema,
-		mv.Description, mv.TenantID, mv.CreatedBy,
+		mv.Description, mv.TenantID, mv.CreatedBy, mv.WorkspaceID,
 	)
 	return err
 }
@@ -1813,7 +1931,9 @@ func (p *PGStore) ListModelVersions(ctx context.Context, modelID, tenantID strin
 		WHERE model_id = $1
 		ORDER BY version DESC
 	`
-	rows, err := p.db.QueryContext(ctx, query, modelID)
+	args := []interface{}{modelID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1842,7 +1962,9 @@ func (p *PGStore) UpdateModelStage(ctx context.Context, versionID string, stage 
 	query := `
 		UPDATE statdata.model_versions SET stage = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
 	`
-	_, err := p.db.ExecContext(ctx, query, string(stage), versionID)
+	args := []interface{}{string(stage), versionID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 3)
+	_, err := p.db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -1850,12 +1972,13 @@ func (p *PGStore) RegisterComputeNode(ctx context.Context, node *models.ComputeN
 	if node.ID == "" {
 		node.ID = "node-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &node.WorkspaceID)
 	query := `
 		INSERT INTO statdata.compute_nodes (
 			id, hostname, ip_address, total_cpus, alloc_cpus,
 			total_ram_gb, alloc_ram_gb, total_gpus, alloc_gpus,
-			status, tenant_id, last_ping
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+			status, tenant_id, workspace_id, last_ping
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
 		ON CONFLICT (id) DO UPDATE SET
 			alloc_cpus = EXCLUDED.alloc_cpus,
 			alloc_ram_gb = EXCLUDED.alloc_ram_gb,
@@ -1866,7 +1989,7 @@ func (p *PGStore) RegisterComputeNode(ctx context.Context, node *models.ComputeN
 	_, err := p.db.ExecContext(ctx, query,
 		node.ID, node.Hostname, node.IPAddress, node.TotalCPUs, node.AllocCPUs,
 		node.TotalRAMGB, node.AllocRAMGB, node.TotalGPUs, node.AllocGPUs,
-		node.Status, node.TenantID,
+		node.Status, node.TenantID, node.WorkspaceID,
 	)
 	return err
 }
@@ -1879,7 +2002,8 @@ func (p *PGStore) ListComputeNodes(ctx context.Context, tenantID string) ([]*mod
 		FROM statdata.compute_nodes
 		ORDER BY hostname ASC
 	`
-	rows, err := p.db.QueryContext(ctx, query)
+	query, args, _ := addWorkspaceFilter(ctx, query, nil, 1)
+	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1904,17 +2028,18 @@ func (p *PGStore) CreateComputeJob(ctx context.Context, job *models.ComputeJob) 
 	if job.ID == "" {
 		job.ID = "cjob-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &job.WorkspaceID)
 	paramJSON, _ := json.Marshal(job.Params)
 	query := `
 		INSERT INTO statdata.compute_jobs (
 			id, name, job_type, assigned_node, required_cpus,
 			required_ram_gb, required_gpus, status, params,
-			tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', $8, $9, $10)
+			tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', $8, $9, $10, $11)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		job.ID, job.Name, job.JobType, job.AssignedNode, job.RequiredCPUs,
-		job.RequiredRAMGB, job.RequiredGPUs, paramJSON, job.TenantID, job.CreatedBy,
+		job.RequiredRAMGB, job.RequiredGPUs, paramJSON, job.TenantID, job.CreatedBy, job.WorkspaceID,
 	)
 	return err
 }
@@ -1926,7 +2051,9 @@ func (p *PGStore) GetComputeJobByID(ctx context.Context, id string) (*models.Com
 		       tenant_id, created_by, created_at, completed_at
 		FROM statdata.compute_jobs WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, id)
+	args := []interface{}{id}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var j models.ComputeJob
 	var paramJSON, outJSON []byte
 	err := row.Scan(
@@ -1951,6 +2078,7 @@ func (p *PGStore) ListComputeJobs(ctx context.Context, tenantID, status string) 
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -1994,7 +2122,9 @@ func (p *PGStore) UpdateComputeJob(ctx context.Context, job *models.ComputeJob) 
 			status = $1, assigned_node = $2, output_data = $3, completed_at = $4
 		WHERE id = $5
 	`
-	_, err := p.db.ExecContext(ctx, query, job.Status, job.AssignedNode, outJSON, job.CompletedAt, job.ID)
+	args := []interface{}{job.Status, job.AssignedNode, outJSON, job.CompletedAt, job.ID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 6)
+	_, err := p.db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -2004,12 +2134,13 @@ func (p *PGStore) CreateSearchIndex(ctx context.Context, idx *models.SearchIndex
 	if idx.ID == "" {
 		idx.ID = "idx-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &idx.WorkspaceID)
 	query := `
 		INSERT INTO statdata.search_indexes (
-			id, index_name, document_count, dimension, status, tenant_id
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			id, index_name, document_count, dimension, status, tenant_id, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	_, err := p.db.ExecContext(ctx, query, idx.ID, idx.IndexName, idx.DocumentCount, idx.Dimension, idx.Status, idx.TenantID)
+	_, err := p.db.ExecContext(ctx, query, idx.ID, idx.IndexName, idx.DocumentCount, idx.Dimension, idx.Status, idx.TenantID, idx.WorkspaceID)
 	return err
 }
 
@@ -2018,7 +2149,9 @@ func (p *PGStore) GetSearchIndex(ctx context.Context, indexName, tenantID string
 		SELECT id, index_name, document_count, dimension, status, tenant_id, last_indexed_at, created_at
 		FROM statdata.search_indexes WHERE index_name = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, indexName)
+	args := []interface{}{indexName}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var idx models.SearchIndex
 	err := row.Scan(&idx.ID, &idx.IndexName, &idx.DocumentCount, &idx.Dimension, &idx.Status, &idx.TenantID, &idx.LastIndexedAt, &idx.CreatedAt)
 	if err != nil {
@@ -2031,6 +2164,7 @@ func (p *PGStore) IndexDocument(ctx context.Context, doc *models.IndexedDocument
 	if doc.ID == "" {
 		doc.ID = "doc-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &doc.WorkspaceID)
 	tagsJSON, _ := json.Marshal(doc.Tags)
 	metaJSON, _ := json.Marshal(doc.Metadata)
 	vecJSON, _ := json.Marshal(doc.Vector)
@@ -2039,8 +2173,8 @@ func (p *PGStore) IndexDocument(ctx context.Context, doc *models.IndexedDocument
 		INSERT INTO statdata.indexed_documents (
 			id, index_name, resource_id, resource_type, title,
 			content, domain, classification, owner, tags,
-			metadata, vector, tenant_id, indexed_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+			metadata, vector, tenant_id, workspace_id, indexed_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
 		ON CONFLICT (id) DO UPDATE SET
 			title = EXCLUDED.title,
 			content = EXCLUDED.content,
@@ -2052,13 +2186,16 @@ func (p *PGStore) IndexDocument(ctx context.Context, doc *models.IndexedDocument
 	_, err := p.db.ExecContext(ctx, query,
 		doc.ID, doc.IndexName, doc.ResourceID, doc.ResourceType, doc.Title,
 		doc.Content, doc.Domain, doc.Classification, doc.Owner, tagsJSON,
-		metaJSON, vecJSON, doc.TenantID,
+		metaJSON, vecJSON, doc.TenantID, doc.WorkspaceID,
 	)
 	return err
 }
 
 func (p *PGStore) DeleteIndexedDocument(ctx context.Context, indexName, documentID string) error {
-	_, err := p.db.ExecContext(ctx, "DELETE FROM statdata.indexed_documents WHERE id = $1", documentID)
+	query := "DELETE FROM statdata.indexed_documents WHERE id = $1"
+	args := []interface{}{documentID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	_, err := p.db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -2069,7 +2206,9 @@ func (p *PGStore) GetIndexedDocument(ctx context.Context, indexName, documentID 
 		       metadata, vector, tenant_id, indexed_at
 		FROM statdata.indexed_documents WHERE id = $1
 	`
-	row := p.db.QueryRowContext(ctx, query, documentID)
+	args := []interface{}{documentID}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, 2)
+	row := p.db.QueryRowContext(ctx, query, args...)
 	var doc models.IndexedDocument
 	var tagsJSON, metaJSON, vecJSON []byte
 	err := row.Scan(
@@ -2096,6 +2235,7 @@ func (p *PGStore) Search(ctx context.Context, req *models.HybridSearchRequest) (
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if req.TenantID != "" && req.TenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, req.TenantID)
@@ -2219,9 +2359,12 @@ func (p *PGStore) GetSuggestions(ctx context.Context, prefix, tenantID string, l
 	query := `
 		SELECT title FROM statdata.indexed_documents
 		WHERE LOWER(title) LIKE LOWER($1)
-		LIMIT $2
 	`
-	rows, err := p.db.QueryContext(ctx, query, prefix+"%", limit)
+	args := []interface{}{prefix + "%"}
+	query, args, next := addWorkspaceFilter(ctx, query, args, 2)
+	query += fmt.Sprintf(" LIMIT $%d", next)
+	args = append(args, limit)
+	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -2241,13 +2384,14 @@ func (p *PGStore) CreateSavedSearch(ctx context.Context, ss *models.SavedSearch)
 	if ss.ID == "" {
 		ss.ID = "ss-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &ss.WorkspaceID)
 	filtersJSON, _ := json.Marshal(ss.Filters)
 	query := `
 		INSERT INTO statdata.saved_searches (
-			id, name, query, filters, tenant_id, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			id, name, query, filters, tenant_id, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	_, err := p.db.ExecContext(ctx, query, ss.ID, ss.Name, ss.Query, filtersJSON, ss.TenantID, ss.CreatedBy)
+	_, err := p.db.ExecContext(ctx, query, ss.ID, ss.Name, ss.Query, filtersJSON, ss.TenantID, ss.CreatedBy, ss.WorkspaceID)
 	return err
 }
 
@@ -2258,6 +2402,7 @@ func (p *PGStore) ListSavedSearches(ctx context.Context, tenantID, createdBy str
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (tenant_id = $%d OR tenant_id = 'default')", argIdx)
 		args = append(args, tenantID)
@@ -2295,16 +2440,17 @@ func (p *PGStore) LogAuditEvent(ctx context.Context, entry *models.AuditLog) err
 	if entry.ID == "" {
 		entry.ID = "audit-" + uuid.New().String()[:8]
 	}
+	bindWorkspace(ctx, &entry.WorkspaceID)
 	detailsJSON, _ := json.Marshal(entry.Details)
 	query := `
 		INSERT INTO statdata.audit_logs (
 			id, action, resource_type, resource_id, actor_id,
-			actor_tenant_id, status, details, ip_address, event_timestamp
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+			actor_tenant_id, status, details, ip_address, workspace_id, event_timestamp
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		entry.ID, entry.Action, entry.ResourceType, entry.ResourceID,
-		entry.ActorID, entry.ActorTenantID, entry.Status, detailsJSON, entry.IPAddress,
+		entry.ActorID, entry.ActorTenantID, entry.Status, detailsJSON, entry.IPAddress, entry.WorkspaceID,
 	)
 	return err
 }
@@ -2317,6 +2463,7 @@ func (p *PGStore) ListAuditLogs(ctx context.Context, tenantID, resourceType stri
 	`
 	args := make([]interface{}, 0)
 	argIdx := 1
+	query, args, argIdx = addWorkspaceFilter(ctx, query, args, argIdx)
 	if tenantID != "" && tenantID != "default" {
 		query += fmt.Sprintf(" AND (actor_tenant_id = $%d OR actor_tenant_id = 'default' OR actor_tenant_id = '')", argIdx)
 		args = append(args, tenantID)
@@ -2356,16 +2503,17 @@ func (p *PGStore) ListAuditLogs(ctx context.Context, tenantID, resourceType stri
 }
 
 func (p *PGStore) CreateObjectLink(ctx context.Context, link *models.ObjectLink) error {
+	bindWorkspace(ctx, &link.WorkspaceID)
 	metaJSON, _ := json.Marshal(link.Metadata)
 	query := `
 		INSERT INTO statdata.object_links (
 			source_type, source_id, target_type, target_id, relation_type,
-			tenant_id, metadata, created_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			tenant_id, metadata, created_by, workspace_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		link.SourceType, link.SourceID, link.TargetType, link.TargetID,
-		link.RelationType, link.TenantID, metaJSON, link.CreatedBy,
+		link.RelationType, link.TenantID, metaJSON, link.CreatedBy, link.WorkspaceID,
 	)
 	return err
 }
@@ -2382,6 +2530,7 @@ func (p *PGStore) GetObjectLinks(ctx context.Context, sourceType, sourceID, tena
 		query += " AND (tenant_id = $3 OR tenant_id = 'default' OR tenant_id = '')"
 		args = append(args, tenantID)
 	}
+	query, args, _ = addWorkspaceFilter(ctx, query, args, len(args)+1)
 	query += " ORDER BY created_at DESC"
 
 	rows, err := p.db.QueryContext(ctx, query, args...)

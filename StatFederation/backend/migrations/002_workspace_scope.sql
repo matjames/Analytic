@@ -2,6 +2,19 @@
 -- NULL preserves legacy, tenant-wide records until they are assigned explicitly.
 SET search_path TO statfederation, public;
 
+CREATE TABLE IF NOT EXISTS object_links (
+    id            SERIAL PRIMARY KEY,
+    source_type   VARCHAR(64)  NOT NULL,
+    source_id     VARCHAR(255) NOT NULL,
+    target_type   VARCHAR(64)  NOT NULL,
+    target_id     VARCHAR(255) NOT NULL,
+    relationship  VARCHAR(64)  NOT NULL DEFAULT 'related',
+    tenant_id     VARCHAR(64)  NOT NULL DEFAULT 'tenant-alpha',
+    workspace_id  VARCHAR(128),
+    created_by    VARCHAR(128),
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE federated_nodes ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
 ALTER TABLE data_sharing_agreements ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);
 ALTER TABLE national_indicators ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128);

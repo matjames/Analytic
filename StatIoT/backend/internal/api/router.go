@@ -14,13 +14,14 @@ import (
 )
 
 type RouterConfig struct {
-	IoTHandlers      *IoTHandlers
-	FieldOpsHandlers *FieldOpsHandlers
-	HealthChecker    *health.Checker
-	Metrics          *metrics.Metrics
-	AuthValidator    *auth.Validator
-	CORSOrigin       string
-	Env              string
+	IoTHandlers       *IoTHandlers
+	FieldOpsHandlers  *FieldOpsHandlers
+	DiscussionHandler *DiscussionHandler
+	HealthChecker     *health.Checker
+	Metrics           *metrics.Metrics
+	AuthValidator     *auth.Validator
+	CORSOrigin        string
+	Env               string
 }
 
 func SetupRouter(cfg RouterConfig) *gin.Engine {
@@ -69,11 +70,11 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	// Service Info
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"service":     "StatIoT & Mobile Field Ops (App 8)",
-			"phases":      []string{"P27 (IoT & Edge)", "P43 (Mobile Field Ops)"},
-			"status":      "OPERATIONAL",
-			"version":     "1.0.0",
-			"timestamp":   time.Now().UTC(),
+			"service":   "StatIoT & Mobile Field Ops (App 8)",
+			"phases":    []string{"P27 (IoT & Edge)", "P43 (Mobile Field Ops)"},
+			"status":    "OPERATIONAL",
+			"version":   "1.0.0",
+			"timestamp": time.Now().UTC(),
 		})
 	})
 
@@ -85,11 +86,11 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 	{
 		apiV1.GET("/info", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
-				"name":        "StatGate IoT, Sensors & Mobile Field Ops",
-				"app_number":  8,
-				"phases":      []string{"P27", "P43"},
-				"protocols":   []string{"MQTT", "HTTP", "CoAP", "LoRaWAN", "ODK/Sync"},
-				"status":      "UP",
+				"name":       "StatGate IoT, Sensors & Mobile Field Ops",
+				"app_number": 8,
+				"phases":     []string{"P27", "P43"},
+				"protocols":  []string{"MQTT", "HTTP", "CoAP", "LoRaWAN", "ODK/Sync"},
+				"status":     "UP",
 			})
 		})
 
@@ -117,6 +118,9 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		}
 		admin.Use(tenant.GinTenantIsolation())
 		admin.Use(tenant.GinWorkspaceMembership("", nil))
+		if cfg.DiscussionHandler != nil {
+			admin.POST("/discussions", cfg.DiscussionHandler.Create)
+		}
 
 		// ── IoT & SENSORS (P27) ─────────────────────────────────────────
 		iotGroup := admin.Group("/iot")

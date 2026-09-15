@@ -77,14 +77,14 @@ func (ew *EventWorker) PublishFederationEvent(
 		Version:       "1.0",
 	}
 
-	return ew.bus.Publish(ctx, evt)
+	return ew.bus.PublishDurable(ctx, evt)
 }
 
 // StartEventListener begins consuming platform events (dataset, survey, research) for cross-agency synchronization
 func (ew *EventWorker) StartEventListener(ctx context.Context) {
 	log.Println("[EventWorker] Subscribing to platform events on channel: statgate:events")
 
-	err := ew.bus.Subscribe(ctx, func(handlerCtx context.Context, evt events.EnterpriseEvent) error {
+	err := ew.bus.SubscribeDurable(ctx, "statfederation", ew.nodeID, func(handlerCtx context.Context, evt events.EnterpriseEvent) error {
 		ew.processIncomingEvent(handlerCtx, evt)
 		return nil
 	})

@@ -65,7 +65,7 @@ func emitEvent(ctx context.Context, eventType, objectType, objectID string, payl
 		Version:    "1.0",
 	}
 
-	if err := EnterpriseBus.Publish(ctx, evt); err != nil {
+	if err := EnterpriseBus.PublishDurable(ctx, evt); err != nil {
 		log.Printf("[StatSpatial] enterprise event publish failed (%s %s:%s): %v", eventType, objectType, objectID, err)
 	}
 }

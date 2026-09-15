@@ -62,11 +62,10 @@ func (ew *EventWorker) StartEventListener(ctx context.Context) {
 		log.Println("[EventWorker] Started listening on Redis channel 'statgate:events'...")
 
 		handler := func(ctx context.Context, evt events.EnterpriseEvent) error {
-			ew.processDomainEvent(ctx, evt)
-			return nil
+			return ew.processDomainEvent(ctx, evt)
 		}
 
-		_ = ew.bus.Subscribe(workerCtx, handler)
+		_ = ew.bus.SubscribeDurable(workerCtx, "statdata", ew.nodeID, handler)
 		<-workerCtx.Done()
 		log.Println("[EventWorker] Event listener stopped.")
 	}()
@@ -80,7 +79,10 @@ func (ew *EventWorker) Stop() {
 	ew.wg.Wait()
 }
 
-func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.EnterpriseEvent) {
+// processDomainEvent dispatches a domain event to the appropriate handler.
+// Returned errors are routed to the event bus DLQ by the Subscribe handler
+// (Stage 3: durable DLQ processing convention).
+func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.EnterpriseEvent) error {
 	log.Printf("[EventWorker] Received event '%s' from source '%s' (Tenant: %s)", evt.EventType, evt.Source, evt.TenantID)
 
 	tenantID := evt.TenantID
@@ -93,18 +95,27 @@ func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.Enterp
 		// Handle CDC record
 		var cdc models.CDCEvent
 		payloadBytes, _ := json.Marshal(evt.Payload)
-		_ = json.Unmarshal(payloadBytes, &cdc)
+		if err := json.Unmarshal(payloadBytes, &cdc); err != nil {
+			return fmt.Errorf("malformed cdc payload: %w", err)
+		}
 		cdc.TenantID = tenantID
-		_ = ew.pipeline.ProcessCDCEvent(ctx, &cdc)
+		if err := ew.pipeline.ProcessCDCEvent(ctx, &cdc); err != nil {
+			return fmt.Errorf("cdc processing failed: %w", err)
+		}
 
 	case "dataset.created", "dataset.updated":
 		// Auto-index into universal search and link
 		var ds models.Dataset
 		payloadBytes, _ := json.Marshal(evt.Payload)
-		if err := json.Unmarshal(payloadBytes, &ds); err == nil && ds.ID != "" {
-			_ = ew.indexer.IndexDataset(ctx, &ds)
+		if err := json.Unmarshal(payloadBytes, &ds); err != nil {
+			return fmt.Errorf("malformed dataset payload: %w", err)
+		}
+		if ds.ID != "" {
+			if err := ew.indexer.IndexDataset(ctx, &ds); err != nil {
+				return fmt.Errorf("dataset indexing failed: %w", err)
+			}
 			// Register object link
-			_ = ew.store.CreateObjectLink(ctx, &models.ObjectLink{
+			if err := ew.store.CreateObjectLink(ctx, &models.ObjectLink{
 				SourceType:   "DATASET",
 				SourceID:     ds.ID,
 				TargetType:   "DOMAIN",
@@ -116,16 +127,23 @@ func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.Enterp
 					"event_type":  evt.EventType,
 				},
 				CreatedAt: time.Now().UTC(),
-			})
+			}); err != nil {
+				return fmt.Errorf("dataset object link failed: %w", err)
+			}
 		}
 
 	case "model.registered":
 		// Auto-index ML Model into search
 		var mod models.RegisteredModel
 		payloadBytes, _ := json.Marshal(evt.Payload)
-		if err := json.Unmarshal(payloadBytes, &mod); err == nil && mod.ID != "" {
-			_ = ew.indexer.IndexModel(ctx, &mod)
-			_ = ew.store.CreateObjectLink(ctx, &models.ObjectLink{
+		if err := json.Unmarshal(payloadBytes, &mod); err != nil {
+			return fmt.Errorf("malformed model payload: %w", err)
+		}
+		if mod.ID != "" {
+			if err := ew.indexer.IndexModel(ctx, &mod); err != nil {
+				return fmt.Errorf("model indexing failed: %w", err)
+			}
+			if err := ew.store.CreateObjectLink(ctx, &models.ObjectLink{
 				SourceType:   "ML_MODEL",
 				SourceID:     mod.ID,
 				TargetType:   "DOMAIN",
@@ -133,15 +151,21 @@ func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.Enterp
 				RelationType: "SERVES_DOMAIN",
 				TenantID:     tenantID,
 				CreatedAt:    time.Now().UTC(),
-			})
+			}); err != nil {
+				return fmt.Errorf("model object link failed: %w", err)
+			}
 		}
 
 	case "pipeline.completed":
 		// Automatically update lineage edge
 		if pipeID, ok := evt.Payload["pipeline_id"].(string); ok && pipeID != "" {
-			if pipe, err := ew.store.GetPipelineByID(ctx, pipeID); err == nil {
-				runID, _ := evt.Payload["run_id"].(string)
-				_ = ew.lineage.RecordPipelineExecutionLineage(ctx, pipe, runID)
+			pipe, err := ew.store.GetPipelineByID(ctx, pipeID)
+			if err != nil {
+				return fmt.Errorf("pipeline %s not found for lineage: %w", pipeID, err)
+			}
+			runID, _ := evt.Payload["run_id"].(string)
+			if err := ew.lineage.RecordPipelineExecutionLineage(ctx, pipe, runID); err != nil {
+				return fmt.Errorf("lineage recording failed: %w", err)
 			}
 		}
 
@@ -151,7 +175,10 @@ func (ew *EventWorker) processDomainEvent(ctx context.Context, evt events.Enterp
 			resID := fmt.Sprintf("%v", evt.Payload["id"])
 			content, _ := evt.Payload["content"].(string)
 			domain, _ := evt.Payload["domain"].(string)
-			_ = ew.indexer.IndexGeneric(ctx, resID, evt.EventType, title, content, domain, "INTERNAL", tenantID, []string{evt.EventType})
+			if err := ew.indexer.IndexGeneric(ctx, resID, evt.EventType, title, content, domain, "INTERNAL", tenantID, []string{evt.EventType}); err != nil {
+				return fmt.Errorf("generic indexing failed: %w", err)
+			}
 		}
 	}
+	return nil
 }

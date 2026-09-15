@@ -57,6 +57,7 @@ func (h *ScienceHandler) CreateNotebook(c *gin.Context) {
 		return
 	}
 	nb.TenantID = getTenantID(c)
+	nb.WorkspaceID = getWorkspaceID(c)
 	nb.CreatedBy = getUserID(c)
 	nb.KernelState = "IDLE"
 
@@ -108,6 +109,7 @@ func (h *ScienceHandler) CreateExperiment(c *gin.Context) {
 		return
 	}
 	exp.TenantID = getTenantID(c)
+	exp.WorkspaceID = getWorkspaceID(c)
 	exp.CreatedBy = getUserID(c)
 
 	if err := h.store.CreateExperiment(c.Request.Context(), &exp); err != nil {
@@ -181,6 +183,7 @@ func (h *ScienceHandler) CreateModel(c *gin.Context) {
 		return
 	}
 	mod.TenantID = getTenantID(c)
+	mod.WorkspaceID = getWorkspaceID(c)
 	mod.CreatedBy = getUserID(c)
 	mod.LatestStage = models.ModelStageNone
 
@@ -255,6 +258,7 @@ func (h *ScienceHandler) SubmitComputeJob(c *gin.Context) {
 		return
 	}
 	job.TenantID = getTenantID(c)
+	job.WorkspaceID = getWorkspaceID(c)
 	job.CreatedBy = getUserID(c)
 
 	scheduled, err := h.orchestrator.SubmitJob(c.Request.Context(), &job)

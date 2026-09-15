@@ -51,6 +51,7 @@ func main() {
 	if err := api.InitEnterprise(); err != nil {
 		log.Printf("warning: failed to initialise enterprise services: %v", err)
 	}
+	api.ConfigureStatChat(os.Getenv("STATCHAT_API_URL"), os.Getenv("STATGATE_INTERNAL_API_KEY"))
 
 	router := mux.NewRouter()
 	api.RegisterRoutes(router)
