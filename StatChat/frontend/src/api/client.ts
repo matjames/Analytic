@@ -14,7 +14,12 @@ function getStoredToken(): string {
   if (typeof window === 'undefined') {
     return '';
   }
-  return window.localStorage.getItem('statchat_token')?.trim() ?? '';
+  return (
+    window.localStorage.getItem('statchat_token') ??
+    window.localStorage.getItem('registry_jwt') ??
+    window.localStorage.getItem('token') ??
+    ''
+  ).trim();
 }
 
 async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -67,6 +72,7 @@ export function bootstrapSharedSignOn(): void {
   const token = url.searchParams.get('statgate_token') ?? url.searchParams.get('registry_token') ?? url.searchParams.get('access_token');
   if (!token) return;
   window.localStorage.setItem('statchat_token', token);
+  window.localStorage.setItem('registry_jwt', token);
   url.searchParams.delete('statgate_token');
   url.searchParams.delete('registry_token');
   url.searchParams.delete('access_token');

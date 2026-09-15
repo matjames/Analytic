@@ -1,10 +1,13 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
-COPY go.mod go.sum* ./
+COPY statgate-lib/ /app/statgate-lib/
+
+WORKDIR /app/enterprise/core
+COPY enterprise/core/go.mod enterprise/core/go.sum* ./
 RUN go mod download
 
-COPY . .
+COPY enterprise/core/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /statgate-enterprise-core .
 
 FROM alpine:3.19

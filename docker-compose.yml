@@ -793,7 +793,8 @@ services:
   # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   statgate-enterprise-core:
     build:
-      context: ./enterprise/core
+      context: .
+      dockerfile: enterprise/core/Dockerfile
     ports:
       - "8096:8096"
     environment:

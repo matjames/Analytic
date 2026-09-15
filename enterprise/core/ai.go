@@ -173,7 +173,12 @@ func handleProjectAIAssist(c *gin.Context) {
 		if progress < 1 {
 			progress = 1
 		}
-		projectedTotal := req.Spent / (progress / 100)
+		projectedTotal := req.Budget
+		method := "approved budget baseline because no spend-to-date is recorded"
+		if req.Spent > 0 {
+			projectedTotal = req.Spent / (progress / 100)
+			method = "run-rate projection from spend-to-date and delivery progress"
+		}
 		varianceAmount := projectedTotal - req.Budget
 		variancePercent := 0.0
 		if req.Budget > 0 {
@@ -189,7 +194,7 @@ func handleProjectAIAssist(c *gin.Context) {
 				}
 				return (req.Spent / req.Budget) * 100
 			}(),
-			"method": "run-rate projection from spend-to-date and delivery progress",
+			"method": method,
 		}
 		response["recommendations"] = []string{
 			"Validate the spend-to-date baseline before approving a revised forecast.",

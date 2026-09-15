@@ -11,7 +11,11 @@ __pycache__
 venv
 node_modules
 **/node_modules
-StatSpatial/backend/vendor/
+**/vendor/
+!StatCitizen/
+!StatCitizen/backend/
+!StatCitizen/backend/vendor/
+!StatCitizen/backend/vendor/**
 
 # Secrets — never send into a build context
 .env

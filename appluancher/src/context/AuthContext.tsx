@@ -63,59 +63,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      try {
-        const res = await fetch(REGISTRY_LOGIN_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ emailOrUsername: email, password }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const token = data.token ?? data.access_token;
-          if (token) {
-            localStorage.setItem('registry_jwt', token);
-            const u = data.user ?? data;
-            setUser({
-              id: u.id?.toString() ?? u.userId?.toString() ?? 'user-001',
-              name: u.name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() ?? u.username ?? 'Registry User',
-              email: u.email ?? email,
-              role: (u.role as UserRole) ?? UserRole.ANALYST,
-              permissions: u.permissions ?? [],
-              department: u.department ?? '',
-              lastLogin: new Date(),
-            });
-            return;
-          }
-        }
-      } catch {
-        // Fallback to local offline dev auth
+      const res = await fetch(REGISTRY_LOGIN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailOrUsername: email, password }),
+      });
+      if (!res.ok) {
+        throw new Error('Registry authentication failed');
       }
 
-      // Offline / Developer Demo Accounts
-      const normalizedEmail = email.toLowerCase().trim();
-      let role = UserRole.ANALYST;
-      let name = 'Senior Statistical Analyst';
-      let dept = 'National Accounts & Tabulation';
-
-      if (normalizedEmail.includes('admin') || password === 'admin123') {
-        role = UserRole.ADMIN;
-        name = 'National Director (Admin)';
-        dept = 'Directorate of Official Statistics';
-      } else if (normalizedEmail.includes('manager') || password === 'manager123') {
-        role = UserRole.MANAGER;
-        name = 'Project & RMS Portfolio Manager';
-        dept = 'Monitoring, Evaluation & Research';
+      const data = await res.json();
+      const token = data.token ?? data.access_token;
+      if (!token) {
+        throw new Error('Registry response did not include a token');
       }
 
-      const mockToken = `demo_jwt_${role}_${Date.now()}`;
-      localStorage.setItem('registry_jwt', mockToken);
+      localStorage.setItem('registry_jwt', token);
+      const u = data.user ?? data;
       setUser({
-        id: `user-${role}-01`,
-        name: name,
-        email: email || `${role}@statgate.gov`,
-        role: role,
-        permissions: ['ALL_PERMISSIONS', 'DATA_EXPORT', 'AI_COPILOT_ACCESS', 'SPATIAL_ANALYSIS'],
-        department: dept,
+        id: u.id?.toString() ?? u.userId?.toString() ?? 'user-001',
+        name: u.name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() ?? u.username ?? 'Registry User',
+        email: u.email ?? email,
+        role: (u.role as UserRole) ?? UserRole.ANALYST,
+        permissions: u.permissions ?? [],
+        department: u.department ?? '',
         lastLogin: new Date(),
       });
     } finally {
