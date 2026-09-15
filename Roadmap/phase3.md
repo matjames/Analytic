@@ -151,12 +151,24 @@ GET  /api/v1/internal/sync-users       ← pull users from Registry into StatCha
 
 ## What is Missing ❌
 
+### Live Certification Update — 1 September 2026
+
+- StatData has passed authenticated live read/write certification for model registry and versions, experiments and runs, search/indexing, saved searches, compute jobs, quality rules, audit logs, and object links. Its startup schema was brought into parity with the implemented store, including all previously absent science/search/compliance tables and the missing quality-rule `updated_at` column.
+- StatFederation has passed authenticated live object creation plus canonical StatChat discussion write/read certification. Enterprise Core now has the shared JWT and PostgreSQL workspace configuration required for real workspace membership checks; the tenant certification workspace `phase3-cert` was created and selected-workspace requests are live.
+- Remaining gates are now frontend deep links where source exists, broader durable consumer rollout, and browser/NAT/TURN production proof. Durable interruption/reclaim and Redis stop/start failover have passed isolated live certification, and all ten audited later services have passed credentialed seeded-object StatChat write/read certification.
+
 ### Core Completeness
-- **Later-module adoption** — PMS and RMS now use canonical StatChat object conversations, Enterprise workflow creation uses the supported contract, and StatCollect survey submissions now use the canonical contract; field, governance, and later modules still need adoption.
-- **Platform event bus** — StatCollect now emits the shared versioned tenant-scoped event envelope; durable delivery, retries/idempotency, dead-letter processing, and consumers for conversation, message, notification, and presence events remain.
+- **Later-module adoption** — PMS and RMS, Enterprise workflows, StatCollect survey submissions, StatGovernance core objects, field/IoT objects, StatData objects, GeoIntel objects, AI Autonomy objects, Learning/CRM objects, BPM objects, Federation objects, Spatial objects, and Trust objects now expose canonical StatChat object-conversation boundaries with tenant/workspace checks. All ten audited later services have passed authenticated seeded-object write/read certification; browser entry points remain to be built or certified.
+- **Field API adoption** — StatIoT now exposes authenticated, workspace-filtered canonical discussions for gateways, devices, alerts, workers, and forms; its missing frontend source remains an explicit follow-up, while live device discussion write/read is certified.
+- **Platform event bus** — the shared library now provides Redis Streams consumer groups, bounded retries, Redis-backed idempotency, pending-message reclamation, and durable plus Pub/Sub DLQ publication; StatCollect, field/IoT, AI Autonomy, Federation, Data, Trust, StatOps, and Enterprise Core are opted into named durable paths, and the other shared-library publishers use durable publication. StatOps retains a compatibility listener for pre-canonical envelopes and scopes received centralized logs by tenant plus workspace; Enterprise Core adapts canonical events into its existing timeline, notification, workflow, and fabric projections while retaining legacy compatibility. Live stream consumption, retry-to-DLQ, abandoned-consumer reclaim, and Redis stop/start failover are certified; consumers for conversation, message, notification, and presence events remain.
+- **Field event adoption** — StatIoT alert, telemetry, field-submission, sync, and conflict publication now uses the shared durable publisher, and its cross-platform listener uses the named `statiot` durable group; live stream consumption, retry-to-DLQ, abandoned-consumer reclaim, and Redis stop/start failover are certified, while downstream consumer rollout remains.
+- **Data-platform adoption** — StatData now exposes authenticated canonical discussions for datasets, pipelines, data sources, feature views, notebooks, experiments, and models, and consumes durable Streams with the `statdata` group; its frontend source remains absent, while authenticated seeded-object proof is certified. Workspace boundaries are enforced across all implemented science/search/compliance records, including deep reads, search, and mutations; unassigned legacy rows remain tenant-wide for compatibility.
+- **Later-module API adoption** — GeoIntel, AI Autonomy, Learning/CRM, and BPM now expose authenticated, tenant/workspace-aware canonical StatChat discussions for their primary objects, with isolated identity/reference contract tests and Compose credentials. Authenticated live seeded-object write/read proof is certified; their checked-in frontend sources remain absent.
+- **Operational-service adoption** — StatFederation, StatSpatial, and StatTrust now expose tenant/workspace-checked canonical StatChat discussions for their supported persisted objects, with isolated identity/reference contract tests. Protected routes and authenticated seeded-object writes/read-back are certified; browser entry points remain.
+- **StatOps observability** — Operations events now use the canonical durable event stream with the `statops` consumer group, legacy non-canonical publishers remain visible during migration, and centralized logs enforce tenant/workspace filtering.
 
 ### Frontend Gaps
-- **Remaining object entry points** — PMS/RMS exact-reference deep links are implemented; workflow, survey, governance, and later-module entry points remain.
+- **Remaining object entry points** — PMS/RMS exact-reference deep links, StatCollect object links, and StatGovernance core-object deep links are implemented; field and later-module entry points remain.
 - **Competitive collaboration tools** — collaborative documents, whiteboards, translation, explicit social-graph requests, wellness interactions, and photo/video/article feed posts with authenticated media upload are implemented.
 
 ### Conferencing Gaps (Phase D)
@@ -251,7 +263,7 @@ This is how the platform achieves threaded, searchable discussion on datasets, p
 - Message read and reaction changes are broadcast and consumed in real time.
 - Tenant-scoped object conversations are available through `GET/POST /v1/chat/conversations/object` using `obj:<module>:<entity>:<id>` references.
 - Attachment and recording storage is mounted on the persistent `statchat_uploads` volume.
-- PMS and RMS no longer write new UI discussion messages to their local chat tables. Enterprise workflows and StatCollect survey submissions now target the canonical object-conversation API; StatCollect also uses the shared EnterpriseEvent envelope. Remaining integration work is field/governance/later-module adoption and durable platform event publication.
+- PMS and RMS no longer write new UI discussion messages to their local chat tables. Enterprise workflows and StatCollect survey submissions now target the canonical object-conversation API; StatCollect also uses the shared EnterpriseEvent envelope and durable Streams path. Remaining integration work is authenticated seeded-object proof for field/governance/later modules, browser entry points, Redis failover certification, and broad durable consumer rollout; abandoned-consumer interruption/reclaim is live-certified.
 
 ### Verification update — 26 August 2026
 
@@ -311,3 +323,10 @@ This is how the platform achieves threaded, searchable discussion on datasets, p
 ## Milestone
 
 Enterprise Collaboration Platform complete. Every StatGate module can route communication through StatChat.
+### StatCitizen Certification: 2 September 2026
+
+StatCitizen now publishes canonical events through the shared durable event bus. Its live service is configured for port `8115`; the required production session secret and internal credentials are wired, the Postgres role/database and startup migrations are present, and live health/readiness checks report connected database and event bus. Enterprise Core registration also succeeds.
+
+### StatCitizen Build Checkpoint: 15 September 2026
+
+The StatCitizen image now builds successfully with the included vendored Go dependencies and runs under Compose with Docker health status `healthy`. The remaining Phase 3 release evidence is browser E2E plus external multi-browser NAT/TURN validation, which cannot be completed until a browser session and external network endpoints are available.
