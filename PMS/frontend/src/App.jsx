@@ -22,6 +22,8 @@ import DonorsTab from './components/DonorsTab';
 import PortfolioDashboard from './components/PortfolioDashboard';
 import ProjectHealthAssistant from './components/ProjectHealthAssistant';
 import ProjectLocationMap from './components/ProjectLocationMap';
+import ProgressSummary from './components/ProgressSummary';
+import CriticalPathPanel from './components/CriticalPathPanel';
 
 // API Base URL - configured for the StatGate ecosystem
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
@@ -443,6 +445,8 @@ export default function App() {
                 {activeTab === 'overview' && (
                   <>
                   <ProjectHealthAssistant project={workspaceData.project} apiBase={API_BASE} />
+                  <ProgressSummary project={workspaceData.project} apiBase={API_BASE} />
+                  <CriticalPathPanel project={workspaceData.project} apiBase={API_BASE} />
                   <ProjectLocationMap project={workspaceData.project} apiBase={SPATIAL_API_BASE} />
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
                     {/* Main column */}

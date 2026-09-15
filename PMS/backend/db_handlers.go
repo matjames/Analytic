@@ -2451,6 +2451,285 @@ func dbGetProjectHealthAssistant(c *gin.Context) {
 	})
 }
 
+func dbGetProjectProgressSummary(c *gin.Context) {
+	projectID := c.Param("id")
+	workspaceID := workspaceIDContext(c)
+	var project struct {
+		ID       string  `json:"projectId"`
+		Name     string  `json:"projectName"`
+		Stage    string  `json:"stage"`
+		Progress float64 `json:"progress"`
+		Budget   float64 `json:"budget"`
+		Spent    float64 `json:"spent"`
+	}
+	if err := DB.QueryRow(`
+		SELECT id, name, stage, COALESCE(progress, 0), COALESCE(budget_total, 0), COALESCE(spent_total, 0)
+		FROM pms.projects
+		WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, projectID, workspaceID).Scan(&project.ID, &project.Name, &project.Stage, &project.Progress, &project.Budget, &project.Spent); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	var taskCount, completedTasks, inProgressTasks int
+	var taskProgress float64
+	if err := DB.QueryRow(`
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'Done'), COUNT(*) FILTER (WHERE status = 'In Progress'), COALESCE(AVG(progress), 0)
+		FROM pms.tasks WHERE project_id = $1
+	`, projectID).Scan(&taskCount, &completedTasks, &inProgressTasks, &taskProgress); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "progress summary unavailable"})
+		return
+	}
+
+	var milestoneCount, completedMilestones int
+	if err := DB.QueryRow(`
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'Completed')
+		FROM pms.milestones WHERE project_id = $1
+	`, projectID).Scan(&milestoneCount, &completedMilestones); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "progress summary unavailable"})
+		return
+	}
+
+	var openRisks int
+	if err := DB.QueryRow(`
+		SELECT COUNT(*) FROM pms.risks
+		WHERE project_id = $1 AND COALESCE(status, '') NOT IN ('Closed', 'Resolved')
+	`, projectID).Scan(&openRisks); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "progress summary unavailable"})
+		return
+	}
+
+	var nextMilestoneName sql.NullString
+	var nextMilestoneDue sql.NullTime
+	if err := DB.QueryRow(`
+		SELECT name, due_date FROM pms.milestones
+		WHERE project_id = $1 AND COALESCE(status, '') <> 'Completed'
+		ORDER BY due_date NULLS LAST LIMIT 1
+	`, projectID).Scan(&nextMilestoneName, &nextMilestoneDue); err != nil && err != sql.ErrNoRows {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "progress summary unavailable"})
+		return
+	}
+
+	utilization := 0.0
+	if project.Budget > 0 {
+		utilization = project.Spent / project.Budget * 100
+	}
+	deliveryProgress := taskProgress
+	if taskCount == 0 {
+		deliveryProgress = project.Progress
+	}
+
+	recommendations := make([]string, 0, 4)
+	if taskCount > 0 && completedTasks < taskCount {
+		recommendations = append(recommendations, fmt.Sprintf("%d of %d tasks are complete; confirm owners and due dates for the remaining work.", completedTasks, taskCount))
+	}
+	if milestoneCount > 0 && completedMilestones < milestoneCount {
+		recommendations = append(recommendations, fmt.Sprintf("%d of %d milestones are complete; review the next milestone before the next status meeting.", completedMilestones, milestoneCount))
+	}
+	if openRisks > 0 {
+		recommendations = append(recommendations, fmt.Sprintf("%d open risks require an owner, mitigation, and review date.", openRisks))
+	}
+	if utilization >= 90 {
+		recommendations = append(recommendations, "Budget utilization is at least 90%; complete a finance-owner review before committing new spend.")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "No immediate delivery exception was found in the current PMS records.")
+	}
+
+	summary := fmt.Sprintf("%s is %.1f%% complete in the %s stage, with %d tasks and %d milestones tracked.", project.Name, deliveryProgress, project.Stage, taskCount, milestoneCount)
+	if openRisks > 0 {
+		summary += fmt.Sprintf(" %d open risks remain.", openRisks)
+	}
+
+	nextMilestone := gin.H{"name": nil, "dueDate": nil}
+	if nextMilestoneName.Valid {
+		nextMilestone["name"] = nextMilestoneName.String
+	}
+	if nextMilestoneDue.Valid {
+		nextMilestone["dueDate"] = nextMilestoneDue.Time.Format("2006-01-02")
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"scope":   gin.H{"workspaceId": workspaceID, "projectId": projectID},
+		"project": project,
+		"summary": summary,
+		"delivery": gin.H{
+			"progress":            deliveryProgress,
+			"taskCount":           taskCount,
+			"completedTasks":      completedTasks,
+			"inProgressTasks":     inProgressTasks,
+			"milestoneCount":      milestoneCount,
+			"completedMilestones": completedMilestones,
+			"nextMilestone":       nextMilestone,
+		},
+		"budget": gin.H{
+			"budget":             project.Budget,
+			"spent":              project.Spent,
+			"remaining":          project.Budget - project.Spent,
+			"utilizationPercent": utilization,
+		},
+		"openRisks":       openRisks,
+		"recommendations": recommendations,
+		"generatedFrom":   "workspace-scoped PMS project, task, milestone, risk, and budget records",
+	})
+}
+
+func dbGetProjectCriticalPath(c *gin.Context) {
+	projectID := c.Param("id")
+	workspaceID := workspaceIDContext(c)
+	var projectExists bool
+	if err := DB.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM pms.projects WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL))
+	`, projectID, workspaceID).Scan(&projectExists); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "critical path unavailable"})
+		return
+	}
+	if !projectExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	type pathTask struct {
+		ID           string
+		WBSCode      string
+		Title        string
+		StartDate    sql.NullTime
+		EndDate      sql.NullTime
+		Dependencies []string
+	}
+	rows, err := DB.Query(`
+		SELECT id, COALESCE(wbs_code, ''), title, start_date, end_date, COALESCE(dependencies, '{}')
+		FROM pms.tasks WHERE project_id = $1 ORDER BY start_date NULLS LAST, id
+	`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "critical path unavailable"})
+		return
+	}
+	defer rows.Close()
+
+	tasks := make([]pathTask, 0)
+	byID := make(map[string]pathTask)
+	byWBS := make(map[string]string)
+	for rows.Next() {
+		var task pathTask
+		if err := rows.Scan(&task.ID, &task.WBSCode, &task.Title, &task.StartDate, &task.EndDate, pq.Array(&task.Dependencies)); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "critical path unavailable"})
+			return
+		}
+		tasks = append(tasks, task)
+		byID[task.ID] = task
+		if task.WBSCode != "" {
+			byWBS[task.WBSCode] = task.ID
+		}
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "critical path unavailable"})
+		return
+	}
+
+	resolveDependency := func(value string) string {
+		value = strings.TrimSpace(value)
+		if _, ok := byID[value]; ok {
+			return value
+		}
+		return byWBS[value]
+	}
+	durationDays := func(task pathTask) int {
+		if !task.StartDate.Valid || !task.EndDate.Valid || task.EndDate.Time.Before(task.StartDate.Time) {
+			return 1
+		}
+		days := int(task.EndDate.Time.Sub(task.StartDate.Time).Hours()/24) + 1
+		if days < 1 {
+			return 1
+		}
+		return days
+	}
+
+	state := make(map[string]int)
+	memoDuration := make(map[string]int)
+	memoChain := make(map[string][]string)
+	missingDependencies := make(map[string]bool)
+	var longest func(string) (int, []string, error)
+	longest = func(taskID string) (int, []string, error) {
+		switch state[taskID] {
+		case 1:
+			return 0, nil, fmt.Errorf("dependency cycle detected at %s", taskID)
+		case 2:
+			return memoDuration[taskID], memoChain[taskID], nil
+		}
+		state[taskID] = 1
+		task := byID[taskID]
+		bestDuration := 0
+		var bestChain []string
+		for _, dependency := range task.Dependencies {
+			dependencyID := resolveDependency(dependency)
+			if dependencyID == "" {
+				missingDependencies[strings.TrimSpace(dependency)] = true
+				continue
+			}
+			dependencyDuration, dependencyChain, err := longest(dependencyID)
+			if err != nil {
+				return 0, nil, err
+			}
+			if dependencyDuration > bestDuration {
+				bestDuration = dependencyDuration
+				bestChain = dependencyChain
+			}
+		}
+		bestChain = append(append([]string{}, bestChain...), taskID)
+		bestDuration += durationDays(task)
+		state[taskID] = 2
+		memoDuration[taskID] = bestDuration
+		memoChain[taskID] = bestChain
+		return bestDuration, bestChain, nil
+	}
+
+	criticalDuration := 0
+	var criticalIDs []string
+	for _, task := range tasks {
+		duration, chain, err := longest(task.ID)
+		if err != nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "task dependency cycle detected", "detail": err.Error()})
+			return
+		}
+		if duration > criticalDuration {
+			criticalDuration = duration
+			criticalIDs = chain
+		}
+	}
+
+	criticalTasks := make([]gin.H, 0, len(criticalIDs))
+	for position, taskID := range criticalIDs {
+		task := byID[taskID]
+		criticalTasks = append(criticalTasks, gin.H{
+			"position":     position + 1,
+			"id":           task.ID,
+			"wbsCode":      task.WBSCode,
+			"title":        task.Title,
+			"durationDays": durationDays(task),
+			"dependencies": task.Dependencies,
+		})
+	}
+	missing := make([]string, 0, len(missingDependencies))
+	for dependency := range missingDependencies {
+		if dependency != "" {
+			missing = append(missing, dependency)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"scope": gin.H{"workspaceId": workspaceID, "projectId": projectID},
+		"criticalPath": gin.H{
+			"durationDays": criticalDuration,
+			"taskIds":      criticalIDs,
+			"tasks":        criticalTasks,
+		},
+		"missingDependencies": missing,
+		"taskCount":           len(tasks),
+		"method":              "longest dependency chain using inclusive task date durations; undated tasks count as one day",
+	})
+}
+
 func dbGetActivityTimeline(c *gin.Context) {
 	rows, err := DB.Query(`
 		SELECT a.id, a.project_id, a.user_name, a.action, a.entity, a.entity_id, a.details, a.timestamp

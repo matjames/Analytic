@@ -261,15 +261,23 @@ The image-build statement above is superseded. StatCitizen now builds successful
 
 ### Phase 4 PMS Checkpoint: 15 September 2026
 
-PMS LogFrame, Theory of Change, and Donor workflows are now workspace-safe and user-complete for the implemented scope. The backend compatibility migration handles both clean and legacy PMS schemas; authenticated API probes verified nested LogFrame persistence, ToC save/readback, workspace-filtered Donor list/create, unauthenticated `401` enforcement, and foreign-workspace `404` denial. PMS API and UI are rebuilt and healthy on ports `8091` and `3010`; remaining Phase 4 work is budget forecasting and other explicitly listed later capabilities.
+PMS LogFrame, Theory of Change, Donor workflows, governed budget forecasting, and automated progress summaries are now workspace-safe and user-complete for the implemented scope. The backend compatibility migration handles both clean and legacy PMS schemas; authenticated API probes verified nested LogFrame persistence, ToC save/readback, workspace-filtered Donor list/create, unauthenticated `401` enforcement, foreign-workspace `404` denial, budget forecast baseline behavior, and summary isolation. PMS API and UI are rebuilt and healthy on ports `8091` and `3010`; remaining Phase 4 work is other explicitly listed later capabilities.
 
 ### PMS Portfolio Dashboard Checkpoint: 15 September 2026
 
-PMS now provides a workspace-scoped portfolio/programme control tower at `GET /api/portfolio-dashboard`, with filtered aggregate KPIs, stage distribution, group rollups, and project rows surfaced in the global UI. Live probes verified valid portfolio/programme filtering, separate workspace results, and unauthenticated `401` enforcement. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint also provides governed project risk, schedule, and milestone advisory through Enterprise Core with workspace ownership enforcement. Phase 4 still has budget forecasting open.
+PMS now provides a workspace-scoped portfolio/programme control tower at `GET /api/portfolio-dashboard`, with filtered aggregate KPIs, stage distribution, group rollups, and project rows surfaced in the global UI. Live probes verified valid portfolio/programme filtering, separate workspace results, and unauthenticated `401` enforcement. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint also provides governed project risk, schedule, milestone, and budget forecasting advisory through Enterprise Core with workspace ownership enforcement.
 
 ### PMS GIS Checkpoint: 15 September 2026
 
 PMS project locations are now integrated with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview includes coordinate and administrative-unit editing with an OSM preview. Live certification verified save/readback in the selected workspace, invalid-coordinate rejection, foreign-workspace isolation, and unauthenticated `401` enforcement. Broader GIS capabilities such as geocoding, GPS streaming, spatial analysis, and vector tiles remain Phase 10 work.
+
+### PMS Budget Forecast Checkpoint: 15 September 2026
+
+The governed `budget_forecast` action on `POST /api/projects/:id/health-assistant` now returns projected total, variance amount and percentage, utilization, calculation method, and finance-owner recommendations. Live certification returned the approved-budget baseline for a zero-spend project and verified `400` for unsupported actions, `404` for a foreign-workspace project, and `401` without authentication.
+
+### PMS Progress Summary Checkpoint: 15 September 2026
+
+The workspace-scoped `GET /api/projects/:id/progress-summary` endpoint and project overview panel now provide automated delivery summaries from PMS project, task, milestone, risk, and budget records. Live certification verified selected-workspace `200`, foreign-workspace `404`, and unauthenticated `401` behavior.
 
 ### Tenant/Authorization Attestation: 15 September 2026
 

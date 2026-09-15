@@ -67,6 +67,7 @@ GET    /api/projects/:id/calendar      ← project calendar events
 GET    /api/projects/:id/reports       ← project reports list
 POST   /api/projects/:id/reports       ← generate project report
 GET    /api/projects/:id/relationships ← cross-module object links
+GET    /api/projects/:id/progress-summary ← automated workspace progress summary
 ```
 
 **Activities, Components, Deliverables, Milestones**
@@ -211,8 +212,8 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - **Resource planner / resource allocation** — not implemented
 
 ### Reporting & AI
-- **Project AI Assistant** — implemented for governed risk, schedule, and milestone advisory; budget forecasting remains open
-- **Automated progress summaries** — not implemented
+- **Project AI Assistant** — implemented for governed risk, schedule, milestone, and budget forecasting advisory
+- **Automated progress summaries** — implemented from workspace-scoped project, task, milestone, risk, and budget records
 - **Donor reporting templates** — not implemented
 
 ### GIS Integration
@@ -253,6 +254,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - [x] Portfolio/programme dashboard with aggregated KPIs
 - [x] Donor management operational
 - [x] AI project health assistant operational
+- [x] Automated progress summaries operational
 - [x] GIS project location mapping operational
 
 ---
@@ -270,9 +272,13 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 
 The workspace-scoped `GET /api/portfolio-dashboard` endpoint now aggregates project count, average progress, budgets, spend, risks, issues, lifecycle stages, portfolio groups, programme groups, and project rows. The global PMS view exposes these KPIs with portfolio and programme filters; authenticated live probes returned the expected scoped project and filter counts, separate workspaces remained isolated, and unauthenticated access returned `401`. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint now provides governed risk, schedule, and milestone advisory through Enterprise Core; invalid actions return `400` and foreign-workspace projects return `404`.
 
+### Phase 4 Progress Summary Checkpoint - 15 September 2026
+
+The workspace-scoped `GET /api/projects/:id/progress-summary` endpoint now derives delivery progress, task and milestone completion, next milestone, open risks, budget utilization, and follow-up recommendations from authoritative PMS records. The project overview renders this summary with provenance and a confirmation notice; live certification returned `200` in the selected workspace, `404` for the foreign workspace, and `401` without authentication.
+
 ### Phase 4 GIS Checkpoint - 15 September 2026
 
-PMS now integrates with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview provides coordinate and administrative-unit editing plus an OSM preview; live certification saved and read back project `proj-66626` in workspace `ws-1789477440495211553` with `201` and `200` responses, rejected latitude `100` with `400`, returned no rows from the other workspace, and rejected unauthenticated access with `401`. The broader GIS roadmap remains open for geocoding, GPS streaming, PostGIS analysis, vector tiles, and field-activity mapping; PMS budget forecasting also remains open.
+PMS now integrates with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview provides coordinate and administrative-unit editing plus an OSM preview; live certification saved and read back project `proj-66626` in workspace `ws-1789477440495211553` with `201` and `200` responses, rejected latitude `100` with `400`, returned no rows from the other workspace, and rejected unauthenticated access with `401`. The governed project assistant also supports budget forecasting; live certification returned the approved `$1,000` baseline for a zero-spend project, with `0%` variance and `0%` utilization, plus `400`, `404`, and `401` fail-closed checks. The broader GIS roadmap remains open for geocoding, GPS streaming, PostGIS analysis, vector tiles, and field-activity mapping.
 
 ## Estimated Duration
 

@@ -123,6 +123,8 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/dashboard", dbGetDashboard)
 		api.GET("/portfolio-dashboard", dbGetPortfolioDashboard)
 		api.GET("/projects/:id/dashboard", dbGetProjectDashboard)
+		api.GET("/projects/:id/progress-summary", dbGetProjectProgressSummary)
+		api.GET("/projects/:id/critical-path", dbGetProjectCriticalPath)
 		api.POST("/projects/:id/health-assistant", dbGetProjectHealthAssistant)
 
 		// ─── Open Standards: IATI 2.03 Development Partner Export ─
