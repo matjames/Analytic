@@ -247,16 +247,13 @@ StatChat creates conversation threads for platform objects automatically:
 - `README.md`, `SECURITY.md`, `DEPLOYMENT.md`
 - `STATGATE_ENGINEERING_DIRECTIVE.md` — platform vision document
 
-## What is Missing ❌
+## Remaining Foundation Work
 
-- `PROJECT_PROGRESS.md` — current phase, sprint, blockers, risks
-- `SYSTEM_COMPLETION.md` — % completion per module
-- `CHANGELOG.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
-- `README_ARCHITECTURE.md`, `README_AI.md`, `README_DATA_GOVERNANCE.md`
-- `API_GUIDELINES.md`, `DATABASE_GUIDELINES.md`, `UI_GUIDELINES.md`, `DEVELOPER_GUIDE.md`
-- Committed secrets rotated out of git history (`secrets/`, `.env` files)
-- Committed `.exe` binaries removed from git
-- `frontend/Lib` and `frontend/.venv.bak` removed from tracking
+- A passing GitHub Actions run is still an external CI gate and cannot be created by a local-only verification.
+- A fresh-clone build of every expansion service still depends on external container registry and Go module availability.
+- Historical secret removal requires a separately coordinated repository history rewrite; the current index contains no tracked `.env`, `secrets/`, or `.exe` paths.
+
+The foundation documents now exist at the repository root: `CHANGELOG.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `README_ARCHITECTURE.md`, `README_AI.md`, `README_DATA_GOVERNANCE.md`, `API_GUIDELINES.md`, `DATABASE_GUIDELINES.md`, `UI_GUIDELINES.md`, and `DEVELOPER_GUIDE.md`.
 
 ---
 
@@ -265,12 +262,12 @@ StatChat creates conversation threads for platform objects automatically:
 Phase 1 is complete only if:
 
 - [x] All Go modules build and test with `go build ./...` / `go test ./...` (24 modules verified 2026-08-21)
-- [ ] Docker Compose starts all services successfully (`docker compose up`)
-- [ ] `GET /health` responds 200 on every Go service
+- [x] Docker Compose starts all services successfully (`docker compose up`)
+- [x] `GET /health` responds 200 on every exposed Go/collection service
 - [x] Flask UI loads at `http://localhost:5000`
 - [x] App Launcher loads at `http://localhost:3006`
 - [x] PostgreSQL connects and every bootstrap script succeeds on a clean PostgreSQL 15 volume
-- [ ] Redis connects on all services that require it
+- [x] Redis connects on all services that require it
 - [x] All currently configured Prometheus targets are up (Core, Analytics, Registry, PMS, StatChat, Prometheus)
 - [ ] GitHub Actions CI pipeline executes and passes
 - [x] No secrets committed in git (`.env`, `secrets/`) in the current index
@@ -285,7 +282,15 @@ Phase 1 is complete only if:
 - Clean PostgreSQL initialization passes all bootstrap scripts from an empty disposable volume.
 - PMS, RMS, and Governance readiness probes now report authenticated Redis event-bus connectivity explicitly (`redis: true`).
 - Expansion-stack builds uncovered and fixed invalid shared-library Docker contexts in StatFederation, StatOps, and StatTrust. Deployment of that batch is currently blocked by repeated external registry/Go-proxy download resets; their local Go test suites pass.
-- Remaining gate: start and health-certify the entire 41-service Compose inventory, verify Redis/event integration for every applicable service, and obtain a passing GitHub Actions run.
+- Remaining gates: obtain a passing GitHub Actions run and repeat expansion-stack builds from a clean checkout when external registry and Go-proxy access is available.
+
+### Verification snapshot — 2026-09-15
+
+- The Compose inventory contains 46 services; all 46 are running and no service is `starting`, `unhealthy`, restarting, exited, or merely created.
+- All 22 exposed Go/collection health endpoints return HTTP `200`, including StatCitizen on `8115` and StatCollect on `8081`.
+- Readiness probes for the database-backed services return HTTP `200`; Redis-backed services report connected Redis or durable event-bus state. Durable consumer groups have zero pending messages and zero lag at this checkpoint.
+- The CI workflow now supplies the required `STATCITIZEN_CITIZEN_SESSION_SECRET` during Compose validation.
+- The remaining Phase 1 gates are a real GitHub Actions run and fresh-clone expansion-stack builds where external registry or Go-proxy access is required.
 
 ---
 
