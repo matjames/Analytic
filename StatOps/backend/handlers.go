@@ -58,12 +58,18 @@ func ScrapeTelemetryHandler(c *gin.Context) {
 }
 
 func ListLogsHandler(c *gin.Context) {
-	globalStore.mu.RLock()
-	defer globalStore.mu.RUnlock()
+	tenantID, _ := c.Get("tenant_id")
+	workspaceID, _ := c.Get("workspace_id")
+	logs := globalStore.ListLogs(stringValue(tenantID), stringValue(workspaceID))
 	c.JSON(http.StatusOK, gin.H{
-		"count": len(globalStore.logs),
-		"logs":  globalStore.logs,
+		"count": len(logs),
+		"logs":  logs,
 	})
+}
+
+func stringValue(value interface{}) string {
+	valueString, _ := value.(string)
+	return valueString
 }
 
 func ListCMDBHandler(c *gin.Context) {
@@ -142,9 +148,10 @@ func TriggerPipelineHandler(c *gin.Context) {
 	created := globalStore.TriggerPipeline(req)
 
 	publishEvent("ops.pipeline.triggered", "pipeline", created.ID, created.Author, req.TenantID, map[string]interface{}{
-		"repo":   created.RepoName,
-		"branch": created.Branch,
-		"commit": created.CommitSHA,
+		"repo":         created.RepoName,
+		"branch":       created.Branch,
+		"commit":       created.CommitSHA,
+		"workspace_id": created.WorkspaceID,
 	})
 
 	c.JSON(http.StatusAccepted, created)
@@ -178,10 +185,11 @@ func CreateDeploymentHandler(c *gin.Context) {
 	created := globalStore.CreateDeployment(req)
 
 	publishEvent("ops.deployment.started", "deployment", created.ID, created.DeployedBy, req.TenantID, map[string]interface{}{
-		"service":     created.ServiceName,
-		"version":     created.Version,
-		"environment": created.Environment,
-		"strategy":    created.Strategy,
+		"service":      created.ServiceName,
+		"version":      created.Version,
+		"environment":  created.Environment,
+		"strategy":     created.Strategy,
+		"workspace_id": created.WorkspaceID,
 	})
 
 	c.JSON(http.StatusCreated, created)
@@ -212,6 +220,7 @@ func RollbackDeploymentHandler(c *gin.Context) {
 	publishEvent("ops.deployment.rolled_back", "deployment", id, actorStr, rolledBack.TenantID, map[string]interface{}{
 		"service":        rolledBack.ServiceName,
 		"target_version": req.TargetVersion,
+		"workspace_id":   rolledBack.WorkspaceID,
 	})
 
 	c.JSON(http.StatusOK, rolledBack)

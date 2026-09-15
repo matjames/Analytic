@@ -50,7 +50,7 @@ func (eb *EventBus) Publish(eventType, objectType, objectID string, payload inte
 	if cfg != nil && cfg.TenantID != "" {
 		tenantID = cfg.TenantID
 	}
-	err := eb.bus.Publish(context.Background(), events.EnterpriseEvent{
+	err := eb.bus.PublishDurable(context.Background(), events.EnterpriseEvent{
 		EventID:    uuid.NewString(),
 		EventType:  eventType,
 		Source:     "statcollect",

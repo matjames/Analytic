@@ -299,6 +299,22 @@ func (s *MemStore) ListDeployments(tenantID, workspaceID string) []DeploymentRec
 	return res
 }
 
+func (s *MemStore) ListLogs(tenantID, workspaceID string) []CentralizedLog {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]CentralizedLog, 0, len(s.logs))
+	for _, logEntry := range s.logs {
+		if tenantID != "" && logEntry.TenantID != tenantID {
+			continue
+		}
+		if workspaceID != "" && logEntry.WorkspaceID != "" && logEntry.WorkspaceID != workspaceID {
+			continue
+		}
+		res = append(res, logEntry)
+	}
+	return res
+}
+
 func (s *MemStore) CreateDeployment(d DeploymentRecord) DeploymentRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()

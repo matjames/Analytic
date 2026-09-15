@@ -79,17 +79,9 @@ func main() {
 	}
 	v1.Use(func(c *gin.Context) {
 		workspaceID := c.GetHeader("X-Workspace-ID")
-		if workspaceID != "" {
-			if len(workspaceID) > 128 {
-				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
-				return
-			}
-			for i, r := range workspaceID {
-				if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && i > 0) || r == '_') {
-					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
-					return
-				}
-			}
+		if !validWorkspaceID(workspaceID) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid workspace id"})
+			return
 		}
 		c.Set("workspace_id", workspaceID)
 		c.Next()
@@ -164,4 +156,16 @@ func main() {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 	log.Println("StatOps service exited cleanly.")
+}
+
+func validWorkspaceID(workspaceID string) bool {
+	if len(workspaceID) > 128 {
+		return false
+	}
+	for _, r := range workspaceID {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }

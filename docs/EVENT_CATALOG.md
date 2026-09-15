@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0 (Phase y Convergence)  
 **Status:** Authoritative Event Specification & Taxonomy  
-**Transport:** Redis 7 Pub/Sub (`statgate:events`) with PostgreSQL durable ingress and DLQ (`statgate:events:dlq`).
+**Transport:** Redis 7 Pub/Sub (`statgate:events`) plus Redis Streams durable ingress (`statgate:events:stream`) with consumer groups and DLQ (`statgate:events:dlq`, `statgate:events:dlq:stream`).
 
 ---
 

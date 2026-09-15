@@ -71,6 +71,15 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestWorkspaceHeaderAcceptsPlatformWorkspaceIDs(t *testing.T) {
+	if !validWorkspaceID("ws-1788255280007546969") {
+		t.Fatal("expected platform workspace ID to pass validation")
+	}
+	if validWorkspaceID("workspace with spaces") {
+		t.Fatal("expected whitespace workspace ID to fail validation")
+	}
+}
+
 func TestTelemetryAggregation(t *testing.T) {
 	r := setupTestRouter()
 	req, _ := http.NewRequest("GET", "/api/v1/observability/telemetry", nil)

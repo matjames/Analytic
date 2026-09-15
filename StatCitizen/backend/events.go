@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	platformevents "github.com/matjames/statgate-lib/events"
 )
 
 // ─── Enterprise Event Bus ─────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ import (
 type StatGateEvent struct {
 	ID            string                 `json:"id"`
 	EventType     string                 `json:"event_type"`
-	Source        string                 `json:"source"`         // always "statcitizen"
+	Source        string                 `json:"source"` // always "statcitizen"
 	ObjectType    string                 `json:"object_type"`
 	ObjectID      string                 `json:"object_id"`
 	Actor         string                 `json:"actor"`
@@ -33,9 +33,8 @@ type StatGateEvent struct {
 
 // EventBus manages Redis-backed event publishing.
 type EventBus struct {
-	client       *redis.Client
-	channel      string
-	enabled      bool
+	bus     *platformevents.EventBus
+	enabled bool
 }
 
 var eventBus *EventBus
@@ -43,27 +42,32 @@ var eventBus *EventBus
 // initEventBus initializes the Redis-backed event bus.
 func initEventBus(cfg *Config) {
 	addr := fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort)
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: cfg.RedisPassword,
-		DB:       0,
+	bus, err := platformevents.NewEventBus(platformevents.Config{
+		RedisAddr: addr,
+		Password:  cfg.RedisPassword,
+		Source:    "statcitizen",
+		Channel:   cfg.EventChannel,
 	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("[WARNING] Event bus (Redis) unavailable at %s: %v — events will be queued", addr, err)
-		eventBus = &EventBus{enabled: false, channel: cfg.EventChannel}
+	if err != nil {
+		log.Printf("[WARNING] Shared event bus unavailable at %s: %v — events will be queued", addr, err)
+		eventBus = &EventBus{enabled: false}
 		return
 	}
 
-	eventBus = &EventBus{client: client, channel: cfg.EventChannel, enabled: true}
-	log.Printf("event bus: connected to Redis at %s, channel=%s", addr, cfg.EventChannel)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	enabled := bus.RedisAvailable(ctx)
+	eventBus = &EventBus{bus: bus, enabled: enabled}
+	if enabled {
+		log.Printf("event bus: connected to shared durable Redis bus at %s, channel=%s", addr, cfg.EventChannel)
+	} else {
+		log.Printf("[WARNING] Event bus (Redis) unavailable at %s: events will be queued", addr)
+	}
 }
 
 func closeEventBus() {
-	if eventBus != nil && eventBus.client != nil {
-		_ = eventBus.client.Close()
+	if eventBus != nil && eventBus.bus != nil {
+		_ = eventBus.bus.Close()
 	}
 }
 
@@ -74,29 +78,10 @@ func (eb *EventBus) Publish(eventType, objectType, objectID, tenantID, actor, co
 		correlationID = fmt.Sprintf("corr_%d", time.Now().UnixNano())
 	}
 
-	evt := StatGateEvent{
-		ID:            fmt.Sprintf("evt_%d", time.Now().UnixNano()),
-		EventType:     eventType,
-		Source:        "statcitizen",
-		ObjectType:    objectType,
-		ObjectID:      objectID,
-		Actor:         actor,
-		TenantID:      tenantID,
-		CorrelationID: correlationID,
-		Payload:       payload,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339),
-	}
-
-	b, err := json.Marshal(evt)
-	if err != nil {
-		log.Printf("event: marshal error for %s: %v", eventType, err)
-		return
-	}
-
-	if eb != nil && eb.enabled && eb.client != nil {
+	if eb != nil && eb.enabled && eb.bus != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		if err := eb.client.Publish(ctx, eb.channel, string(b)).Err(); err != nil {
+		if err := eb.bus.PublishDurable(ctx, newCitizenEnterpriseEvent(eventType, objectType, objectID, tenantID, actor, correlationID, payload)); err != nil {
 			log.Printf("event: publish failed for %s: %v — writing to dead letter", eventType, err)
 			writeDeadLetter(eventType, tenantID, payload)
 			return
@@ -108,6 +93,25 @@ func (eb *EventBus) Publish(eventType, objectType, objectID, tenantID, actor, co
 	// Redis unavailable — write to dead letter queue for later retry
 	log.Printf("event: bus unavailable, queueing %s to dead letter", eventType)
 	writeDeadLetter(eventType, tenantID, payload)
+}
+
+func newCitizenEnterpriseEvent(eventType, objectType, objectID, tenantID, actor, correlationID string, payload map[string]interface{}) platformevents.EnterpriseEvent {
+	if correlationID == "" {
+		correlationID = fmt.Sprintf("corr_%d", time.Now().UnixNano())
+	}
+	return platformevents.EnterpriseEvent{
+		EventID:       fmt.Sprintf("evt_%d", time.Now().UnixNano()),
+		EventType:     eventType,
+		Source:        "statcitizen",
+		ObjectType:    objectType,
+		ObjectID:      objectID,
+		UserID:        actor,
+		TenantID:      tenantID,
+		CorrelationID: correlationID,
+		Payload:       payload,
+		Timestamp:     time.Now().UTC(),
+		Version:       "1.0",
+	}
 }
 
 // writeDeadLetter persists a failed event for later retry.
@@ -169,17 +173,8 @@ func retryDeadLetterEvents() {
 			continue
 		}
 
-		b, _ := json.Marshal(StatGateEvent{
-			ID:        fmt.Sprintf("evt_retry_%d", time.Now().UnixNano()),
-			EventType: eventType,
-			Source:    "statcitizen",
-			TenantID:  tenantID,
-			Payload:   payload,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		})
-
 		pubCtx, pubCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		err := eventBus.client.Publish(pubCtx, eventBus.channel, string(b)).Err()
+		err := eventBus.bus.PublishDurable(pubCtx, newCitizenEnterpriseEvent(eventType, "", "", tenantID, "", "", payload))
 		pubCancel()
 
 		if err == nil {

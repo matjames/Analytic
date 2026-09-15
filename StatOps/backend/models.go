@@ -171,14 +171,16 @@ type ServiceTelemetry struct {
 }
 
 type CentralizedLog struct {
-	ID        string                 `json:"id"`
-	Timestamp time.Time              `json:"timestamp"`
-	Level     string                 `json:"level"` // INFO, WARN, ERROR, FATAL, DEBUG
-	SourceApp string                 `json:"source_app"`
-	Message   string                 `json:"message"`
-	TraceID   string                 `json:"trace_id,omitempty"`
-	SpanID    string                 `json:"span_id,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	TenantID    string                 `json:"tenant_id,omitempty"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Level       string                 `json:"level"` // INFO, WARN, ERROR, FATAL, DEBUG
+	SourceApp   string                 `json:"source_app"`
+	Message     string                 `json:"message"`
+	TraceID     string                 `json:"trace_id,omitempty"`
+	SpanID      string                 `json:"span_id,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type DistributedTraceSpan struct {
