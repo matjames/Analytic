@@ -24,8 +24,10 @@ const (
 	orgID           = "statgate.analytics.gov"
 	registryDSNEnv  = "SEED_REGISTRY_DSN"
 	statchatDSNEnv  = "SEED_STATCHAT_DSN"
-	registryDSNDef  = "host=localhost port=5432 user=Kaggle password=Statgate_kaggle dbname=kaggle sslmode=disable"
-	statchatDSNDef  = "host=localhost port=5432 user=Statchat password=Statgate dbname=statchat sslmode=disable"
+	// Passwords are never hardcoded here: supply SEED_REGISTRY_DSN / SEED_STATCHAT_DSN
+	// directly, or set PGPASSWORD (lib/pq honors it) before running with defaults.
+	registryDSNDef = "host=localhost port=5432 user=Kaggle dbname=kaggle sslmode=disable"
+	statchatDSNDef = "host=localhost port=5432 user=Statchat dbname=statchat sslmode=disable"
 	generalConvID   = "general"
 )
 

@@ -69,8 +69,9 @@ stringData:
   HELPDESK_JWT_SECRET: "helpdesk-jwt-secret-k8s-prod-secure-12345"
   BASIC_AUTH_USERNAME: "admin"
   BASIC_AUTH_PASSWORD: "admin_k8s_password_prod"
-  MINIO_ROOT_USER: "minioadmin"
-  MINIO_ROOT_PASSWORD: "minioadmin_k8s_password_prod"
+  # Replace placeholders before applying; do not commit real credentials.
+  MINIO_ROOT_USER: "REPLACE_WITH_MINIO_USER"
+  MINIO_ROOT_PASSWORD: "REPLACE_WITH_MINIO_PASSWORD"
   GRAFANA_ADMIN_PASSWORD: "grafana_k8s_password_prod"
   AIRFLOW_PASSWORD: "airflow_k8s_password_prod"
   SUPERSET_ADMIN_PASSWORD: "superset_k8s_password_prod"

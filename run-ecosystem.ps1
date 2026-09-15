@@ -4,7 +4,16 @@
 
 $root = "c:\Users\PC\Desktop\Analytic"
 $binDir = "$root\.runtime-bin"
-$pw = "Statgate_kaggle"
+# Credentials come from the environment or the gitignored .env — never hardcode.
+$pw = $env:KAGGLE_DB_PASSWORD
+if (-not $pw) {
+    $envFile = Join-Path $root '.env'
+    if (Test-Path $envFile) {
+        $line = Select-String -Path $envFile -Pattern '^KAGGLE_DB_PASSWORD=(.*)$' | Select-Object -First 1
+        if ($line) { $pw = $line.Matches[0].Groups[1].Value.Trim() }
+    }
+}
+if (-not $pw) { Write-Error 'KAGGLE_DB_PASSWORD is not set and was not found in .env'; exit 1 }
 $jwt = "statgate-secret-key-2026"
 
 function Start-ServiceExe {

@@ -41,7 +41,7 @@ $assign = @{
 }
 $users = @{
     'BASIC_AUTH_USERNAME'    = 'statgate-admin'
-    'MINIO_ROOT_USER'        = 'minioadmin'
+    'MINIO_ROOT_USER'        = 'statgate-minio'
     'GRAFANA_ADMIN_USER'     = 'admin'
     'AIRFLOW_USER'           = 'airflow'
     'SUPERSET_ADMIN_USER'    = 'admin'
