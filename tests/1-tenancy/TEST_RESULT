@@ -1,0 +1,24 @@
+StatGate tenant/authorization attestation (18 services)
+Generated: 2026-09-15T17:00:08.2260237+03:00
+
+[PASS/PASS] statdata GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statiot GET no-auth: got=401 want=401 | malformed-ws: got=400 want=400
+[PASS/PASS] geointel GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] bpm-hub GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] learning-crm GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] ai-autonomy GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] knowledge-portal GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statfederation GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statspatial GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] stattrust GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statops GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] enterprise-core GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] pms GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] rms GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statgovernance GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statchat GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] statcollect GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+[PASS/PASS] helpdesk POST no-auth: got=401 want=401 | malformed-ws: got=401 want=401
+
+checks: 36, failed: 0
+RESULT: PASS

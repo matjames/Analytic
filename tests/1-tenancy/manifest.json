@@ -1,0 +1,33 @@
+{
+  "name": "StatGate cross-service tenant/authorization attestation",
+  "version": 1,
+  "generated": "2026-09-15",
+  "notes": [
+    "Each entry names an unauthenticated GET that MUST fail closed when no credentials are supplied.",
+    "Expected statuses were verified live against the running Compose stack on 2026-09-15.",
+    "StatIoT is the reference case where the shared tenant.GinWorkspaceContext runs BEFORE auth validation: malformed X-Workspace-ID yields 400 even without credentials.",
+    "All other services return 401 when unauthenticated, which also proves fail-closed: no credentialed/anonymous path serves tenant data.",
+    "public_ok services intentionally serve unauthenticated reads (helpdesk ticket list, citizen session creation). They are NOT in this probe set; they are covered by authenticated-mutation checks in CI.",
+    "Phase-2 resource-level scoping (datasets/pipelines, gateways/devices/alerts, layers, processes, leads, agents) and seeded-object write/read certification are tracked in Roadmap/PHASE_SERVICE_MATRIX.md."
+  ],
+  "probes": [
+    {"svc": "statdata",            "port": 8107, "path": "/api/v1/data/catalog/datasets", "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statiot",             "port": 8106, "path": "/api/v1/iot/gateways",           "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 400},
+    {"svc": "geointel",            "port": 8103, "path": "/api/v1/layers",                "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "bpm-hub",             "port": 8104, "path": "/api/v1/processes",             "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "learning-crm",        "port": 8102, "path": "/api/v1/courses",               "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "ai-autonomy",         "port": 8101, "path": "/api/v1/twins",                 "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "knowledge-portal",    "port": 8099, "path": "/api/v1/content",               "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statfederation",      "port": 8105, "path": "/api/v1/federation/nodes",      "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statspatial",         "port": 8108, "path": "/api/v1/layers",                "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "stattrust",           "port": 8094, "path": "/api/v1/summary",               "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statops",             "port": 8098, "path": "/api/v1/summary",               "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401},
+    {"svc": "enterprise-core",     "port": 8096, "path": "/api/events",                   "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401},
+    {"svc": "pms",                 "port": 8091, "path": "/api/projects",                 "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "rms",                 "port": 8092, "path": "/api/research",                 "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statgovernance",      "port": 8093, "path": "/api/policies",                 "kind": "workspace_aware", "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statchat",            "port": 4000, "path": "/users",                        "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401},
+    {"svc": "statcollect",         "port": 8081, "path": "/admin/submissions",            "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401},
+    {"svc": "helpdesk",            "port": 5006, "path": "/api/t/tickets/1/assign",       "kind": "auth_only",       "unauthed": 401, "malformed_ws": 401, "method": "POST"}
+  ]
+}
