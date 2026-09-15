@@ -5,6 +5,10 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
+  schedule:
+    # nightly full-stack certification at 02:00 UTC
+    - cron: '0 2 * * *'
 
 jobs:
   security-scan:
@@ -136,3 +140,23 @@ jobs:
         run: |
           cd StatCollect
           docker compose down -v
+
+  full-stack-certification:
+    # Heavy job (builds all ~46 services and probes every health endpoint).
+    # Runs nightly and on manual dispatch; per-push CI stays fast.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Full-stack up + health certification
+        shell: pwsh
+        run: |
+          ./scripts/certify-stack.ps1 -UpTimeoutMin 60
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose down -v --remove-orphans
+
