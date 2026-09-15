@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DiscussionButton from './DiscussionButton';
 
 export default function PoliciesTab({ apiBase, token, onRefreshDashboard }) {
   const [policies, setPolicies] = useState([]);
@@ -216,6 +217,7 @@ export default function PoliciesTab({ apiBase, token, onRefreshDashboard }) {
                         >
                           vHistory
                         </button>
+                        <DiscussionButton apiBase={apiBase} token={token} objectType="policy" objectId={p.id} name={p.title} />
                       </div>
                     </td>
                   </tr>

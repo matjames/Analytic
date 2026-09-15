@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DiscussionButton from './DiscussionButton';
 
 export default function FindingsTab({ apiBase, token, onRefreshDashboard }) {
   const [findings, setFindings] = useState([]);
@@ -186,6 +187,7 @@ export default function FindingsTab({ apiBase, token, onRefreshDashboard }) {
                           Verify & Close
                         </button>
                       )}
+                      <DiscussionButton apiBase={apiBase} token={token} objectType="finding" objectId={f.id} name={f.title} />
                     </td>
                   </tr>
                 ))

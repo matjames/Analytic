@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DiscussionButton from './DiscussionButton';
 
 export default function EvidenceTab({ apiBase, token, onRefreshDashboard }) {
   const [evidenceRecords, setEvidenceRecords] = useState([]);
@@ -106,7 +107,10 @@ export default function EvidenceTab({ apiBase, token, onRefreshDashboard }) {
                     {e.checksum_sha256 ? `${e.checksum_sha256.substring(0, 14)}...` : '—'}
                   </td>
                   <td>{e.uploaded_by}</td>
-                  <td style={{ fontSize: 12 }}>{new Date(e.created_time).toLocaleString()}</td>
+                  <td style={{ fontSize: 12 }}>
+                    <div>{new Date(e.created_time).toLocaleString()}</div>
+                    <DiscussionButton apiBase={apiBase} token={token} objectType="evidence" objectId={e.id} name={e.title} />
+                  </td>
                 </tr>
               ))
             )}

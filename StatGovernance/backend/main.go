@@ -62,6 +62,7 @@ func main() {
 	if err := initRedis(); err != nil {
 		log.Printf("Warning: Redis connection failed: %v", err)
 	}
+	initStatChat()
 
 	r := gin.Default()
 
@@ -137,7 +138,7 @@ func main() {
 			"http://host.docker.internal:3006",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Request-ID", "X-Correlation-ID", "X-User-ID", "X-Tenant-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Request-ID", "X-Correlation-ID", "X-User-ID", "X-Tenant-ID", "X-Workspace-ID"},
 		ExposeHeaders:    []string{"Content-Disposition", "Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * 3600,

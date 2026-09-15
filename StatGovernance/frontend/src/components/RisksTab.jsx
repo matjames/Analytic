@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DiscussionButton from './DiscussionButton';
 
 export default function RisksTab({ apiBase, token, onRefreshDashboard }) {
   const [risks, setRisks] = useState([]);
@@ -178,13 +179,16 @@ export default function RisksTab({ apiBase, token, onRefreshDashboard }) {
                       <span className="badge badge-draft">{r.treatment_strategy}</span>
                     </td>
                     <td>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={(e) => { e.stopPropagation(); handleEscalate(r.id); }}
-                        title="Escalate Risk to Enterprise Core"
-                      >
-                        Escalate
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={(e) => { e.stopPropagation(); handleEscalate(r.id); }}
+                          title="Escalate Risk to Enterprise Core"
+                        >
+                          Escalate
+                        </button>
+                        <DiscussionButton apiBase={apiBase} token={token} objectType="risk" objectId={r.id} name={r.title} />
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DiscussionButton from './DiscussionButton';
 
 export default function ControlsTab({ apiBase, token, onRefreshDashboard }) {
   const [controls, setControls] = useState([]);
@@ -175,6 +176,7 @@ export default function ControlsTab({ apiBase, token, onRefreshDashboard }) {
                     >
                       Run Test
                     </button>
+                    <DiscussionButton apiBase={apiBase} token={token} objectType="control" objectId={c.id} name={c.name} />
                   </td>
                 </tr>
               ))}

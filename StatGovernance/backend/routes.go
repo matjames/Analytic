@@ -7,6 +7,7 @@ func RegisterRoutes(r *gin.Engine) {
 	r.Use(registryAuthMiddleware())
 
 	api := r.Group("/api")
+	api.POST("/discussions", dbCreateDiscussion)
 	{
 		// ─── Dashboard ────────────────────────────────────────────
 		api.GET("/dashboard", dbGetDashboard)
