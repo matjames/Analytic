@@ -258,3 +258,7 @@ Docker Desktop was recovered again after an engine restart left application cont
 ### Operational Checkpoint Correction: 15 September 2026
 
 The image-build statement above is superseded. StatCitizen now builds successfully from the included vendored Go dependencies and runs as the Compose-managed `analytic-statcitizen-api-1` service on port `8115`. Docker reports the service healthy, `/health` and `/ready` report connected Postgres and Redis durable event bus, and Enterprise Core registration succeeds. Browser E2E and external multi-browser NAT/TURN evidence remain the open release gates because no browser session is available in this environment.
+
+### Phase 4 PMS Checkpoint: 15 September 2026
+
+PMS LogFrame, Theory of Change, and Donor workflows are now workspace-safe and user-complete for the implemented scope. The backend compatibility migration handles both clean and legacy PMS schemas; authenticated API probes verified nested LogFrame persistence, ToC save/readback, workspace-filtered Donor list/create, unauthenticated `401` enforcement, and foreign-workspace `404` denial. PMS API and UI are rebuilt and healthy on ports `8091` and `3010`; remaining Phase 4 work is portfolio aggregation, AI assistance, GIS wiring, and other explicitly listed later capabilities.

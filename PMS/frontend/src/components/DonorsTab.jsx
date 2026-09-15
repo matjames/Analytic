@@ -12,6 +12,8 @@ export default function DonorsTab({ apiBase }) {
   const [website, setWebsite] = useState('');
   const [totalFunding, setTotalFunding] = useState(500000);
   const [currency, setCurrency] = useState('USD');
+  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState('');
 
   const loadDonors = () => {
     fetch(`${apiBase}/api/donors`)
@@ -26,8 +28,10 @@ export default function DonorsTab({ apiBase }) {
 
   const handleCreateDonor = (e) => {
     e.preventDefault();
-    fetch(`${apiBase}/api/donors`, {
-      method: 'POST',
+    const method = editingId ? 'PUT' : 'POST';
+    const endpoint = editingId ? `${apiBase}/api/donors/${editingId}` : `${apiBase}/api/donors`;
+    fetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name,
@@ -42,7 +46,10 @@ export default function DonorsTab({ apiBase }) {
         status: 'Active'
       })
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        return res.json();
+      })
       .then(() => {
         setName('');
         setCode('');
@@ -51,9 +58,40 @@ export default function DonorsTab({ apiBase }) {
         setPhone('');
         setWebsite('');
         setShowAddModal(false);
+        setEditingId(null);
+        setMessage('Partner saved.');
         loadDonors();
       })
-      .catch(err => console.error("Error creating donor:", err));
+      .catch(err => setMessage(err.message));
+  };
+
+  const startEditing = (donor) => {
+    setEditingId(donor.id);
+    setName(donor.name || '');
+    setCode(donor.code || '');
+    setType(donor.type || 'Bilateral');
+    setContactPerson(donor.contactPerson || '');
+    setEmail(donor.email || '');
+    setPhone(donor.phone || '');
+    setWebsite(donor.website || '');
+    setTotalFunding(donor.totalFunding || 0);
+    setCurrency(donor.currency || 'USD');
+    setShowAddModal(true);
+    setMessage('');
+  };
+
+  const deleteDonor = (id) => {
+    if (!window.confirm('Remove this funding partner from the workspace?')) return;
+    fetch(`${apiBase}/api/donors/${id}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+        return res.json();
+      })
+      .then(() => {
+        setMessage('Partner removed.');
+        loadDonors();
+      })
+      .catch(err => setMessage(err.message));
   };
 
   return (
@@ -69,10 +107,11 @@ export default function DonorsTab({ apiBase }) {
           ➕ Register Partner
         </button>
       </div>
+      {message && <p role="status" style={{ color: message.includes('failed') ? '#b91c1c' : '#15803d', fontSize: '0.85rem' }}>{message}</p>}
 
       {showAddModal && (
         <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '1.5rem' }}>
-          <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>Register Institutional Donor</h3>
+          <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>{editingId ? 'Edit Institutional Donor' : 'Register Institutional Donor'}</h3>
           <form onSubmit={handleCreateDonor} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Partner Name</label>
@@ -105,8 +144,8 @@ export default function DonorsTab({ apiBase }) {
               <input type="number" value={totalFunding} onChange={e => setTotalFunding(e.target.value)} style={{ width: '100%', padding: '0.5rem' }} />
             </div>
             <div style={{ gridColumn: 'span 3', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" className="btn btn-outline" onClick={() => setShowAddModal(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary">Save Partner</button>
+              <button type="button" className="btn btn-outline" onClick={() => { setShowAddModal(false); setEditingId(null); }}>Cancel</button>
+              <button type="submit" className="btn btn-primary">{editingId ? 'Update Partner' : 'Save Partner'}</button>
             </div>
           </form>
         </div>
@@ -136,6 +175,10 @@ export default function DonorsTab({ apiBase }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', background: '#f8fafc', padding: '0.5rem', borderRadius: '4px' }}>
                   <span style={{ fontWeight: 600, color: '#475569' }}>Total Committed:</span>
                   <span style={{ fontWeight: 700, color: '#16a34a' }}>${(d.totalFunding || 0).toLocaleString()} {d.currency || 'USD'}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}>
+                  <button type="button" className="btn btn-outline" onClick={() => startEditing(d)}>Edit</button>
+                  <button type="button" className="btn btn-outline" onClick={() => deleteDonor(d.id)}>Remove</button>
                 </div>
               </div>
             </div>

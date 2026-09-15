@@ -159,6 +159,19 @@ func workspaceProjectChildIDMiddleware() gin.HandlerFunc {
 			return
 		}
 		childID := c.Param("id")
+		if strings.HasPrefix(path, "/api/donors/") {
+			var exists bool
+			if err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM pms.donors WHERE id=$1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL))`, childID, workspaceID).Scan(&exists); err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+				return
+			}
+			if !exists {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "resource not found in workspace"})
+				return
+			}
+			c.Next()
+			return
+		}
 		tables := []string{"tasks", "project_members", "budget_lines", "funding_sources", "cost_centres", "budget_revisions", "procurement_refs", "risks", "issues", "assumptions", "lessons_learned", "corrective_actions", "documents", "meetings", "surveys", "chat_messages", "reports", "calendar_events"}
 		for _, table := range tables {
 			var exists bool

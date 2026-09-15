@@ -125,3 +125,7 @@ After Docker Desktop recovery and Postgres WAL startup, the complete Analytic co
 ### Live Build Checkpoint: 15 September 2026
 
 The normal StatCitizen image-build gate is now closed: the image builds with the included vendored dependencies and is running as a Compose-managed healthy service on port `8115`. Database connectivity, durable event-bus connectivity, Enterprise Core registration, and Docker health checks are verified. Browser E2E and external multi-browser NAT/TURN evidence remain open gates because browser binding is unavailable in this environment.
+
+### PMS Phase 4 Checkpoint: 15 September 2026
+
+PMS LogFrame, Theory of Change, and Donor workflows are certified for authenticated workspace use. Legacy schema compatibility, persistence, nested reads, workspace filtering, unauthorized access, and foreign-workspace mutation denial are verified; PMS API and UI are healthy on ports `8091` and `3010`.

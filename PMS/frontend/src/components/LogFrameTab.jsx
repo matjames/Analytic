@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
+const toLines = (value) => Array.isArray(value) ? value.join('\n') : '';
+const fromLines = (value) => value.split('\n').map(line => line.trim()).filter(Boolean);
+
 export default function LogFrameTab({ projectId, apiBase }) {
   const [logframes, setLogframes] = useState([]);
   const [toc, setToc] = useState(null);
+  const [tocForm, setTocForm] = useState({
+    title: 'Theory of Change (ToC)',
+    narrative: '',
+    inputs: '',
+    activities: '',
+    outputs: '',
+    shortTermOutcomes: '',
+    longTermOutcomes: '',
+    impact: '',
+    assumptions: ''
+  });
+  const [tocSaving, setTocSaving] = useState(false);
+  const [tocMessage, setTocMessage] = useState('');
   const [activeSubView, setActiveSubView] = useState('logframe');
   const [newItemLevel, setNewItemLevel] = useState('Outcome');
   const [newItemDesc, setNewItemDesc] = useState('');
@@ -20,9 +36,54 @@ export default function LogFrameTab({ projectId, apiBase }) {
     fetch(`${apiBase}/api/projects/${projectId}/theory-of-change`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.title) setToc(data);
+        if (data && data.title) {
+          setToc(data);
+          setTocForm({
+            title: data.title || '',
+            narrative: data.narrative || '',
+            inputs: toLines(data.inputs),
+            activities: toLines(data.activities),
+            outputs: toLines(data.outputs),
+            shortTermOutcomes: toLines(data.shortTermOutcomes),
+            longTermOutcomes: toLines(data.longTermOutcomes),
+            impact: toLines(data.impact),
+            assumptions: toLines(data.assumptions)
+          });
+        }
       })
       .catch(err => console.error("Error loading ToC:", err));
+  };
+
+  const handleSaveToc = (e) => {
+    e.preventDefault();
+    setTocSaving(true);
+    setTocMessage('');
+    fetch(`${apiBase}/api/theory-of-change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        title: tocForm.title,
+        narrative: tocForm.narrative,
+        inputs: fromLines(tocForm.inputs),
+        activities: fromLines(tocForm.activities),
+        outputs: fromLines(tocForm.outputs),
+        shortTermOutcomes: fromLines(tocForm.shortTermOutcomes),
+        longTermOutcomes: fromLines(tocForm.longTermOutcomes),
+        impact: fromLines(tocForm.impact),
+        assumptions: fromLines(tocForm.assumptions)
+      })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        return res.json();
+      })
+      .then(data => {
+        setToc(data);
+        setTocMessage('Theory of Change saved.');
+      })
+      .catch(err => setTocMessage(err.message))
+      .finally(() => setTocSaving(false));
   };
 
   useEffect(() => {
@@ -226,48 +287,66 @@ export default function LogFrameTab({ projectId, apiBase }) {
       ) : (
         /* Theory of Change View */
         <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ marginTop: 0, color: '#0f172a' }}>{toc ? toc.title : "Theory of Change (ToC)"}</h3>
+          <h3 style={{ marginTop: 0, color: '#0f172a' }}>{tocForm.title}</h3>
           <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '2rem' }}>
-            {toc ? toc.narrative : "Causal pathway showing how project inputs lead to activities, outputs, intermediate outcomes, and long-term socio-economic impact."}
+            {tocForm.narrative || "Causal pathway showing how project inputs lead to activities, outputs, intermediate outcomes, and long-term socio-economic impact."}
           </p>
+
+          <form onSubmit={handleSaveToc} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem', marginBottom: '1.5rem', padding: '1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+            <label style={{ display: 'grid', gap: '0.35rem', fontWeight: 600 }}>Title
+              <input value={tocForm.title} onChange={e => setTocForm({ ...tocForm, title: e.target.value })} required style={{ padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+            </label>
+            <label style={{ display: 'grid', gap: '0.35rem', fontWeight: 600 }}>Narrative
+              <input value={tocForm.narrative} onChange={e => setTocForm({ ...tocForm, narrative: e.target.value })} placeholder="Describe the causal pathway" style={{ padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+            </label>
+            {[
+              ['inputs', 'Inputs'],
+              ['activities', 'Activities'],
+              ['outputs', 'Outputs'],
+              ['shortTermOutcomes', 'Short-term outcomes'],
+              ['longTermOutcomes', 'Long-term outcomes'],
+              ['impact', 'Impact'],
+              ['assumptions', 'Assumptions']
+            ].map(([field, label]) => (
+              <label key={field} style={{ display: 'grid', gap: '0.35rem', fontWeight: 600 }}>{label}
+                <textarea value={tocForm[field]} onChange={e => setTocForm({ ...tocForm, [field]: e.target.value })} placeholder="One item per line" rows="3" style={{ padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '4px', resize: 'vertical' }} />
+              </label>
+            ))}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button type="submit" className="btn btn-primary" disabled={tocSaving}>{tocSaving ? 'Saving...' : 'Save Theory of Change'}</button>
+              {tocMessage && <span role="status" style={{ color: tocMessage.includes('saved') ? '#15803d' : '#b91c1c', fontSize: '0.85rem' }}>{tocMessage}</span>}
+            </div>
+          </form>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', borderTop: '4px solid #64748b' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#475569' }}>1. INPUTS</h4>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.85rem', color: '#334155' }}>
-                <li>Dedicated research budget</li>
-                <li>Certified field enumerators</li>
-                <li>StatGate platform infrastructure</li>
+                {fromLines(tocForm.inputs).map(item => <li key={item}>{item}</li>)}
               </ul>
             </div>
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', borderTop: '4px solid #3b82f6' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#2563eb' }}>2. ACTIVITIES</h4>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.85rem', color: '#334155' }}>
-                <li>Tablet field survey collection</li>
-                <li>Real-time automated QA validation</li>
-                <li>Stakeholder dissemination workshops</li>
+                {fromLines(tocForm.activities).map(item => <li key={item}>{item}</li>)}
               </ul>
             </div>
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', borderTop: '4px solid #eab308' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#ca8a04' }}>3. OUTPUTS</h4>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.85rem', color: '#334155' }}>
-                <li>Validated district datasets</li>
-                <li>Policy brief publications</li>
-                <li>Open science repository deposit</li>
+                {fromLines(tocForm.outputs).map(item => <li key={item}>{item}</li>)}
               </ul>
             </div>
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', borderTop: '4px solid #10b981' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#059669' }}>4. OUTCOMES</h4>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.85rem', color: '#334155' }}>
-                <li>Ministries adopt evidence in budgeting</li>
-                <li>Accelerated resource allocation</li>
-                <li>Increased survey data trust</li>
+                {fromLines(tocForm.shortTermOutcomes).map(item => <li key={item}>{item}</li>)}
               </ul>
             </div>
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '6px', borderTop: '4px solid #8b5cf6' }}>
               <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: '#7c3aed' }}>5. IMPACT</h4>
               <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.85rem', color: '#334155' }}>
-                <li>Measurable progress towards national development plan & SDGs</li>
+                {fromLines(tocForm.impact).map(item => <li key={item}>{item}</li>)}
               </ul>
             </div>
           </div>

@@ -656,6 +656,41 @@ func migrateDB() error {
 		return err
 	}
 
+	// Phase 4 ownership indexes keep project planning and donor records fast
+	// when workspace filters are applied to every list and mutation.
+	for _, statement := range []string{
+		`ALTER TABLE pms.logframes ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE pms.logframes ADD COLUMN IF NOT EXISTS created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='logframes' AND column_name='created_at') THEN UPDATE pms.logframes SET created_time = created_at WHERE created_at IS NOT NULL; END IF; END $$`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_logframes_project ON pms.logframes(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_logframes_workspace ON pms.logframes(workspace_id)`,
+		`ALTER TABLE pms.logframe_items ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE pms.logframe_items ADD COLUMN IF NOT EXISTS created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='logframe_items' AND column_name='created_at') THEN UPDATE pms.logframe_items SET created_time = created_at WHERE created_at IS NOT NULL; END IF; END $$`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_logframe_items_logframe ON pms.logframe_items(logframe_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_logframe_items_workspace ON pms.logframe_items(workspace_id)`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT 'Theory of Change'`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS narrative TEXT`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS short_term_outcomes TEXT[]`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS long_term_outcomes TEXT[]`,
+		`ALTER TABLE pms.theory_of_change ADD COLUMN IF NOT EXISTS created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='theory_of_change' AND column_name='outcomes_short') THEN UPDATE pms.theory_of_change SET short_term_outcomes = outcomes_short WHERE short_term_outcomes IS NULL AND outcomes_short IS NOT NULL; END IF; END $$`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='theory_of_change' AND column_name='outcomes_long') THEN UPDATE pms.theory_of_change SET long_term_outcomes = outcomes_long WHERE long_term_outcomes IS NULL AND outcomes_long IS NOT NULL; END IF; END $$`,
+		`UPDATE pms.theory_of_change SET title = 'Theory of Change' WHERE title IS NULL OR title = ''`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='theory_of_change' AND column_name='created_at') THEN UPDATE pms.theory_of_change SET created_time = created_at WHERE created_at IS NOT NULL; END IF; END $$`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_theory_of_change_project ON pms.theory_of_change(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_theory_of_change_workspace ON pms.theory_of_change(workspace_id)`,
+		`ALTER TABLE pms.donors ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
+		`ALTER TABLE pms.donors ADD COLUMN IF NOT EXISTS created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+		`DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pms' AND table_name='donors' AND column_name='created_at') THEN UPDATE pms.donors SET created_time = created_at WHERE created_at IS NOT NULL; END IF; END $$`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_donors_workspace ON pms.donors(workspace_id)`,
+	} {
+		if _, err := DB.Exec(statement); err != nil {
+			return fmt.Errorf("apply Phase 4 ownership migration: %w", err)
+		}
+	}
+
 	// Seed data if projects table is empty
 	var count int
 	err = DB.QueryRow(`SELECT COUNT(*) FROM pms.projects`).Scan(&count)

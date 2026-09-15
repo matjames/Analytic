@@ -123,8 +123,8 @@ me_recommendations (id, evaluation_id, recommendation_text, priority, responsibl
 - [x] KPI measurement recalculation and drilldown operational
 - [x] Institutional condition engine computing health signals
 - [x] Executive command centre operational
-- [ ] LogFrame builder operational (Impact → Outcome → Output → Activity)
-- [ ] Theory of Change visual workflow builder operational
+- [x] LogFrame builder operational (Impact → Outcome → Output → Activity)
+- [x] Theory of Change visual workflow builder operational
 - [ ] Baseline, Midline, and Endline evaluation management operational
 - [ ] Beneficiary disaggregation tracking operational
 - [ ] Evaluation recommendations tracker with management action workflow operational

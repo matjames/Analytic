@@ -538,6 +538,7 @@ type TheoryOfChange struct {
 
 type Donor struct {
 	ID            string    `json:"id"`
+	WorkspaceID   string    `json:"workspaceId,omitempty"`
 	Name          string    `json:"name"`
 	Code          string    `json:"code"`
 	Type          string    `json:"type"` // Bilateral, Multilateral, Foundation, NGO, Private

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 func generateUUID() string {
@@ -162,7 +163,7 @@ func dbCreateProject(c *gin.Context) {
 		INSERT INTO pms.projects (id, code, name, description, stage, progress, org, portfolio, programme, owner, start_date, end_date, target_geo, tags, budget_total, spent_total, risks_count, issues_count, created_time, updated_time, workspace_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NULLIF($21, ''))
 	`, id, req.Code, req.Name, req.Description, "Concept", 0.0, req.Org, req.Portfolio, req.Programme,
-		req.Owner, req.StartDate, req.EndDate, req.TargetGeo, []string{"New", "StatGate"},
+		req.Owner, req.StartDate, req.EndDate, req.TargetGeo, pq.Array([]string{"New", "StatGate"}),
 		req.BudgetTotal, 0.0, 0, 0, now, now, workspaceIDContext(c))
 
 	if err != nil {
@@ -2511,6 +2512,30 @@ func dbGetHelpdesk(projectID string) ([]HelpDeskTicket, error) {
 
 // ─── Phase 4 Handlers: LogFrame, Theory of Change, Donors ─────────
 
+func workspaceLogFrameReference(c *gin.Context, logFrameID string) bool {
+	workspaceID := workspaceIDContext(c)
+	if workspaceID == "" {
+		return true
+	}
+	var exists bool
+	err := DB.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1
+			FROM pms.logframes lf
+			JOIN pms.projects p ON p.id = lf.project_id
+			WHERE lf.id = $1 AND p.workspace_id = $2
+		)`, logFrameID, workspaceID).Scan(&exists)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+		return false
+	}
+	if !exists {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "logframe not found in workspace"})
+		return false
+	}
+	return true
+}
+
 func dbGetLogFrames(c *gin.Context) {
 	projectID := c.Param("id")
 	rows, err := DB.Query(`SELECT id, project_id, title, description, created_time FROM pms.logframes WHERE project_id = $1`, projectID)
@@ -2547,13 +2572,17 @@ func dbCreateLogFrame(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(lf.ProjectID) == "" || strings.TrimSpace(lf.Title) == "" {
+		c.JSON(400, gin.H{"error": "projectId and title are required"})
+		return
+	}
 	if lf.ID == "" {
 		lf.ID = generateUUID()
 	}
 	lf.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO pms.logframes (id, project_id, title, description, created_time) VALUES ($1, $2, $3, $4, $5)`,
-		lf.ID, lf.ProjectID, lf.Title, lf.Description, lf.CreatedTime)
+	_, err := DB.Exec(`INSERT INTO pms.logframes (id, project_id, title, description, created_time, workspace_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+		lf.ID, lf.ProjectID, lf.Title, lf.Description, lf.CreatedTime, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -2567,14 +2596,21 @@ func dbCreateLogFrameItem(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(item.LogFrameID) == "" || strings.TrimSpace(item.Level) == "" || strings.TrimSpace(item.Description) == "" {
+		c.JSON(400, gin.H{"error": "logframeId, level, and description are required"})
+		return
+	}
+	if !workspaceLogFrameReference(c, item.LogFrameID) {
+		return
+	}
 	if item.ID == "" {
 		item.ID = generateUUID()
 	}
 	item.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO pms.logframe_items (id, logframe_id, level, code, description, indicators, means_of_verification, assumptions, created_time) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		item.ID, item.LogFrameID, item.Level, item.Code, item.Description, item.Indicators, item.MeansOfVer, item.Assumptions, item.CreatedTime)
+	_, err := DB.Exec(`INSERT INTO pms.logframe_items (id, logframe_id, level, code, description, indicators, means_of_verification, assumptions, created_time, workspace_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		item.ID, item.LogFrameID, item.Level, item.Code, item.Description, item.Indicators, item.MeansOfVer, item.Assumptions, item.CreatedTime, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -2605,13 +2641,28 @@ func dbSaveTheoryOfChange(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(toc.ProjectID) == "" || strings.TrimSpace(toc.Title) == "" {
+		c.JSON(400, gin.H{"error": "projectId and title are required"})
+		return
+	}
 	if toc.ID == "" {
 		toc.ID = generateUUID()
+	} else {
+		var existingProjectID string
+		err := DB.QueryRow(`SELECT project_id FROM pms.theory_of_change WHERE id = $1`, toc.ID).Scan(&existingProjectID)
+		if err == nil && existingProjectID != toc.ProjectID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "theory of change not found for project"})
+			return
+		}
+		if err != nil && err != sql.ErrNoRows {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "theory of change scope unavailable"})
+			return
+		}
 	}
 	toc.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO pms.theory_of_change (id, project_id, title, narrative, inputs, activities, outputs, short_term_outcomes, long_term_outcomes, impact, assumptions, created_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	_, err := DB.Exec(`INSERT INTO pms.theory_of_change (id, project_id, title, narrative, inputs, activities, outputs, short_term_outcomes, long_term_outcomes, impact, assumptions, created_time, workspace_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO UPDATE SET
 			title = EXCLUDED.title,
 			narrative = EXCLUDED.narrative,
@@ -2621,8 +2672,9 @@ func dbSaveTheoryOfChange(c *gin.Context) {
 			short_term_outcomes = EXCLUDED.short_term_outcomes,
 			long_term_outcomes = EXCLUDED.long_term_outcomes,
 			impact = EXCLUDED.impact,
-			assumptions = EXCLUDED.assumptions`,
-		toc.ID, toc.ProjectID, toc.Title, toc.Narrative, toc.Inputs, toc.Activities, toc.Outputs, toc.ShortTermOutcomes, toc.LongTermOutcomes, toc.Impact, toc.Assumptions, toc.CreatedTime)
+			assumptions = EXCLUDED.assumptions,
+			workspace_id = EXCLUDED.workspace_id`,
+		toc.ID, toc.ProjectID, toc.Title, toc.Narrative, toc.Inputs, toc.Activities, toc.Outputs, toc.ShortTermOutcomes, toc.LongTermOutcomes, toc.Impact, toc.Assumptions, toc.CreatedTime, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -2631,7 +2683,7 @@ func dbSaveTheoryOfChange(c *gin.Context) {
 }
 
 func dbGetDonors(c *gin.Context) {
-	rows, err := DB.Query(`SELECT id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time FROM pms.donors ORDER BY name ASC`)
+	rows, err := DB.Query(`SELECT id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time, COALESCE(workspace_id, '') FROM pms.donors WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL) ORDER BY name ASC`, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -2642,7 +2694,7 @@ func dbGetDonors(c *gin.Context) {
 	for rows.Next() {
 		var d Donor
 		var code, cp, email, phone, web sql.NullString
-		rows.Scan(&d.ID, &d.Name, &code, &d.Type, &cp, &email, &phone, &web, &d.TotalFunding, &d.Currency, &d.Status, &d.CreatedTime)
+		rows.Scan(&d.ID, &d.Name, &code, &d.Type, &cp, &email, &phone, &web, &d.TotalFunding, &d.Currency, &d.Status, &d.CreatedTime, &d.WorkspaceID)
 		d.Code = code.String
 		d.ContactPerson = cp.String
 		d.Email = email.String
@@ -2670,9 +2722,10 @@ func dbCreateDonor(c *gin.Context) {
 	}
 	d.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO pms.donors (id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		d.ID, d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, d.CreatedTime)
+	d.WorkspaceID = workspaceIDContext(c)
+	_, err := DB.Exec(`INSERT INTO pms.donors (id, name, code, type, contact_person, email, phone, website, total_funding, currency, status, created_time, workspace_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		d.ID, d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, d.CreatedTime, d.WorkspaceID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -2687,10 +2740,15 @@ func dbUpdateDonor(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	_, err := DB.Exec(`UPDATE pms.donors SET name=$1, code=$2, type=$3, contact_person=$4, email=$5, phone=$6, website=$7, total_funding=$8, currency=$9, status=$10 WHERE id=$11`,
-		d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, id)
+	d.WorkspaceID = workspaceIDContext(c)
+	result, err := DB.Exec(`UPDATE pms.donors SET name=$1, code=$2, type=$3, contact_person=$4, email=$5, phone=$6, website=$7, total_funding=$8, currency=$9, status=$10 WHERE id=$11 AND (workspace_id = NULLIF($12, '') OR NULLIF($12, '') IS NULL)`,
+		d.Name, d.Code, d.Type, d.ContactPerson, d.Email, d.Phone, d.Website, d.TotalFunding, d.Currency, d.Status, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "donor not found in workspace"})
 		return
 	}
 	d.ID = id
@@ -2699,9 +2757,13 @@ func dbUpdateDonor(c *gin.Context) {
 
 func dbDeleteDonor(c *gin.Context) {
 	id := c.Param("id")
-	_, err := DB.Exec(`DELETE FROM pms.donors WHERE id = $1`, id)
+	result, err := DB.Exec(`DELETE FROM pms.donors WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, id, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "donor not found in workspace"})
 		return
 	}
 	c.JSON(200, gin.H{"message": "Donor deleted successfully"})

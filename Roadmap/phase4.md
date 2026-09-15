@@ -202,12 +202,9 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 ### Programme & Portfolio Features
 - **Gantt chart view** — no server-side timeline calculation; frontend renders from milestone/activity dates
 - **Portfolio dashboard** — aggregated portfolio-level KPIs not built
-- **Donor Management** — donors entity not implemented (funding sources exist but no full donor CRM)
 - **Grant Management** — grants not tracked separately from funding sources
 
 ### Planning Tools
-- **Logical Framework (LogFrame)** — not implemented
-- **Theory of Change** — not implemented
 - **Work Breakdown Structure (WBS)** — no hierarchical WBS tree beyond components/activities
 - **Critical Path Analysis** — not implemented
 - **Resource planner / resource allocation** — not implemented
@@ -250,10 +247,10 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - [x] Project dashboard and search operational
 - [x] Activity timeline operational
 - [x] Audit trail per project
-- [ ] LogFrame builder operational
-- [ ] Theory of Change designer operational
+- [x] LogFrame builder operational
+- [x] Theory of Change designer operational
 - [ ] Portfolio/programme dashboard with aggregated KPIs
-- [ ] Donor management operational
+- [x] Donor management operational
 - [ ] AI project health assistant operational
 - [ ] GIS project location mapping operational
 
@@ -275,3 +272,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 ## Milestone
 
 Enterprise Project Management Platform complete. Every project, programme, and portfolio tracked through a single system.
+
+### Phase 4 Scope Checkpoint - 15 September 2026
+
+LogFrame, Theory of Change, and Donor workflows are now operational for authenticated workspace members. PMS persists ownership columns and compatibility-migrates legacy `created_at` and ToC column variants; API and middleware checks prevent foreign-workspace item and donor mutations. The ToC designer supports editing and persistence, and the Donor UI supports create, list, edit, and remove. Live checks passed for nested LogFrame readback, ToC save, workspace-filtered donor listing, unauthenticated `401` enforcement, and foreign-workspace `404` denial.
