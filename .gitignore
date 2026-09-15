@@ -90,6 +90,7 @@ log.txt
 tmp_db_check.py
 statcollect.exe
 StatCollect/bin/
+StatCitizen/backend/statcitizen-linux
 stage_register/frontend/build/
 StatChat/backend/server-log/
 frontend/.venv.bak/
@@ -131,3 +132,12 @@ vite.config.js.timestamp-*.mjs
 .emu/
 .gemini/
 compose-up.err
+# Session/runtime artifacts (2026-09-15)
+.wkr*.txt
+.up*.txt
+statchat-build*.err
+stage3-go-tests.ps1
+stage3-test.log
+vendor/
+!StatCitizen/backend/vendor/
+!StatCitizen/backend/vendor/**

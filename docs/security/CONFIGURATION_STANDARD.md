@@ -20,6 +20,7 @@ Per-service .env files are dev-only conveniences and must not diverge.
 | StatChat DB       | STATCHAT_DB_*, DATABASE_URL |
 | PMS / RMS / Gov   | PMS_DB_*, RMS_DB_*, GOVERNANCE_DB_* |
 | StatCollect       | STATCOLLECT_DB_*, STATCOLLECT_API_KEY, STATCOLLECT_ADMIN_KEYS |
+| StatCitizen       | STATCITIZEN_DB_*, STATCITIZEN_CITIZEN_SESSION_SECRET |
 | Rate limit        | STATGATE_RATE_LIMIT_RPM |
 | Body limit        | STATGATE_MAX_REQUEST_BODY_KB |
 | Upload root       | ENTERPRISE_UPLOAD_DIR, STATCHAT_UPLOAD_DIR |
@@ -28,7 +29,7 @@ Per-service .env files are dev-only conveniences and must not diverge.
 
 Registry 9090, Core 8080, Analytics 5000, StatChat 4000, PMS 8091,
 RMS 8092, Governance 8093, Enterprise search 8095, Enterprise core 8096,
-Helpdesk 5006; front-ends 3006/3007/3009/3010/3011/3012.
+Helpdesk 5006, StatCitizen 8115; front-ends 3006/3007/3009/3010/3011/3012.
 
 Drift findings D-01..D-10 are resolved in this standard. See
 SERVICE_SECURITY_MATRIX.md.
