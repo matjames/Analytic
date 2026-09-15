@@ -129,3 +129,5 @@ The normal StatCitizen image-build gate is now closed: the image builds with the
 ### PMS Phase 4 Checkpoint: 15 September 2026
 
 PMS LogFrame, Theory of Change, and Donor workflows are certified for authenticated workspace use. Legacy schema compatibility, persistence, nested reads, workspace filtering, unauthorized access, and foreign-workspace mutation denial are verified; PMS API and UI are healthy on ports `8091` and `3010`.
+
+PMS portfolio/programme aggregation is also certified through `GET /api/portfolio-dashboard`: workspace-scoped KPIs, stage distribution, group rollups, project rows, and portfolio/programme filters are live in the global UI. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint is certified for governed risk, schedule, and milestone advisory with invalid-action and foreign-workspace denial checks. Budget forecasting and GIS project location mapping remain open.

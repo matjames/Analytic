@@ -121,7 +121,9 @@ func RegisterRoutes(r *gin.Engine) {
 
 		// ─── Dashboard / Analytics ───────────────────────────────
 		api.GET("/dashboard", dbGetDashboard)
+		api.GET("/portfolio-dashboard", dbGetPortfolioDashboard)
 		api.GET("/projects/:id/dashboard", dbGetProjectDashboard)
+		api.POST("/projects/:id/health-assistant", dbGetProjectHealthAssistant)
 
 		// ─── Open Standards: IATI 2.03 Development Partner Export ─
 		api.GET("/iati/activities.xml", dbExportIATIActivities)

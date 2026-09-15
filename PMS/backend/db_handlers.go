@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -2199,6 +2202,249 @@ func dbGetDashboard(c *gin.Context) {
 		"totalSpent":        totalSpent,
 		"stageDistribution": stageDist,
 		"recentProjects":    recentProjects,
+	})
+}
+
+func dbGetPortfolioDashboard(c *gin.Context) {
+	workspaceID := workspaceIDContext(c)
+	portfolio := strings.TrimSpace(c.Query("portfolio"))
+	programme := strings.TrimSpace(c.Query("programme"))
+
+	where := "WHERE (p.workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)"
+	args := []interface{}{workspaceID}
+	if portfolio != "" {
+		where += fmt.Sprintf(" AND p.portfolio = $%d", len(args)+1)
+		args = append(args, portfolio)
+	}
+	if programme != "" {
+		where += fmt.Sprintf(" AND p.programme = $%d", len(args)+1)
+		args = append(args, programme)
+	}
+
+	var summary struct {
+		ProjectCount    int     `json:"projectCount"`
+		AverageProgress float64 `json:"averageProgress"`
+		BudgetTotal     float64 `json:"budgetTotal"`
+		SpentTotal      float64 `json:"spentTotal"`
+		RisksTotal      int     `json:"risksTotal"`
+		IssuesTotal     int     `json:"issuesTotal"`
+	}
+	if err := DB.QueryRow(fmt.Sprintf(`
+		SELECT COUNT(*), COALESCE(AVG(COALESCE(p.progress, 0)), 0),
+		       COALESCE(SUM(p.budget_total), 0), COALESCE(SUM(p.spent_total), 0),
+		       COALESCE(SUM(p.risks_count), 0), COALESCE(SUM(p.issues_count), 0)
+		FROM pms.projects p %s
+	`, where), args...).Scan(&summary.ProjectCount, &summary.AverageProgress, &summary.BudgetTotal,
+		&summary.SpentTotal, &summary.RisksTotal, &summary.IssuesTotal); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+
+	stageDistribution := map[string]int{}
+	stageRows, err := DB.Query(fmt.Sprintf(`
+		SELECT COALESCE(p.stage, 'Unassigned'), COUNT(*)
+		FROM pms.projects p %s
+		GROUP BY p.stage ORDER BY COUNT(*) DESC, p.stage ASC
+	`, where), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+	for stageRows.Next() {
+		var stage string
+		var count int
+		if err := stageRows.Scan(&stage, &count); err == nil {
+			stageDistribution[stage] = count
+		}
+	}
+	if err := stageRows.Err(); err != nil {
+		stageRows.Close()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+	stageRows.Close()
+
+	type groupSummary struct {
+		Name            string  `json:"name"`
+		ProjectCount    int     `json:"projectCount"`
+		AverageProgress float64 `json:"averageProgress"`
+		BudgetTotal     float64 `json:"budgetTotal"`
+		SpentTotal      float64 `json:"spentTotal"`
+		RisksTotal      int     `json:"risksTotal"`
+		IssuesTotal     int     `json:"issuesTotal"`
+	}
+	loadGroups := func(column string) ([]groupSummary, error) {
+		// Column names are selected from this fixed list, never from user input.
+		query := fmt.Sprintf(`
+			SELECT COALESCE(NULLIF(p.%s, ''), 'Unassigned'), COUNT(*),
+			       COALESCE(AVG(COALESCE(p.progress, 0)), 0), COALESCE(SUM(p.budget_total), 0),
+			       COALESCE(SUM(p.spent_total), 0), COALESCE(SUM(p.risks_count), 0),
+			       COALESCE(SUM(p.issues_count), 0)
+			FROM pms.projects p %s
+			GROUP BY p.%s ORDER BY COUNT(*) DESC, p.%s ASC
+		`, column, where, column, column)
+		rows, err := DB.Query(query, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		groups := []groupSummary{}
+		for rows.Next() {
+			var group groupSummary
+			if err := rows.Scan(&group.Name, &group.ProjectCount, &group.AverageProgress, &group.BudgetTotal,
+				&group.SpentTotal, &group.RisksTotal, &group.IssuesTotal); err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		return groups, rows.Err()
+	}
+
+	portfolioBreakdown, err := loadGroups("portfolio")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+	programmeBreakdown, err := loadGroups("programme")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+
+	projectRows, err := DB.Query(fmt.Sprintf(`
+		SELECT p.id, p.code, p.name, COALESCE(p.portfolio, ''), COALESCE(p.programme, ''),
+		       COALESCE(p.stage, 'Unassigned'), COALESCE(p.progress, 0), COALESCE(p.budget_total, 0),
+		       COALESCE(p.spent_total, 0), COALESCE(p.risks_count, 0), COALESCE(p.issues_count, 0)
+		FROM pms.projects p %s ORDER BY p.updated_time DESC NULLS LAST, p.name ASC
+	`, where), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+	type projectSummary struct {
+		ID          string  `json:"id"`
+		Code        string  `json:"code"`
+		Name        string  `json:"name"`
+		Portfolio   string  `json:"portfolio"`
+		Programme   string  `json:"programme"`
+		Stage       string  `json:"stage"`
+		Progress    float64 `json:"progress"`
+		BudgetTotal float64 `json:"budgetTotal"`
+		SpentTotal  float64 `json:"spentTotal"`
+		RisksCount  int     `json:"risksCount"`
+		IssuesCount int     `json:"issuesCount"`
+	}
+	projects := []projectSummary{}
+	for projectRows.Next() {
+		var project projectSummary
+		if err := projectRows.Scan(&project.ID, &project.Code, &project.Name, &project.Portfolio, &project.Programme,
+			&project.Stage, &project.Progress, &project.BudgetTotal, &project.SpentTotal, &project.RisksCount, &project.IssuesCount); err != nil {
+			projectRows.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+			return
+		}
+		projects = append(projects, project)
+	}
+	if err := projectRows.Err(); err != nil {
+		projectRows.Close()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "portfolio dashboard unavailable"})
+		return
+	}
+	projectRows.Close()
+
+	c.JSON(http.StatusOK, gin.H{
+		"scope":              gin.H{"workspaceId": workspaceID, "portfolio": portfolio, "programme": programme},
+		"summary":            summary,
+		"stageDistribution":  stageDistribution,
+		"portfolioBreakdown": portfolioBreakdown,
+		"programmeBreakdown": programmeBreakdown,
+		"projects":           projects,
+	})
+}
+
+func dbGetProjectHealthAssistant(c *gin.Context) {
+	projectID := c.Param("id")
+	var project struct {
+		ID       string  `json:"projectId"`
+		Name     string  `json:"projectName"`
+		Budget   float64 `json:"budget"`
+		Progress float64 `json:"progress"`
+	}
+	if err := DB.QueryRow(`
+		SELECT id, name, COALESCE(budget_total, 0), COALESCE(progress, 0)
+		FROM pms.projects
+		WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, projectID, workspaceIDContext(c)).Scan(&project.ID, &project.Name, &project.Budget, &project.Progress); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	var input struct {
+		Action string `json:"action"`
+	}
+	if c.Request.Body != nil {
+		if err := json.NewDecoder(c.Request.Body).Decode(&input); err != nil && err != io.EOF {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid assistant request"})
+			return
+		}
+	}
+	if input.Action == "" {
+		input.Action = "health_review"
+	}
+	allowedActions := map[string]bool{
+		"health_review":         true,
+		"risk_prediction":       true,
+		"schedule_optimization": true,
+		"milestone_review":      true,
+	}
+	if !allowedActions[input.Action] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported assistant action"})
+		return
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"action":     input.Action,
+		"project_id": project.ID,
+		"budget":     project.Budget,
+		"progress":   project.Progress,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "assistant request unavailable"})
+		return
+	}
+	baseURL := strings.TrimRight(getEnv("STATGATE_ENTERPRISE_API_URL", ""), "/")
+	if baseURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "assistant service unavailable"})
+		return
+	}
+	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, baseURL+"/ai/project/assist", bytes.NewReader(payload))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "assistant service unavailable"})
+		return
+	}
+	request.Header.Set("Authorization", c.GetHeader("Authorization"))
+	request.Header.Set("X-Workspace-ID", workspaceIDContext(c))
+	request.Header.Set("Content-Type", "application/json")
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "assistant service unavailable"})
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "assistant service rejected the request"})
+		return
+	}
+	var assistant map[string]interface{}
+	if err := json.NewDecoder(response.Body).Decode(&assistant); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid assistant response"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"project":          project,
+		"assistant":        assistant,
+		"governanceNotice": "AI advisory only. Consequential decisions require human authorization.",
 	})
 }
 

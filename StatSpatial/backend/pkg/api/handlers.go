@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"statspatial/pkg/model"
 	"statspatial/pkg/store"
@@ -308,6 +309,62 @@ func CreateSpatialIndexHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "indexed", "target_id": si.TargetID})
 }
 
+func ListProjectLocationsHandler(w http.ResponseWriter, r *http.Request) {
+	items, err := store.ListSpatialIndex(r.Context(), "", "project")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	if projectID == "" {
+		writeJSON(w, http.StatusOK, items)
+		return
+	}
+	filtered := make([]model.SpatialIndex, 0, 1)
+	for _, item := range items {
+		if item.TargetID == projectID {
+			filtered = append(filtered, item)
+		}
+	}
+	writeJSON(w, http.StatusOK, filtered)
+}
+
+func SaveProjectLocationHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		TargetID    string  `json:"target_id"`
+		AdminUnitID string  `json:"admin_unit_id"`
+		Lat         float64 `json:"lat"`
+		Lng         float64 `json:"lng"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+	input.TargetID = strings.TrimSpace(input.TargetID)
+	input.AdminUnitID = strings.TrimSpace(input.AdminUnitID)
+	if input.TargetID == "" || input.AdminUnitID == "" {
+		writeError(w, http.StatusBadRequest, "target_id and admin_unit_id are required")
+		return
+	}
+	if input.Lat < -90 || input.Lat > 90 || input.Lng < -180 || input.Lng > 180 {
+		writeError(w, http.StatusBadRequest, "latitude or longitude is out of range")
+		return
+	}
+	if err := store.SaveProjectLocation(r.Context(), model.SpatialIndex{
+		AdminUnitID: input.AdminUnitID,
+		TargetType:  "project",
+		TargetID:    input.TargetID,
+		Lat:         input.Lat,
+		Lng:         input.Lng,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"status": "saved", "target_id": input.TargetID, "lat": input.Lat, "lng": input.Lng,
+	})
+}
+
 // Federated Node Handlers
 func ListFederatedNodesHandler(w http.ResponseWriter, r *http.Request) {
 	nodeType := r.URL.Query().Get("node_type")
@@ -575,10 +632,9 @@ func SpatialAreaCalcHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"feature_id":  featureID,
-		"area_km2":    areaKm2,
-		"area_ha":     areaKm2 * 100.0,
-		"area_sq_m":   areaKm2 * 1000000.0,
+		"feature_id": featureID,
+		"area_km2":   areaKm2,
+		"area_ha":    areaKm2 * 100.0,
+		"area_sq_m":  areaKm2 * 1000000.0,
 	})
 }
-

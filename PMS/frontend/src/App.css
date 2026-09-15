@@ -66,6 +66,21 @@ body {
   box-shadow: 0 2px 8px rgba(22, 92, 146, 0.15);
 }
 
+.portfolio-dashboard-columns,
+.portfolio-project-row {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .portfolio-dashboard-columns {
+    grid-template-columns: 1fr !important;
+  }
+
+  .portfolio-project-row {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
 /* Layout Shell */
 .app-container {
   display: grid;

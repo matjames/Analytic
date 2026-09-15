@@ -47,6 +47,8 @@ func RegisterRoutes(r *mux.Router) {
 	// Spatial Index
 	apiV1.HandleFunc("/spatial-index", ListSpatialIndexHandler).Methods("GET")
 	apiV1.HandleFunc("/spatial-index", CreateSpatialIndexHandler).Methods("POST")
+	apiV1.HandleFunc("/project-locations", ListProjectLocationsHandler).Methods("GET")
+	apiV1.HandleFunc("/project-locations", SaveProjectLocationHandler).Methods("POST")
 
 	// Federated Nodes
 	apiV1.HandleFunc("/nodes", ListFederatedNodesHandler).Methods("GET")
@@ -94,6 +96,8 @@ func RegisterRoutes(r *mux.Router) {
 	apiSpatial.HandleFunc("/point-in-polygon", SpatialPointInPolygonHandler).Methods("POST")
 	apiSpatial.HandleFunc("/area/{id}", SpatialAreaCalcHandler).Methods("GET")
 	apiSpatial.HandleFunc("/summary", GetSummaryHandler).Methods("GET")
+	apiSpatial.HandleFunc("/project-locations", ListProjectLocationsHandler).Methods("GET")
+	apiSpatial.HandleFunc("/project-locations", SaveProjectLocationHandler).Methods("POST")
 }
 
 var discussionHandler *DiscussionHandler

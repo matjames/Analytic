@@ -668,6 +668,34 @@ func CreateSpatialIndex(ctx context.Context, si model.SpatialIndex) error {
 	return err
 }
 
+func SaveProjectLocation(ctx context.Context, si model.SpatialIndex) error {
+	tenantID, workspaceID := ownershipValues(ctx)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM spatial_index
+		WHERE target_type = 'project' AND target_id = $1
+		  AND COALESCE(tenant_id, '') = COALESCE($2, '')
+		  AND COALESCE(workspace_id, '') = COALESCE($3, '')
+	`, si.TargetID, nullableString(tenantID), nullableString(workspaceID))
+	if err != nil {
+		return err
+	}
+
+	si.TenantID, si.WorkspaceID = tenantID, workspaceID
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO spatial_index (id, tenant_id, workspace_id, admin_unit_id, target_type, target_id, lat, lng) VALUES ($1,$2,$3,$4,'project',$5,$6,$7)`,
+		"si-"+uuid.NewString()[:8], nullableString(si.TenantID), nullableString(si.WorkspaceID), si.AdminUnitID, si.TargetID, si.Lat, si.Lng)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func ListSpatialIndex(ctx context.Context, adminUnitID string, targetType string) ([]model.SpatialIndex, error) {
 	q := `SELECT id, COALESCE(tenant_id, ''), COALESCE(workspace_id, ''), admin_unit_id, target_type, target_id, lat, lng, created_at FROM spatial_index WHERE 1=1`
 	args := []interface{}{}

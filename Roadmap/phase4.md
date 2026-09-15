@@ -162,6 +162,7 @@ POST   /api/chats                      ← post chat message in project conversa
 **Dashboard, Search, Activity**
 ```
 GET    /api/dashboard                  ← PMS summary dashboard
+GET    /api/portfolio-dashboard        ← workspace-scoped portfolio/programme KPIs and rollups
 GET    /api/projects/:id/dashboard     ← project-level dashboard
 GET    /api/search?q=                  ← full-text search across PMS data
 GET    /api/activity                   ← enterprise activity timeline
@@ -201,7 +202,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 
 ### Programme & Portfolio Features
 - **Gantt chart view** — no server-side timeline calculation; frontend renders from milestone/activity dates
-- **Portfolio dashboard** — aggregated portfolio-level KPIs not built
+- **Portfolio dashboard** — implemented with workspace-scoped aggregate KPIs, filters, and rollups
 - **Grant Management** — grants not tracked separately from funding sources
 
 ### Planning Tools
@@ -210,7 +211,7 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - **Resource planner / resource allocation** — not implemented
 
 ### Reporting & AI
-- **Project AI Assistant** — no AI-powered risk prediction, schedule optimisation, or budget forecasting
+- **Project AI Assistant** — implemented for governed risk, schedule, and milestone advisory; budget forecasting remains open
 - **Automated progress summaries** — not implemented
 - **Donor reporting templates** — not implemented
 
@@ -249,9 +250,9 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - [x] Audit trail per project
 - [x] LogFrame builder operational
 - [x] Theory of Change designer operational
-- [ ] Portfolio/programme dashboard with aggregated KPIs
+- [x] Portfolio/programme dashboard with aggregated KPIs
 - [x] Donor management operational
-- [ ] AI project health assistant operational
+- [x] AI project health assistant operational
 - [ ] GIS project location mapping operational
 
 ---
@@ -264,6 +265,10 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 | PMS UI (React/Vite) | :3010 |
 
 ---
+
+### Phase 4 Portfolio Dashboard Checkpoint - 15 September 2026
+
+The workspace-scoped `GET /api/portfolio-dashboard` endpoint now aggregates project count, average progress, budgets, spend, risks, issues, lifecycle stages, portfolio groups, programme groups, and project rows. The global PMS view exposes these KPIs with portfolio and programme filters; authenticated live probes returned the expected scoped project and filter counts, separate workspaces remained isolated, and unauthenticated access returned `401`. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint now provides governed risk, schedule, and milestone advisory through Enterprise Core; invalid actions return `400` and foreign-workspace projects return `404`. GIS project location mapping remains open.
 
 ## Estimated Duration
 

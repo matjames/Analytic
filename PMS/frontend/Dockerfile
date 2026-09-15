@@ -6,6 +6,8 @@ RUN npm install
 COPY . .
 ARG VITE_PMS_API_URL=http://localhost:8091
 ENV VITE_PMS_API_URL=$VITE_PMS_API_URL
+ARG VITE_SPATIAL_API_URL=http://localhost:8108
+ENV VITE_SPATIAL_API_URL=$VITE_SPATIAL_API_URL
 RUN npm run build
 
 # Serve with nginx

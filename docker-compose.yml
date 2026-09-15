@@ -421,6 +421,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_PMS_API_URL: http://localhost:8091
+        VITE_SPATIAL_API_URL: http://localhost:8108
     ports:
       - "3010:80"
     depends_on:

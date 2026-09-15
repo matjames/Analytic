@@ -19,14 +19,22 @@ import FundingTab from './components/FundingTab';
 import LessonsTab from './components/LessonsTab';
 import LogFrameTab from './components/LogFrameTab';
 import DonorsTab from './components/DonorsTab';
+import PortfolioDashboard from './components/PortfolioDashboard';
+import ProjectHealthAssistant from './components/ProjectHealthAssistant';
+import ProjectLocationMap from './components/ProjectLocationMap';
 
 // API Base URL - configured for the StatGate ecosystem
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
+const SPATIAL_API_BASE = import.meta.env.VITE_SPATIAL_API_URL || 'http://localhost:8108';
 
 export default function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [workspaceData, setWorkspaceData] = useState(null);
+  const [portfolioDashboard, setPortfolioDashboard] = useState(null);
+  const [portfolioFilter, setPortfolioFilter] = useState('');
+  const [programmeFilter, setProgrammeFilter] = useState('');
+  const [portfolioDashboardRefresh, setPortfolioDashboardRefresh] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -49,6 +57,23 @@ export default function App() {
       .then(data => setProjects(data))
       .catch(err => console.error("Error fetching projects:", err));
   };
+
+  const loadPortfolioDashboard = () => {
+    setPortfolioDashboardRefresh(value => value + 1);
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (portfolioFilter) params.set('portfolio', portfolioFilter);
+    if (programmeFilter) params.set('programme', programmeFilter);
+    fetch(`${API_BASE}/api/portfolio-dashboard${params.toString() ? `?${params.toString()}` : ''}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Portfolio dashboard request failed: ${res.status}`);
+        return res.json();
+      })
+      .then(data => setPortfolioDashboard(data))
+      .catch(err => console.error('Error fetching portfolio dashboard:', err));
+  }, [portfolioFilter, programmeFilter, portfolioDashboardRefresh]);
 
   // Load active workspace details
   const loadWorkspace = (id) => {
@@ -94,6 +119,7 @@ export default function App() {
       .then(res => res.json())
       .then(newProj => {
         loadProjects();
+        loadPortfolioDashboard();
         setIsCreatingProj(false);
         // Automatically switch to the newly created project workspace
         setSelectedProjectId(newProj.id);
@@ -111,6 +137,7 @@ export default function App() {
       .then(res => res.json())
       .then(() => {
         loadProjects();
+        loadPortfolioDashboard();
         loadWorkspace(selectedProjectId);
       })
       .catch(err => console.error("Error transitioning stage:", err));
@@ -268,17 +295,29 @@ export default function App() {
               </div>
 
               {/* Statistics Grid */}
+              <PortfolioDashboard
+                data={portfolioDashboard}
+                portfolio={portfolioFilter}
+                programme={programmeFilter}
+                onPortfolioChange={value => {
+                  setPortfolioFilter(value);
+                  setProgrammeFilter('');
+                }}
+                onProgrammeChange={setProgrammeFilter}
+              />
+
+              {/* Statistics Grid */}
               <div className="stat-grid">
                 <div className="glass-panel stat-card">
                   <span className="stat-label">Active Portfolios</span>
-                  <span className="stat-value">{projects.length}</span>
+                  <span className="stat-value">{portfolioDashboard?.summary?.projectCount ?? projects.length}</span>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Public Health, Economic & Resource</span>
                 </div>
 
                 <div className="glass-panel stat-card">
                   <span className="stat-label">Total Managed Budgets</span>
                   <span className="stat-value" style={{ color: 'var(--primary-color)' }}>
-                    ${totalAllocated.toLocaleString()}
+                    ${(portfolioDashboard?.summary?.budgetTotal ?? totalAllocated).toLocaleString()}
                   </span>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Aggregate program allocations</span>
                 </div>
@@ -286,9 +325,9 @@ export default function App() {
                 <div className="glass-panel stat-card">
                   <span className="stat-label">System Progress (Spent)</span>
                   <span className="stat-value" style={{ color: 'var(--success-color)' }}>
-                    ${totalSpent.toLocaleString()}
+                    ${(portfolioDashboard?.summary?.spentTotal ?? totalSpent).toLocaleString()}
                   </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{((totalSpent/totalAllocated)*100 || 0).toFixed(1)}% total system utilization</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{(((portfolioDashboard?.summary?.spentTotal ?? totalSpent) / (portfolioDashboard?.summary?.budgetTotal ?? totalAllocated)) * 100 || 0).toFixed(1)}% total system utilization</span>
                 </div>
               </div>
 
@@ -402,6 +441,9 @@ export default function App() {
 
                 {/* Tab content rendering */}
                 {activeTab === 'overview' && (
+                  <>
+                  <ProjectHealthAssistant project={workspaceData.project} apiBase={API_BASE} />
+                  <ProjectLocationMap project={workspaceData.project} apiBase={SPATIAL_API_BASE} />
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
                     {/* Main column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -495,6 +537,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  </>
                 )}
 
                 {activeTab === 'hierarchy' && (
