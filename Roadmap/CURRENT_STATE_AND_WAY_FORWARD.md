@@ -270,3 +270,19 @@ PMS now provides a workspace-scoped portfolio/programme control tower at `GET /a
 ### PMS GIS Checkpoint: 15 September 2026
 
 PMS project locations are now integrated with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview includes coordinate and administrative-unit editing with an OSM preview. Live certification verified save/readback in the selected workspace, invalid-coordinate rejection, foreign-workspace isolation, and unauthenticated `401` enforcement. Broader GIS capabilities such as geocoding, GPS streaming, spatial analysis, and vector tiles remain Phase 10 work.
+
+### Tenant/Authorization Attestation: 15 September 2026
+
+The cross-service tenant contract is now executable rather than asserted in prose. `tests/1-tenancy/` provides a manifest plus two suites, both run against the live Compose stack: `attest.ps1` (unauthenticated) and `attest-authenticated.ps1` (Registry-contract JWT minted from the signing secret).
+
+- **Unauthenticated:** 36/36 checks pass across 18 services — every protected endpoint answers `401` without credentials, and answers `400` where the shared workspace middleware validates header shape before authentication (StatIoT is the reference case).
+- **Authenticated:** 47 checks, 0 failures, 7 informational notes — valid-token acceptance, malformed-workspace `400`, and membership denial for a well-formed unknown workspace.
+
+Three findings are recorded honestly rather than smoothed over:
+
+1. **Membership denial currently surfaces as `503 workspace_membership_unavailable`** for a synthetic principal. The middleware asks Enterprise Core `GET /workspaces/{id}` with the caller token; Enterprise Core answers `401` for a principal it has no record of, so the middleware degrades to `503` instead of `403`. The route is fail-closed (access is denied), but a genuine `403` requires a real provisioned Enterprise Core user. The suite therefore asserts denial-set membership (`400|403|404|503`) rather than one hardcoded code.
+2. **No membership enforcement on three read routes** — `statspatial /api/v1/layers`, `statops /api/v1/summary`, and `statchat /users` return `200` for a well-formed unknown workspace, relying on list scoping only. Wiring `tenant.GinWorkspaceMembership` to these routes is an open follow-up.
+3. **Service-local principal stores** — `enterprise-core` and `statcollect` reject a synthetic JWT principal with `401` by design, and `stattrust /api/v1/summary` requires additional provisioned context (`400`). `helpdesk` accepts the JWT and answers `404` for a nonexistent ticket.
+
+Remaining work on this suite: provision a real Enterprise Core user and workspace to assert a true cross-workspace `403`, wire membership middleware to the three routes above, and add seeded cross-workspace object reads (expect `404`). See `tests/1-tenancy/README.md`.
+

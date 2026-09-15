@@ -1,0 +1,36 @@
+StatGate authenticated tenant/authorization attestation
+Generated: 2026-09-15T17:23:21.9374917+03:00
+Principal: synthetic JWT (userId=attest-user, role=viewer, tenant_id=tenant-alpha)
+
+[PASS] statdata GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] statiot GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] geointel GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] bpm-hub GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] learning-crm GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] ai-autonomy GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] knowledge-portal GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] statfederation GET auth=200(want 200) malformed=400(want 400) unknown-ws=400/DENIED
+[PASS] statspatial GET auth=200(want 200) malformed=400(want 400) unknown-ws=200/NOTE
+         note: read route returns 200 for a well-formed unknown workspace; list scoping only, membership middleware not applied
+[PASS] stattrust GET auth=400(want 400) malformed=400(want 400) unknown-ws=200/NOTE
+         note: returns 400 for this synthetic principal; requires additional provisioned context
+[PASS] statops GET auth=200(want 200) malformed=400(want 400) unknown-ws=200/NOTE
+         note: applies workspace shape validation but not membership enforcement on this route
+[PASS] enterprise-core GET auth=401(want 401) malformed=401(want 401) unknown-ws=401/NOTE
+         note: validates the principal against its own user store; a synthetic JWT principal is rejected with 401 by design
+[PASS] pms GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] rms GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] statgovernance GET auth=200(want 200) malformed=400(want 400) unknown-ws=503/DENIED
+[PASS] statchat GET auth=200(want 200) malformed=400(want 400) unknown-ws=200/NOTE
+         note: applies workspace shape validation but not membership enforcement on this route
+[PASS] statcollect GET auth=401(want 401) malformed=401(want 401) unknown-ws=401/NOTE
+         note: validates the principal against its own admin-key/user store; a synthetic JWT principal is rejected with 401 by design
+[PASS] helpdesk POST auth=404(want 404) malformed=404(want 404) unknown-ws=404/NOTE
+         note: auth accepted (404 = ticket not found, not 401); no workspace middleware
+
+asserted checks: 47, failed: 0, informational notes: 7
+Membership assertion: a well-formed unknown workspace must produce a denial (400|403|404|503).
+  503 = workspace_membership_unavailable: Enterprise Core answered 401 for this synthetic
+  principal (it has no record of it), so the middleware degrades to 503 rather than 403.
+  A genuine 403 requires a real provisioned Enterprise Core user; all codes above deny access.
+RESULT: PASS

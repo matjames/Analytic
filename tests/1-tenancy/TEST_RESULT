@@ -1,5 +1,5 @@
 StatGate tenant/authorization attestation (18 services)
-Generated: 2026-09-15T17:00:08.2260237+03:00
+Generated: 2026-09-15T17:23:22.0301175+03:00
 
 [PASS/PASS] statdata GET no-auth: got=401 want=401 | malformed-ws: got=401 want=401
 [PASS/PASS] statiot GET no-auth: got=401 want=401 | malformed-ws: got=400 want=400
