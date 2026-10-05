@@ -479,9 +479,12 @@
       </div>
     </div>
     <div class="header-nav">
-      <label class="nav-link" for="admin_key_input">Admin/API key</label>
+      <label class="nav-link" for="admin_key_input">StatCollect admin key</label>
       <input id="admin_key_input" type="password" autocomplete="current-password" placeholder="Enter StatCollect key" style="max-width:190px" />
       <button class="btn btn-outline btn-sm" onclick="saveAdminKey()">Use key</button>
+      <input id="tenant_scope_input" aria-label="Tenant ID" title="Tenant ID" placeholder="Tenant ID" style="max-width:115px" />
+      <input id="workspace_scope_input" aria-label="Workspace ID" title="Workspace ID" placeholder="Workspace ID" style="max-width:130px" />
+      <button class="btn btn-outline btn-sm" onclick="saveOfficialScope()">Use scope</button>
       <span class="badge badge-blue" id="active_scope_label">Workspace scope</span>
       <a href="index.html" class="nav-link">📥 Submissions</a>
       <a href="templates.html" class="nav-link">📝 Form Builder</a>
@@ -1253,7 +1256,7 @@
   </div>
 
   <script>
-    let API_KEY = localStorage.getItem('statcollect_admin_key') || localStorage.getItem('sc_admin_key') || localStorage.getItem('statcollect_api_key') || '';
+    let API_KEY = sessionStorage.getItem('statcollect_admin_key') || '';
     const nativeFetch = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
       const headers = new Headers(init.headers || {});
@@ -1870,10 +1873,25 @@
 
     function saveAdminKey() {
       API_KEY = document.getElementById('admin_key_input').value.trim();
-      if (API_KEY) localStorage.setItem('statcollect_admin_key', API_KEY);
-      else localStorage.removeItem('statcollect_admin_key');
+      if (API_KEY) sessionStorage.setItem('statcollect_admin_key', API_KEY);
+      else sessionStorage.removeItem('statcollect_admin_key');
       if (API_KEY) loadProcessingSchedules();
       else setScheduleNotice('Enter an authorized StatCollect API/admin key to use protected workflows.', true);
+    }
+
+    function saveOfficialScope() {
+      const tenant = document.getElementById('tenant_scope_input').value.trim();
+      const workspace = document.getElementById('workspace_scope_input').value.trim();
+      const validScope = /^[A-Za-z0-9._-]{1,128}$/;
+      if (!validScope.test(tenant) || !validScope.test(workspace)) {
+        setScheduleNotice('Tenant and workspace IDs must be 1-128 letters, numbers, dots, underscores, or hyphens.', true);
+        return;
+      }
+      localStorage.setItem('statgate_tenant_id', tenant);
+      localStorage.setItem('statgate_workspace_id', workspace);
+      document.getElementById('active_scope_label').textContent = `${tenant} / ${workspace}`;
+      setScheduleNotice(`Active workspace scope set to ${tenant} / ${workspace}.`);
+      if (document.getElementById('view_processing').classList.contains('active')) loadProcessingSchedules();
     }
 
     function activeOfficialScope() {
@@ -1977,6 +1995,8 @@
     document.getElementById('admin_key_input').value = API_KEY;
     const initialScope = activeOfficialScope();
     document.getElementById('active_scope_label').textContent = `${initialScope.tenant} / ${initialScope.workspace}`;
+    document.getElementById('tenant_scope_input').value = initialScope.tenant;
+    document.getElementById('workspace_scope_input').value = initialScope.workspace;
     loadProjects();
     loadQuestionBank();
     loadSupervisorDashboard();

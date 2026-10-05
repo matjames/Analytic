@@ -18,6 +18,8 @@ The 4 October release certification covered the StatCollect service slice, datas
 
 Analytics Core now has a durable due-schedule worker, per-execution history, scoped schedule/run reads, manual trigger support, and short retry scheduling for upstream/server failures. StatCollect exposes an internal-key-only refresh endpoint that resolves the dataset's source form and republishes only when a newer completed processing run exists in the same tenant/workspace; otherwise the recorded outcome is `no_change`. Recurring schedules with no explicit first-run time default to one frequency interval from registration, and `on_demand` schedules remain unscheduled until manually triggered. Compose wires Core to StatCollect over the internal service network.
 
+The Official Statistics page now has an admin-key-protected schedule/history panel through StatCollect proxy endpoints; the key is session-only and tenant/workspace scope is visible and selectable. The Core internal secret is never exposed to the browser. Proxy and Core behavior have automated test coverage.
+
 This is an implementation checkpoint, not a live deployment certification. The scheduled action refreshes the latest completed output; it does not yet rerun processing transformations against newly arrived submissions. Automated transformation reruns, full Analytics Core lineage graph integration, and live schedule execution certification remain open, alongside browser workflow and user-facing production gaps below.
 
 ---
@@ -83,6 +85,10 @@ submission.rejected     ← on status → rejected
 POST /admin/statistics/processing/weight    -> approved-submission weighting run
 POST /admin/statistics/processing/transform -> imputation, coding, or structured-editing run
 GET  /admin/statistics/processing/runs      -> scoped processing-run history
+GET  /admin/statistics/processing/schedules -> admin-authorized workspace schedule list (Core proxy)
+POST /admin/statistics/processing/schedules -> admin-authorized schedule create/update (Core proxy)
+POST /admin/statistics/processing/schedules/run -> admin-authorized manual trigger (Core proxy)
+GET  /admin/statistics/processing/schedule-runs -> admin-authorized execution history (Core proxy)
 POST /admin/statistics/datasets/handoff    -> dataset records, schema, and lineage handoff
 GET  /admin/statistics/datasets/handoffs   -> scoped dataset handoff history
 POST /admin/statistics/tabulate             -> raw, form-backed, or completed-run-backed table
@@ -105,7 +111,7 @@ POST /internal/statistics/datasets/refresh  -> internal-key-only latest-output r
 - **Scheduled refresh** — durable schedule execution/history, workspace-scoped manual triggering, and latest-output refresh are implemented; live deployment certification and automatic transformation reruns are still open.
 - **Indicator publication depth** — versioned, scoped observation publication, bounds/unit validation, quality warnings/rejection, revalidation, open-data readback, and Analytics Core observation handoff are live.
 - **Statistical calendar** — not implemented.
-- **Browser workflow depth** — the API is live-certified, but all design, sampling, workforce, review, tabulation, SDMX, census, SDG, and dissemination workflows still need role-aware browser acceptance coverage.
+- **Browser workflow depth** — the schedule/history panel is implemented but awaits deployment verification; design, sampling, workforce, review, tabulation, SDMX, census, SDG, and dissemination workflows still need role-aware browser acceptance coverage.
 
 ---
 

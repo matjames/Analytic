@@ -13,16 +13,16 @@ import (
 )
 
 type scheduleProxyRequest struct {
-	DatasetID string     `json:"dataset_id"`
-	AssetID   string     `json:"asset_id,omitempty"`
-	Frequency string     `json:"frequency"`
-	NextRunAt *time.Time `json:"next_run_at,omitempty"`
-	ScheduleID string    `json:"schedule_id,omitempty"`
+	DatasetID  string     `json:"dataset_id"`
+	AssetID    string     `json:"asset_id,omitempty"`
+	Frequency  string     `json:"frequency"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+	ScheduleID string     `json:"schedule_id,omitempty"`
 }
 
 func adminProcessingSchedulesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		scope, ok := requireOfficialStatisticsReadScope(w, r)
+		scope, ok := requireOfficialStatisticsScope(w, r)
 		if !ok {
 			return
 		}
@@ -69,7 +69,7 @@ func adminProcessingScheduleRunsHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	scope, ok := requireOfficialStatisticsReadScope(w, r)
+	scope, ok := requireOfficialStatisticsScope(w, r)
 	if !ok {
 		return
 	}
