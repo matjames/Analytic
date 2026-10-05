@@ -1,0 +1,97 @@
+{
+  "name": "StatGate end-to-end data lifecycle acceptance gate",
+  "version": 1,
+  "generated": "2026-09-18",
+  "purpose": "Prove the data lifecycle works as one product (collect -> process -> store -> analyze) and fail loudly if any stage is simulated.",
+  "targets": {
+    "statdata": "http://localhost:8107",
+    "statgate-core": "http://localhost:8082",
+    "secrets": ["STATGATE_INTERNAL_API_KEY", "STATGATE_REGISTRY_JWT_SECRET"]
+  },
+  "stages": [
+    {
+      "id": "preflight",
+      "asserts": [
+        "statdata /health == 200",
+        "statgate-core /health == 200",
+        "GET /api/v1/data/catalog/datasets without a token == 401",
+        "POST /api/v1/statistics/tabulate without the internal key == 401"
+      ]
+    },
+    {
+      "id": "stage1-ingest",
+      "asserts": [
+        "source and target datasets are created (201)",
+        "an empty record batch is refused with 400",
+        "four rows store and read back",
+        "bytes_written > 0 and total_rows reflects storage"
+      ]
+    },
+    {
+      "id": "stage2-define",
+      "asserts": [
+        "NOT_NULL quality rule created (201)",
+        "four-stage ETL pipeline created (201): EXTRACT -> VALIDATE -> TRANSFORM -> LOAD"
+      ],
+      "note": "VALIDATE intentionally precedes TRANSFORM because the rule targets 'district', which TRANSFORM renames to 'region'. Reversing the order is a real pipeline-design defect and must surface as FAILED, not SUCCESS."
+    },
+    {
+      "id": "stage3-process",
+      "asserts": [
+        "run status == SUCCESS",
+        "records_read == 4, records_written == 3, records_rejected == 1",
+        "exactly 4 stage runs",
+        "extract summary records_extracted == 4",
+        "transform summary records_in == 4 and records_out == 3",
+        "validate summary quality_status == PASSED with rules_total >= 1",
+        "load summary records_loaded == 3, bytes_written > 0, total_rows == 3"
+      ]
+    },
+    {
+      "id": "stage4-store",
+      "asserts": [
+        "target holds exactly 3 rows",
+        "transformed rows carry 'region' and no longer carry 'district' or 'note'",
+        "catalog row_count == 3 and size_bytes > 0",
+        "a second run APPENDS: total_rows == 6 (counters derived from storage)",
+        "record reset deletes all 6 rows and the target reads back empty"
+      ]
+    },
+    {
+      "id": "stage5-fail-honestly",
+      "asserts": [
+        "a pipeline with a missing source dataset reports FAILED (never SUCCESS)",
+        "the failed run carries a non-empty error_message and writes 0 rows",
+        "the target is untouched by the failed run",
+        "a NOT_NULL violation fails at VALIDATE and names the violated rule",
+        "LOAD never executes after a failed VALIDATE (only 2 stage runs)",
+        "the clean target stays empty"
+      ]
+    },
+    {
+      "id": "stage6-analyze",
+      "asserts": [
+        "tabulation bound to dataset_id returns total_record_count == 4 from stored rows",
+        "row_totals.North == 2",
+        "bogus request payload rows are ignored when dataset_id is set",
+        "no payload-only category ('Bogus') appears in the result"
+      ]
+    }
+  ],
+  "failure_conditions": [
+    "Any pipeline run reporting SUCCESS while records_written == 0",
+    "Stage counters that disagree with the rows actually stored",
+    "A broken pipeline that does not report FAILED (guaranteed-success regression)",
+    "A failed VALIDATE that still loads rows into the target",
+    "Analytics that returns results derived from request payloads instead of persisted dataset rows",
+    "Any endpoint serving data without its credential gate (401 regression)"
+  ],
+  "results": {
+    "run_at_utc": "2026-09-18T10:15:43Z",
+    "statdata": "http://localhost:8307 (built from source)",
+    "statgate-core": "http://localhost:8302 (built from source)",
+    "passed": 58,
+    "failed": 0,
+    "first_run_finding": "The gate failed on its first execution because the pipeline validated AFTER the rename of district -> region, so the NOT_NULL rule fired and the run honestly reported FAILED. Pipeline definition corrected to validate raw extracted rows."
+  }
+}

@@ -101,6 +101,11 @@ func SetupRouter(cfg RouterConfig) *gin.Engine {
 		data.PUT("/catalog/datasets/:id", h.CatalogHandler.UpdateDataset)
 		data.DELETE("/catalog/datasets/:id", h.CatalogHandler.DeleteDataset)
 
+		// Dataset Data Plane (real record storage behind the catalog)
+		data.GET("/catalog/datasets/:id/records", h.CatalogHandler.ListDatasetRecords)
+		data.POST("/catalog/datasets/:id/records", h.CatalogHandler.AppendDatasetRecords)
+		data.DELETE("/catalog/datasets/:id/records", h.CatalogHandler.DeleteDatasetRecords)
+
 		// Schema Registry & Data Contracts
 		data.GET("/schemas", h.CatalogHandler.ListSchemas)
 		data.POST("/schemas", h.CatalogHandler.RegisterSchema)

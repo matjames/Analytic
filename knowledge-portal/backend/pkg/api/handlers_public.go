@@ -26,7 +26,7 @@ func ListPublicContentHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetPublicContentHandler(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	item, err := store.GetContentItem(r.Context(), id)
+	item, err := store.GetContentItemForTenant(r.Context(), publicTenant(r), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "content not found")
 		return

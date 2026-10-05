@@ -131,6 +131,7 @@ type Proposal struct {
 type EthicsApp struct {
 	ID                string    `json:"id"`
 	ResearchID        string    `json:"researchId"`
+	CommitteeID       string    `json:"committeeId,omitempty"`
 	IRBName           string    `json:"irbName"`
 	Status            string    `json:"status"`
 	SubmissionDate    string    `json:"submissionDate"`
@@ -422,33 +423,62 @@ type StageTransitionRequest struct {
 // ─── Phase 5 Extensions: IRB, DOI, Citation Engine, Open Science ────
 
 type EthicsCommittee struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Institution string    `json:"institution"`
-	ChairPerson string    `json:"chairPerson"`
-	Email       string    `json:"email"`
-	Members     []string  `json:"members"`
-	Active      bool      `json:"active"`
-	CreatedTime time.Time `json:"createdTime"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Code             string    `json:"code"`
+	Institution      string    `json:"institution"`
+	ChairPerson      string    `json:"chairPerson"`
+	Email            string    `json:"email"`
+	Phone            string    `json:"phone"`
+	Members          []string  `json:"members"`
+	Status           string    `json:"status"`
+	ApprovalValidity int       `json:"approvalValidity"`
+	Active           bool      `json:"active"`
+	WorkspaceID      string    `json:"workspaceId,omitempty"`
+	CreatedTime      time.Time `json:"createdTime"`
+}
+
+type EthicsCommitteeMember struct {
+	ID          string     `json:"id"`
+	CommitteeID string     `json:"committeeId"`
+	UserID      string     `json:"userId"`
+	Name        string     `json:"name"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	Status      string     `json:"status"`
+	InvitedBy   string     `json:"invitedBy"`
+	ApprovedBy  string     `json:"approvedBy,omitempty"`
+	InvitedAt   time.Time  `json:"invitedAt"`
+	ApprovedAt  *time.Time `json:"approvedAt,omitempty"`
+	CreatedTime time.Time  `json:"createdTime"`
+	UpdatedTime time.Time  `json:"updatedTime"`
 }
 
 type DOIRecord struct {
-	ID            string    `json:"id"`
-	ResearchID    string    `json:"researchId"`
-	PublicationID string    `json:"publicationId,omitempty"`
-	DOI           string    `json:"doi"`
-	Title         string    `json:"title"`
-	Authors       []string  `json:"authors"`
-	Year          int       `json:"year"`
-	Publisher     string    `json:"publisher"`
-	URL           string    `json:"url"`
-	Status        string    `json:"status"` // Draft, Registered, Active
-	CreatedTime   time.Time `json:"createdTime"`
+	ID                    string     `json:"id"`
+	ResearchID            string     `json:"researchId"`
+	PublicationID         string     `json:"publicationId,omitempty"`
+	DOI                   string     `json:"doi"`
+	Title                 string     `json:"title"`
+	Authors               []string   `json:"authors"`
+	Year                  int        `json:"year"`
+	Publisher             string     `json:"publisher"`
+	URL                   string     `json:"url"`
+	Status                string     `json:"status"` // Draft, Registered, Active
+	Provider              string     `json:"provider"`
+	ProviderStatus        string     `json:"providerStatus"`
+	ExternalID            string     `json:"externalId,omitempty"`
+	RegistrationAttempts  int        `json:"registrationAttempts"`
+	LastRegistrationError string     `json:"lastRegistrationError,omitempty"`
+	LastAttemptAt         *time.Time `json:"lastAttemptAt,omitempty"`
+	CreatedTime           time.Time  `json:"createdTime"`
 }
 
 type CitationOutput struct {
 	ID          string `json:"id"`
 	ReferenceID string `json:"referenceId"`
+	Style       string `json:"style,omitempty"`
+	Citation    string `json:"citation,omitempty"`
 	APA         string `json:"apa"`
 	Chicago     string `json:"chicago"`
 	Harvard     string `json:"harvard"`
@@ -457,16 +487,108 @@ type CitationOutput struct {
 }
 
 type OpenAccessRepoItem struct {
-	ID          string    `json:"id"`
-	ResearchID  string    `json:"researchId"`
-	Title       string    `json:"title"`
-	Abstract    string    `json:"abstract"`
-	License     string    `json:"license"` // CC-BY-4.0, MIT, Open Data Commons
-	AccessURL   string    `json:"accessUrl"`
-	DownloadURL string    `json:"downloadUrl"`
-	FileSize    string    `json:"fileSize"`
-	Format      string    `json:"format"`
-	Views       int       `json:"views"`
-	Downloads   int       `json:"downloads"`
-	CreatedTime time.Time `json:"createdTime"`
+	ID           string    `json:"id"`
+	ResearchID   string    `json:"researchId"`
+	Title        string    `json:"title"`
+	Abstract     string    `json:"abstract"`
+	Description  string    `json:"description,omitempty"`
+	ResourceType string    `json:"resourceType,omitempty"`
+	Keywords     string    `json:"keywords,omitempty"`
+	RepoName     string    `json:"repoName,omitempty"`
+	AccessLevel  string    `json:"accessLevel,omitempty"`
+	License      string    `json:"license"` // CC-BY-4.0, MIT, Open Data Commons
+	AccessURL    string    `json:"accessUrl"`
+	DownloadURL  string    `json:"downloadUrl"`
+	FileSize     string    `json:"fileSize"`
+	Format       string    `json:"format"`
+	Views        int       `json:"views"`
+	Downloads    int       `json:"downloads"`
+	CreatedTime  time.Time `json:"createdTime"`
+}
+
+type JournalSubmission struct {
+	ID                  string    `json:"id"`
+	ResearchID          string    `json:"researchId"`
+	PublicationID       string    `json:"publicationId,omitempty"`
+	Journal             string    `json:"journal"`
+	ManuscriptTitle     string    `json:"manuscriptTitle"`
+	SubmissionDate      string    `json:"submissionDate"`
+	Status              string    `json:"status"`
+	ManuscriptURL       string    `json:"manuscriptUrl"`
+	CorrespondingAuthor string    `json:"correspondingAuthor"`
+	ReviewerComments    string    `json:"reviewerComments"`
+	NextAction          string    `json:"nextAction"`
+	CreatedTime         time.Time `json:"createdTime"`
+	UpdatedTime         time.Time `json:"updatedTime"`
+}
+
+type ResearchArchive struct {
+	ID             string    `json:"id"`
+	ResearchID     string    `json:"researchId"`
+	OutputID       string    `json:"outputId,omitempty"`
+	Title          string    `json:"title"`
+	ArchiveType    string    `json:"archiveType"`
+	Repository     string    `json:"repository"`
+	AccessURL      string    `json:"accessUrl"`
+	Checksum       string    `json:"checksum"`
+	Status         string    `json:"status"`
+	RetentionUntil string    `json:"retentionUntil"`
+	CreatedTime    time.Time `json:"createdTime"`
+	UpdatedTime    time.Time `json:"updatedTime"`
+}
+
+type ConferenceSubmission struct {
+	ID               string    `json:"id"`
+	ResearchID       string    `json:"researchId"`
+	ConferenceName   string    `json:"conferenceName"`
+	ManuscriptTitle  string    `json:"manuscriptTitle"`
+	SubmissionDate   string    `json:"submissionDate"`
+	Status           string    `json:"status"`
+	PresentationType string    `json:"presentationType"`
+	AbstractURL      string    `json:"abstractUrl"`
+	ReviewerComments string    `json:"reviewerComments"`
+	NextAction       string    `json:"nextAction"`
+	CreatedTime      time.Time `json:"createdTime"`
+	UpdatedTime      time.Time `json:"updatedTime"`
+}
+
+type ConferenceEvent struct {
+	ID              string    `json:"id"`
+	ResearchID      string    `json:"researchId"`
+	EventName       string    `json:"eventName"`
+	StartDate       string    `json:"startDate"`
+	EndDate         string    `json:"endDate"`
+	Location        string    `json:"location"`
+	RegistrationURL string    `json:"registrationUrl"`
+	Status          string    `json:"status"`
+	CreatedTime     time.Time `json:"createdTime"`
+	UpdatedTime     time.Time `json:"updatedTime"`
+}
+
+type ConferenceAttendance struct {
+	ID             string     `json:"id"`
+	EventID        string     `json:"eventId"`
+	UserID         string     `json:"userId"`
+	Name           string     `json:"name"`
+	Email          string     `json:"email"`
+	AttendanceType string     `json:"attendanceType"`
+	Status         string     `json:"status"`
+	RegisteredAt   time.Time  `json:"registeredAt"`
+	CheckedInAt    *time.Time `json:"checkedInAt,omitempty"`
+	CreatedTime    time.Time  `json:"createdTime"`
+	UpdatedTime    time.Time  `json:"updatedTime"`
+}
+
+type KnowledgeTransfer struct {
+	ID          string     `json:"id"`
+	ResearchID  string     `json:"researchId"`
+	Title       string     `json:"title"`
+	Summary     string     `json:"summary"`
+	Body        string     `json:"body"`
+	Tags        []string   `json:"tags"`
+	Status      string     `json:"status"`
+	KnowledgeID string     `json:"knowledgeId,omitempty"`
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
+	CreatedTime time.Time  `json:"createdTime"`
+	UpdatedTime time.Time  `json:"updatedTime"`
 }

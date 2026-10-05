@@ -202,6 +202,23 @@ func migrateDB() error {
 		return err
 	}
 
+	// Resource allocations table
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pms.resource_allocations (
+			id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+			resource_name VARCHAR(255) NOT NULL,
+			role VARCHAR(255),
+			allocation_percent FLOAT NOT NULL DEFAULT 100,
+			start_date DATE,
+			end_date DATE,
+			notes TEXT,
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
+
 	// Add new columns to existing tables if they don't exist
 	for _, statement := range []string{
 		`ALTER TABLE pms.project_members ADD COLUMN IF NOT EXISTS department VARCHAR(255)`,
@@ -688,6 +705,48 @@ func migrateDB() error {
 	} {
 		if _, err := DB.Exec(statement); err != nil {
 			return fmt.Errorf("apply Phase 4 ownership migration: %w", err)
+		}
+	}
+
+	// Phase 4 additions are applied after the base project/activity tables so
+	// upgrades and clean database starts use the same dependency-safe path.
+	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS pms.grants (
+			id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+			workspace_id VARCHAR(128),
+			donor_id VARCHAR(36),
+			grant_number VARCHAR(100),
+			title VARCHAR(255) NOT NULL,
+			purpose TEXT,
+			amount FLOAT DEFAULT 0.0,
+			currency VARCHAR(10) DEFAULT 'USD',
+			start_date DATE,
+			end_date DATE,
+			reporting_due DATE,
+			status VARCHAR(50) DEFAULT 'Draft',
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_grants_project ON pms.grants(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_grants_workspace ON pms.grants(workspace_id)`,
+		`CREATE TABLE IF NOT EXISTS pms.field_activity_locations (
+			id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) REFERENCES pms.projects(id) ON DELETE CASCADE,
+			workspace_id VARCHAR(128),
+			activity_id VARCHAR(36) REFERENCES pms.activities(id) ON DELETE SET NULL,
+			label VARCHAR(255) NOT NULL,
+			worker VARCHAR(255),
+			status VARCHAR(50) DEFAULT 'Recorded',
+			latitude DOUBLE PRECISION NOT NULL,
+			longitude DOUBLE PRECISION NOT NULL,
+			recorded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_field_activity_project ON pms.field_activity_locations(project_id, recorded_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_pms_field_activity_workspace ON pms.field_activity_locations(workspace_id)`,
+	} {
+		if _, err := DB.Exec(statement); err != nil {
+			return fmt.Errorf("apply Phase 4 planning migration: %w", err)
 		}
 	}
 

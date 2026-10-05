@@ -21,8 +21,11 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PUT("/projects/:id/stage", dbUpdateProjectStage)
 		api.GET("/projects/:id/audit", dbGetProjectAuditLogs)
 		api.GET("/projects/:id/calendar", dbGetProjectCalendar)
+		api.GET("/projects/:id/gantt", dbGetProjectGantt)
 		api.GET("/projects/:id/reports", dbGetProjectReports)
 		api.POST("/projects/:id/reports", dbGenerateReport)
+		api.GET("/projects/:id/report-templates", dbGetDonorReportTemplates)
+		api.POST("/projects/:id/donor-reports", dbGenerateDonorReport)
 		api.GET("/projects/:id/relationships", dbGetProjectRelationships)
 
 		// ─── Enterprise Hierarchy ────────────────────────────────
@@ -36,6 +39,9 @@ func RegisterRoutes(r *gin.Engine) {
 		api.POST("/components", dbCreateComponent)
 		api.GET("/projects/:id/activities", dbGetActivities)
 		api.POST("/activities", dbCreateActivity)
+		api.GET("/projects/:id/field-activities", dbGetFieldActivityLocations)
+		api.POST("/field-activities", dbCreateFieldActivityLocation)
+		api.DELETE("/field-activities/:id", dbDeleteFieldActivityLocation)
 		api.GET("/projects/:id/deliverables", dbGetDeliverables)
 		api.POST("/deliverables", dbCreateDeliverable)
 		api.GET("/projects/:id/milestones", dbGetMilestones)
@@ -50,6 +56,9 @@ func RegisterRoutes(r *gin.Engine) {
 		// ─── Team Members ────────────────────────────────────────
 		api.POST("/members", dbAddMember)
 		api.DELETE("/members/:id", dbRemoveMember)
+		api.GET("/projects/:id/resources", dbGetResourceAllocations)
+		api.POST("/resource-allocations", dbCreateResourceAllocation)
+		api.DELETE("/resource-allocations/:id", dbDeleteResourceAllocation)
 
 		// ─── Budget & Finance ────────────────────────────────────
 		api.POST("/budgets", dbCreateBudgetLine)
@@ -57,6 +66,10 @@ func RegisterRoutes(r *gin.Engine) {
 		api.DELETE("/budgets/:id", dbDeleteBudgetLine)
 		api.GET("/projects/:id/funding", dbGetFundingSources)
 		api.POST("/funding", dbCreateFundingSource)
+		api.GET("/projects/:id/grants", dbGetGrants)
+		api.POST("/grants", dbCreateGrant)
+		api.PUT("/grants/:id", dbUpdateGrant)
+		api.DELETE("/grants/:id", dbDeleteGrant)
 		api.GET("/projects/:id/cost-centres", dbGetCostCentres)
 		api.POST("/cost-centres", dbCreateCostCentre)
 		api.GET("/projects/:id/budget-revisions", dbGetBudgetRevisions)
@@ -125,6 +138,7 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/projects/:id/dashboard", dbGetProjectDashboard)
 		api.GET("/projects/:id/progress-summary", dbGetProjectProgressSummary)
 		api.GET("/projects/:id/critical-path", dbGetProjectCriticalPath)
+		api.GET("/projects/:id/wbs", dbGetProjectWBS)
 		api.POST("/projects/:id/health-assistant", dbGetProjectHealthAssistant)
 
 		// ─── Open Standards: IATI 2.03 Development Partner Export ─

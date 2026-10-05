@@ -1,11 +1,11 @@
 # StatGate Current State and Way Forward
 
-**As of:** 2 September 2026
+**As of:** 5 October 2026
 **Purpose:** Establish a practical engineering baseline from the roadmap and the implementation currently present in the repository.
 
 ## Executive Position
 
-StatGate has moved beyond the initial platform concept. The repository contains a working foundation, several usable business modules, shared identity and event-bus patterns, multiple frontends, and a growing set of later-phase services.
+StatGate has moved beyond the initial platform concept. The repository contains a working foundation, several usable business modules, shared identity and event-bus patterns, multiple frontends, and a growing set of later-phase services. The current PMS Phase 4 implementation is complete for the listed scope and has been source-certified against the Docker-backed PMS database.
 
 The platform is not yet at the point where the entire roadmap can be called complete. The main constraint is no longer the absence of code. It is integration, operational proof, security hardening, and completion of the business workflows that sit above the core CRUD foundations.
 
@@ -72,9 +72,9 @@ The preceding Phase 3 capability inventory contains older checkpoint wording in 
 
 ### Business Modules: Phases 4-5
 
-PMS and RMS contain broad operational foundations. Projects, programmes, portfolios, research projects, proposals, grants, ethics records, publications, datasets, documents, tasks, meetings, risks, dashboards, timelines, audit trails, and StatChat integrations are represented.
+PMS and RMS contain broad operational foundations. Projects, programmes, portfolios, research projects, proposals, grants, ethics records, publications, datasets, documents, tasks, meetings, risks, dashboards, timelines, audit trails, and StatChat integrations are represented. PMS Phase 4 scope is source-complete for its certified workflows. RMS now also has workspace-aware DOI/citation, IRB, journal/conference, open-science, preservation, Knowledge Portal transfer, readiness, publication-quality, research-quality, and bounded language-review workflows.
 
-The major gap is depth of workflow. LogFrames, Theory of Change, donor management, critical-path and resource planning, DOI and citation workflows, formal IRB administration, journal submission, open science, and module-specific AI assistants remain future work.
+The major remaining gap is depth beyond the certified slices: credentialed external DOI delivery, approved LLM provider deployment, durable Analytics Core dataset execution certification, external editorial/language provider federation, domain-specific methodological validation, and selected cross-module RMS integrations remain future work. Workspace-safe StatCollect-to-RMS links, internal ingestion, and automatic event delivery are implemented and live-certified. Member-level IRB administration, conference calendar/attendance, Knowledge Portal moderation/graph governance, provider-backed research assistance, opt-in provider-backed language editing, and governed statistical planning are now implemented rather than remaining gaps.
 
 ### Statistics, Data, and Analytics: Phases 6-8
 
@@ -90,7 +90,7 @@ StatCollect, Analytics Core, Analytics UI, Enterprise Core, and Enterprise Searc
 - Data catalog, lineage, quality, backups, resilience, and knowledge-graph foundations
 - Keyword enterprise search
 
-The platform still lacks the higher-order statistical and analytical layer: questionnaire and sampling designers, enumeration and supervisor workflows, census management, tabulation, SDMX metadata, open-data dissemination, forecasting, ad-hoc query building, NLQ, conversational analytics, scheduled reports, semantic search, classification, retention enforcement, OCR, automated metadata, and ontology management.
+The Phase 6 StatCollect backend remains live-certified against the rebuilt service for migrations `003` through `010`, durable template/versioning, workspace-scoped submissions, processing runs, indicator publication/quality, dataset and observation handoffs, and the survey/sampling/workforce/census/SDMX/dissemination API slice. On 5 October, source changes added a durable Analytics Core scheduled dataset-refresh worker, workspace-scoped execution history and manual triggering, transient upstream retries, and a private StatCollect refresh endpoint. This new scheduler implementation is not yet live-certified. It republishes a newer completed processing run; it does not yet launch weighting/imputation/editing from new submissions. Remaining Phase 6 gates are live scheduler certification, automatic transformation reruns, complete Analytics Core lineage graph, browser production workflows, public dissemination UI, and collect-master branding/authentication/assignment integration. Forecasting, ad-hoc query building, NLQ, conversational analytics, scheduled reports, semantic search, classification, retention enforcement, OCR, automated metadata, and ontology management remain later analytical scope.
 
 ### GIS, Field Operations, and Governance: Phases 10-13
 
@@ -218,13 +218,13 @@ A phase should only be marked complete when:
 
 ## Immediate Next Actions
 
-The next practical release should focus on these five outputs:
+Continue the requested phase-by-phase closure. Phase 6 is the active phase; do not call it complete or advance to Phase 7 until its acceptance gates are met.
 
-1. A certified baseline Compose stack.
-2. A passing CI pipeline with reproducible tests and builds.
-3. A tenant and authorization test suite covering every current service.
-4. Extend certified StatChat object conversations from the API boundary into later-module frontend entry points; all ten audited later services now pass authenticated seeded-object write/read certification, while browser entry points and broad durable consumer rollout still require completion.
-5. Complete the remaining StatChat Phase 3 acceptance gaps: browser E2E and real multi-browser/NAT conferencing reliability with production TURN public-address/TLS.
+1. Deploy the new Core/StatCollect schedule changes and live-certify due execution, manual triggering, no-change behavior, transient retry, history, and tenant/workspace isolation.
+2. Complete or explicitly disposition Phase 6 automatic transformation reruns, the full dataset/indicator lineage graph, role-aware browser production workflows, public dissemination UI, and collect-master identity/branding/assignment flows.
+3. Reconcile every Phase 6 criterion against real user roles and workspaces before marking Phase 6 complete.
+4. Keep shared release gates moving in parallel: full-stack health/CI proof, cross-service tenant authorization coverage, and the remaining Phase 3 browser/TURN gates.
+5. Start Phase 7 only after the Phase 6 definition of done is satisfied and documented.
 
 Until these outputs exist, the platform should be described as a broad and active implementation with a strong foundation, not as a completed 50-phase product.
 
@@ -261,7 +261,7 @@ The image-build statement above is superseded. StatCitizen now builds successful
 
 ### Phase 4 PMS Checkpoint: 15 September 2026
 
-PMS LogFrame, Theory of Change, Donor workflows, governed budget forecasting, and automated progress summaries are now workspace-safe and user-complete for the implemented scope. The backend compatibility migration handles both clean and legacy PMS schemas; authenticated API probes verified nested LogFrame persistence, ToC save/readback, workspace-filtered Donor list/create, unauthenticated `401` enforcement, foreign-workspace `404` denial, budget forecast baseline behavior, and summary isolation. PMS API and UI are rebuilt and healthy on ports `8091` and `3010`; remaining Phase 4 work is other explicitly listed later capabilities.
+PMS LogFrame, Theory of Change, Donor workflows, governed budget forecasting, automated progress summaries, critical-path analysis, resource allocation, and hierarchical WBS are now workspace-safe and user-complete for the implemented scope. The backend compatibility migration handles both clean and legacy PMS schemas; authenticated API probes verified nested LogFrame persistence, ToC save/readback, workspace-filtered Donor list/create, unauthenticated `401` enforcement, foreign-workspace `404` denial, budget forecast baseline behavior, summary isolation, critical-path isolation, resource allocation CRUD, and WBS isolation. PMS API and UI are rebuilt and healthy on ports `8091` and `3010`; remaining Phase 4 work is other explicitly listed later capabilities.
 
 ### PMS Portfolio Dashboard Checkpoint: 15 September 2026
 
@@ -271,6 +271,28 @@ PMS now provides a workspace-scoped portfolio/programme control tower at `GET /a
 
 PMS project locations are now integrated with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview includes coordinate and administrative-unit editing with an OSM preview. Live certification verified save/readback in the selected workspace, invalid-coordinate rejection, foreign-workspace isolation, and unauthenticated `401` enforcement. Broader GIS capabilities such as geocoding, GPS streaming, spatial analysis, and vector tiles remain Phase 10 work.
 
+### PMS Donor Reporting Checkpoint: 15 September 2026
+
+PMS donor reporting templates are now certified through `GET /api/projects/:id/report-templates` and `POST /api/projects/:id/donor-reports`. Progress, financial, and results templates generate persisted workspace-scoped JSON reports from live project evidence; reporting-period validation, optional donor ownership, foreign-workspace denial, and unauthenticated access were verified live. Grant management, server-side Gantt calculation, and field-activity mapping are now source-certified against the Docker-backed PMS database, and rebuilt PMS API/UI images are deployed and healthy.
+
+### PMS Grant Management Checkpoint: 18 September 2026
+
+PMS now treats grants as first-class project records instead of folding them into funding-source rows. Workspace-safe CRUD and the funding-tab workflow cover award identifiers, donor links, purpose, amount/currency, lifecycle dates, reporting deadlines, and status. Deployed Docker certification passed selected-workspace create/update/list/delete (`201/200`), foreign-workspace `404`, reversed-date validation (`400`), and unauthenticated rejection (`401`).
+
+### PMS Gantt Checkpoint: 18 September 2026
+
+PMS now exposes workspace-scoped `GET /api/projects/:id/gantt`, calculating authoritative project bounds and inclusive durations across dated tasks, activities, milestones, and deliverables. The existing chart consumes the server projection and keeps a client fallback for offline or older deployments. Deployed Docker certification returned selected-workspace `200`, foreign-workspace `404`, and unauthenticated `401`.
+
+### PMS Field Activity Mapping Checkpoint: 18 September 2026
+
+PMS now persists workspace-owned field activity locations linked to project activities, with coordinate validation, worker/status/timestamp metadata, protected list/create/delete routes, and an authenticated overview map/list. Deployed Docker certification passed selected-workspace create/list/delete (`201/200`), invalid-coordinate rejection (`400`), foreign-workspace `404`, and unauthenticated `401`.
+
+### PMS Phase 4 Release Gate Correction: 18 September 2026
+
+The Phase 4 implementation set is complete in source. Backend `go test ./...`, `go vet ./...`, frontend production build, and `git diff --check` pass. The new grant, Gantt, and field-activity workflows were exercised using the deployed Linux binary against Docker Postgres and the real Phase 4 project `proj-66626`; the application migration path is idempotent and included in the deployed image.
+
+The Phase 4 PMS release gate is closed for the listed implementation scope: Enterprise Core was restarted with healthy PostgreSQL/Redis readiness, rebuilt PMS API/UI images are deployed, and the selected-workspace `200`, foreign-workspace `404`, and unauthenticated `401` matrix passed for the new workflows. Remaining platform-wide gates are tracked separately, including browser E2E where no browser binding is available.
+
 ### PMS Budget Forecast Checkpoint: 15 September 2026
 
 The governed `budget_forecast` action on `POST /api/projects/:id/health-assistant` now returns projected total, variance amount and percentage, utilization, calculation method, and finance-owner recommendations. Live certification returned the approved-budget baseline for a zero-spend project and verified `400` for unsupported actions, `404` for a foreign-workspace project, and `401` without authentication.
@@ -278,6 +300,77 @@ The governed `budget_forecast` action on `POST /api/projects/:id/health-assistan
 ### PMS Progress Summary Checkpoint: 15 September 2026
 
 The workspace-scoped `GET /api/projects/:id/progress-summary` endpoint and project overview panel now provide automated delivery summaries from PMS project, task, milestone, risk, and budget records. Live certification verified selected-workspace `200`, foreign-workspace `404`, and unauthenticated `401` behavior.
+
+### PMS Critical Path Checkpoint: 15 September 2026
+
+The workspace-scoped `GET /api/projects/:id/critical-path` endpoint and project overview panel now calculate and display the longest dependency chain from task dates and dependencies. Live certification verified a real path response, foreign-workspace `404`, and unauthenticated `401` behavior.
+
+### PMS Resource Planner Checkpoint: 15 September 2026
+
+PMS now provides workspace-safe resource allocation CRUD at `GET /api/projects/:id/resources`, `POST /api/resource-allocations`, and `DELETE /api/resource-allocations/:id`, with capacity and date validation surfaced in the project overview. Live certification verified the complete lifecycle and fail-closed workspace/auth behavior.
+
+### PMS WBS Checkpoint: 15 September 2026
+
+PMS now provides a workspace-scoped hierarchical WBS projection at `GET /api/projects/:id/wbs`, with parent-cycle protection and missing-parent reporting surfaced in the project overview. Live certification verified selected-workspace `200`, foreign-workspace `404`, and unauthenticated `401` behavior.
+
+### Phase 5 RMS Scholarly Workflow Checkpoint: 18 September 2026
+
+RMS Phase 5 now has a deployed, workspace-aware scholarly workflow slice. IRB/ethics committees support registration, status, approval validity, workspace ownership, and lifecycle removal; ethics applications can be assigned to committees while retaining submission, review, approval, amendment, renewal, and compliance states. DOI records support local identifier assignment, status, author metadata, citation formatting in APA, Chicago, Harvard, Vancouver, and BibTeX, and full lifecycle operations. Open-science resources support repository metadata, access levels, licences, URLs, keywords, and lifecycle operations. Journal and conference submissions, preservation/archive records, and knowledge-transfer records are now first-class research-linked objects. Knowledge transfer is explicitly publishable to the shared Knowledge Portal with forwarded Registry identity/workspace context and a persisted portal content ID. A governed readiness assistant returns evidence-backed next actions from the study records and clearly identifies its deterministic operating mode.
+
+The migration is additive and compatible with the pre-existing RMS Docker PostgreSQL schema, including legacy `created_at`, `url`, author, and repository columns. RMS backend tests and vet, frontend production build, rebuilt API/UI images, health/readiness, selected-workspace create/read/update/delete, unauthenticated `401`, non-member workspace denial, and live Knowledge Portal publication were certified. The remaining Phase 5 release scope is credentialed DOI/LLM delivery, Analytics Core execution handoff, provider-backed language editing, domain-specific methodological validation, and StatSpatial integration.
+
+### Phase 5 Quality Review Checkpoint: 18 September 2026
+
+The RMS quality layer is deployed on the selected workspace. `GET /api/research/:id/publication-readiness` scores registered publication evidence; `GET /api/research/:id/quality-review` checks registered-record quality; and `POST /api/research/:id/language-review` provides bounded deterministic cleanup guidance. Live certification returned `200` for the selected workspace, `401` without authentication, `403` for an unknown workspace, and disclosed the non-LLM language-review boundary. The certification study currently scores `25/100` for publication readiness because its proposal, ethics, dataset, publication, and archive evidence are not yet recorded; this is an honest workflow result, not a deployment failure. Provider-backed proposal, literature, and gap-analysis assistance is now implemented through `POST /api/research/:id/assistant`; statistical planning is now implemented through `GET/POST /api/research/:id/statistical-recommendations`; approved provider deployment, Analytics Core execution, provider-backed editing, and domain-specific methodological validation remain open.
+
+### Phase 5 IRB Membership Checkpoint: 18 September 2026
+
+RMS now stores normalized workspace-owned ethics committee members alongside the legacy committee member array for compatibility. The protected lifecycle supports invitation, user/email identity, committee role, pending/approved/suspended/rejected/revoked status, authenticated approval metadata, list, update, and removal. Live certification passed selected-workspace `201/200` lifecycle responses, `401` without authentication, and `403` for a foreign workspace. Remaining Phase 5 governance work is credentialed external DOI delivery and the later research-assistance/integration scope; conference calendar/registration/attendance and Knowledge Portal moderation/editorial/graph governance are certified below.
+
+### Phase 5 Conference Operations Checkpoint: 18 September 2026
+
+RMS now provides workspace-scoped conference events with date-range validation, lifecycle status, location and registration URL, attendee registration, presenter/delegate/chair/organiser types, cancellation, and check-in status with automatic timestamps. Live certification passed event create/list/update/delete, attendee register/list/check-in/delete, invalid-date rejection, unauthenticated `401`, and foreign-workspace `403`. External conference-provider federation remains open.
+This checkpoint supersedes earlier Phase 5 wording that listed member-level IRB administration and conference calendar/attendance as unimplemented; those items are now operational.
+
+### Phase 5 Knowledge Governance Checkpoint: 28 September 2026
+
+The Knowledge Portal now provides workspace-scoped editorial governance for published research content. Authenticated users can submit content for review; editor, manager, tenant-admin, governance, and platform-admin roles can approve, request changes, or reject content. Approval publishes draft content, rejection archives published content, and rejected content is removed from the public catalogue. Object links now carry workspace context with protected graph retrieval and deletion.
+
+Live certification passed draft review submission, moderation queue listing, non-moderator `403`, approval and public visibility, published-content rejection and public `404`, graph link create/read/delete, unauthenticated `401`, and foreign-workspace `403`. The migration is additive and existing tenant content remains compatible.
+This checkpoint supersedes earlier Phase 5 wording that listed Knowledge Portal moderation, editorial review, and graph governance as remaining work.
+
+### Phase 5 DOI Provider Checkpoint: 28 September 2026
+
+RMS now exposes workspace-scoped DOI provider registration at `POST /api/dois/:id/register`. Local registration is idempotent; every attempt persists provider, status, attempt count, external identifier, timestamp, and failure reason. Configurable DataCite and Crossref adapters build provider payloads, support provider-specific credentials, and return external submission identifiers. The DOI Registry UI now exposes provider selection, registration/retry actions, provider status, and attempt history.
+
+Live certification passed DOI creation, initial state, local registration, idempotent repeat registration, missing-credential DataCite `503` with persisted failure state, local retry recovery, missing-credential Crossref `503` with persisted failure state, unauthenticated `401`, foreign-workspace `403`, and cleanup. Local contract tests passed Crossref multipart/XML generation and completed-diagnostic parsing. Credentialed DataCite and Crossref delivery remain deployment-specific secret configuration rather than being represented as completed production deposits.
+This checkpoint supersedes earlier Phase 5 wording that listed all external DOI provider integration as unimplemented.
+
+Release configuration for credentialed delivery is intentionally explicit and must be supplied through deployment secrets, never committed to source: DataCite uses `RMS_DATACITE_TOKEN` or `RMS_DATACITE_USERNAME`/`RMS_DATACITE_PASSWORD` with optional `RMS_DATACITE_API_URL`; Crossref uses `RMS_CROSSREF_USERNAME`, `RMS_CROSSREF_PASSWORD`, and `RMS_CROSSREF_DEPOSITOR_EMAIL`, with optional deposit URL, operation, depositor name, and registrant overrides. Until those secrets are provisioned and a controlled production deposit is approved, the live stack correctly records provider failures as retryable `503` outcomes.
+
+### Phase 5 Research Assistant Checkpoint: 28 September 2026
+
+RMS now provides `POST /api/research/:id/assistant` for workspace-grounded provider-backed research assistance. The supported tasks are proposal planning, literature synthesis, and research-gap analysis. The handler derives study, proposal, ethics, dataset, publication, submission, preservation, and overdue-task evidence from the selected workspace before calling a configurable chat-completions provider. Prompts are bounded, provider responses are time-limited and validated, and the response carries a human-review disclaimer plus the evidence fields used. The Research Assistant tab now exposes the task selector, request form, provider result, and explicit configuration errors while retaining deterministic readiness guidance for every deployment.
+
+Backend contract tests passed provider request/authentication, grounded-context forwarding, response parsing, and missing-provider `503`. Frontend production build and Compose validation passed. Credentialed LLM deployment remains a release configuration decision; no external provider call is represented as complete until an approved endpoint is provisioned and live-certified.
+
+### Phase 5 Statistical Planning Checkpoint: 28 September 2026
+
+RMS now provides workspace-scoped `GET/POST /api/research/:id/statistical-recommendations` plus `POST /api/research/:id/statistical-recommendations/run`. The planning workflow evaluates registered dataset metadata, selected outcome type, collection method, survey/sample signals, missing-data evidence, and optional research questions. It returns explicit methods, rationale, data requirements, assumptions, priorities, and a transparent Analytics Core handoff state. The execution route validates the selected workspace-owned dataset, requires its durable StatCollect/Core identifier, forwards the caller JWT plus tenant/workspace/internal-key context, and returns the real Analytics Core tabulation result. The Statistical Analysis Planning tab supports dataset selection, continuous/binary/categorical/count/time-to-event planning, question capture, and tabulation execution without accepting raw request data.
+
+Backend tests passed no-dataset blockers, binary survey recommendations, transparent planning fields, and outcome normalization. Frontend production build passed. Compose now wires RMS to the existing `statgate-core` service by default through `RMS_ANALYTICS_CORE_URL`. The selected workspace reports a configured handoff, but execution still requires a real StatCollect/Core dataset binding; RMS returns a conflict rather than fabricating results when that binding is absent. Execution remains in Analytics Core and preserves the caller's JWT, tenant, workspace, and internal service-key context.
+
+### Phase 5 Provider-backed Language Editing Checkpoint: 28 September 2026
+
+RMS language review now supports the existing deterministic mode plus an explicit `provider` mode on `POST /api/research/:id/language-review`. Provider mode uses the configured chat-completions endpoint, bounds input to 12,000 characters, instructs the provider not to change scientific meaning or evidence, retains the deterministic findings, and returns the provider model and an advisory disclaimer. Missing provider configuration returns a clear `503`; deterministic guidance remains available without an external provider. The Publication Quality tab exposes the mode choice and displays configuration errors instead of hiding them.
+
+Backend provider-contract tests and the frontend production build pass. Credentialed LLM deployment and domain-specific methodological validation remain release gates; no provider-generated edit is treated as approved scientific or editorial content.
+
+### Phase 5 StatCollect-to-RMS Link Checkpoint: 29 September 2026
+
+RMS now exposes workspace-scoped `GET/POST /api/research/:id/statcollect-links`, deletion, and internal `POST /api/statcollect/ingest`. Links are idempotent on research plus submission, store no raw response content, require tenant and workspace context, and ignore events without an explicit research target. The Surveys tab supports user link/unlink actions. Live certification passed internal ingest, replay, workspace read-back, deletion, unauthenticated denial, and missing-target `202` handling.
+
+The contract, trusted internal boundary, Docker build, and persistent `StatCollect` PostgreSQL role/database are operational. Automatic event delivery is live-certified: a StatCollect `submission.received` publish created the expected workspace-scoped RMS link with idempotent handling and no raw response data copied. The temporary certification row was removed after read-back.
 
 ### Tenant/Authorization Attestation: 15 September 2026
 

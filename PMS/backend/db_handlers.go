@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -598,6 +599,112 @@ func dbCreateActivity(c *gin.Context) {
 	c.JSON(201, req)
 }
 
+func dbGetFieldActivityLocations(c *gin.Context) {
+	rows, err := DB.Query(`
+		SELECT id, project_id, COALESCE(workspace_id, ''), COALESCE(activity_id, ''), label,
+		       COALESCE(worker, ''), COALESCE(status, 'Recorded'), latitude, longitude,
+		       COALESCE(recorded_at::text, ''), created_time
+		FROM pms.field_activity_locations WHERE project_id = $1 ORDER BY recorded_at DESC, created_time DESC`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "field activity locations unavailable"})
+		return
+	}
+	defer rows.Close()
+	locations := make([]FieldActivityLocation, 0)
+	for rows.Next() {
+		var location FieldActivityLocation
+		if err := rows.Scan(&location.ID, &location.ProjectID, &location.WorkspaceID, &location.ActivityID, &location.Label,
+			&location.Worker, &location.Status, &location.Latitude, &location.Longitude, &location.RecordedAt, &location.CreatedTime); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "field activity locations unavailable"})
+			return
+		}
+		locations = append(locations, location)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "field activity locations unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, locations)
+}
+
+func dbCreateFieldActivityLocation(c *gin.Context) {
+	var location FieldActivityLocation
+	if err := c.ShouldBindJSON(&location); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid field activity location"})
+		return
+	}
+	location.Label = strings.TrimSpace(location.Label)
+	location.Worker = strings.TrimSpace(location.Worker)
+	location.Status = strings.TrimSpace(location.Status)
+	if location.ProjectID == "" || location.Label == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project_id and label are required"})
+		return
+	}
+	if location.Latitude < -90 || location.Latitude > 90 || location.Longitude < -180 || location.Longitude > 180 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "latitude or longitude is out of range"})
+		return
+	}
+	if location.Status == "" {
+		location.Status = "Recorded"
+	}
+	if location.RecordedAt != "" {
+		if _, err := parseFieldActivityTime(location.RecordedAt); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "recorded_at must be RFC3339 or YYYY-MM-DD"})
+			return
+		}
+	}
+	if location.ActivityID != "" {
+		var exists bool
+		if err := DB.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM pms.activities a JOIN pms.projects p ON p.id = a.project_id
+				WHERE a.id = $1 AND a.project_id = $2 AND (p.workspace_id = NULLIF($3, '') OR NULLIF($3, '') IS NULL)
+			)`, location.ActivityID, location.ProjectID, workspaceIDContext(c)).Scan(&exists); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "activity ownership unavailable"})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusNotFound, gin.H{"error": "activity not found in workspace project"})
+			return
+		}
+	}
+	location.ID = generateUUID()
+	location.WorkspaceID = workspaceIDContext(c)
+	location.CreatedTime = time.Now()
+	if location.RecordedAt == "" {
+		location.RecordedAt = location.CreatedTime.UTC().Format(time.RFC3339)
+	}
+	if _, err := DB.Exec(`
+		INSERT INTO pms.field_activity_locations (id, project_id, workspace_id, activity_id, label, worker, status, latitude, longitude, recorded_at, created_time)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10::timestamptz, $11)`,
+		location.ID, location.ProjectID, location.WorkspaceID, location.ActivityID, location.Label, location.Worker,
+		location.Status, location.Latitude, location.Longitude, location.RecordedAt, location.CreatedTime); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "field activity location could not be saved"})
+		return
+	}
+	c.JSON(http.StatusCreated, location)
+}
+
+func dbDeleteFieldActivityLocation(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM pms.field_activity_locations WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "field activity location could not be deleted"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "field activity location not found in workspace"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Field activity location deleted successfully"})
+}
+
+func parseFieldActivityTime(value string) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, nil
+	}
+	return time.Parse("2006-01-02", value)
+}
+
 func dbGetDeliverables(c *gin.Context) {
 	projectID := c.Param("id")
 	deliverables, err := dbGetDeliverablesByProject(projectID)
@@ -725,6 +832,84 @@ func dbCreateTask(c *gin.Context) {
 	})
 
 	c.JSON(201, req)
+}
+
+func dbGetResourceAllocations(c *gin.Context) {
+	projectID := c.Param("id")
+	rows, err := DB.Query(`
+		SELECT id, project_id, resource_name, COALESCE(role, ''), allocation_percent,
+		       COALESCE(start_date::text, ''), COALESCE(end_date::text, ''), COALESCE(notes, ''), created_time
+		FROM pms.resource_allocations WHERE project_id = $1 ORDER BY start_date NULLS LAST, resource_name
+	`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "resource allocations unavailable"})
+		return
+	}
+	defer rows.Close()
+
+	allocations := make([]ResourceAllocation, 0)
+	for rows.Next() {
+		var allocation ResourceAllocation
+		if err := rows.Scan(&allocation.ID, &allocation.ProjectID, &allocation.ResourceName, &allocation.Role,
+			&allocation.AllocationPercent, &allocation.StartDate, &allocation.EndDate, &allocation.Notes, &allocation.CreatedTime); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "resource allocations unavailable"})
+			return
+		}
+		allocations = append(allocations, allocation)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "resource allocations unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, allocations)
+}
+
+func dbCreateResourceAllocation(c *gin.Context) {
+	var request ResourceAllocation
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid resource allocation"})
+		return
+	}
+	request.ResourceName = strings.TrimSpace(request.ResourceName)
+	request.Role = strings.TrimSpace(request.Role)
+	if request.ProjectID == "" || request.ResourceName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project_id and resource_name are required"})
+		return
+	}
+	if request.AllocationPercent <= 0 || request.AllocationPercent > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "allocation_percent must be between 0 and 100"})
+		return
+	}
+	if request.StartDate != "" && request.EndDate != "" && request.EndDate < request.StartDate {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "end_date must not precede start_date"})
+		return
+	}
+	request.ID = fmt.Sprintf("ra-%d", rand.Intn(100000000))
+	request.CreatedTime = time.Now()
+	_, err := DB.Exec(`
+		INSERT INTO pms.resource_allocations (id, project_id, resource_name, role, allocation_percent, start_date, end_date, notes, created_time)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::date, NULLIF($7, '')::date, $8, $9)
+	`, request.ID, request.ProjectID, request.ResourceName, request.Role, request.AllocationPercent,
+		request.StartDate, request.EndDate, request.Notes, request.CreatedTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "resource allocation could not be saved"})
+		return
+	}
+	c.JSON(http.StatusCreated, request)
+}
+
+func dbDeleteResourceAllocation(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM pms.resource_allocations WHERE id = $1`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "resource allocation could not be removed"})
+		return
+	}
+	count, _ := result.RowsAffected()
+	if count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource allocation not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 func dbUpdateTask(c *gin.Context) {
@@ -985,6 +1170,185 @@ func dbCreateFundingSource(c *gin.Context) {
 		return
 	}
 	c.JSON(201, req)
+}
+
+func dbGetGrants(c *gin.Context) {
+	projectID := c.Param("id")
+	rows, err := DB.Query(`
+		SELECT id, project_id, COALESCE(workspace_id, ''), COALESCE(donor_id, ''),
+		       COALESCE(grant_number, ''), title, COALESCE(purpose, ''), COALESCE(amount, 0),
+		       COALESCE(currency, 'USD'), COALESCE(start_date::text, ''), COALESCE(end_date::text, ''),
+		       COALESCE(reporting_due::text, ''), COALESCE(status, 'Draft'), created_time
+		FROM pms.grants WHERE project_id = $1 ORDER BY reporting_due NULLS LAST, created_time DESC`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "grants unavailable"})
+		return
+	}
+	defer rows.Close()
+	grants := make([]Grant, 0)
+	for rows.Next() {
+		var grant Grant
+		if err := rows.Scan(&grant.ID, &grant.ProjectID, &grant.WorkspaceID, &grant.DonorID, &grant.GrantNumber,
+			&grant.Title, &grant.Purpose, &grant.Amount, &grant.Currency, &grant.StartDate, &grant.EndDate,
+			&grant.ReportingDue, &grant.Status, &grant.CreatedTime); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "grants unavailable"})
+			return
+		}
+		grants = append(grants, grant)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "grants unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, grants)
+}
+
+func dbCreateGrant(c *gin.Context) {
+	var grant Grant
+	if err := c.ShouldBindJSON(&grant); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid grant"})
+		return
+	}
+	grant.Title = strings.TrimSpace(grant.Title)
+	grant.GrantNumber = strings.TrimSpace(grant.GrantNumber)
+	grant.Purpose = strings.TrimSpace(grant.Purpose)
+	grant.Currency = strings.TrimSpace(grant.Currency)
+	grant.Status = strings.TrimSpace(grant.Status)
+	if grant.ProjectID == "" || grant.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project_id and title are required"})
+		return
+	}
+	if grant.Amount < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must not be negative"})
+		return
+	}
+	if grant.Currency == "" {
+		grant.Currency = "USD"
+	}
+	if grant.Status == "" {
+		grant.Status = "Draft"
+	}
+	if err := validateGrantDates(grant.StartDate, grant.EndDate, grant.ReportingDue); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if grant.DonorID != "" && !workspaceDonorExists(c, grant.DonorID) {
+		return
+	}
+	grant.ID = generateUUID()
+	grant.WorkspaceID = workspaceIDContext(c)
+	grant.CreatedTime = time.Now()
+	_, err := DB.Exec(`
+		INSERT INTO pms.grants (id, project_id, workspace_id, donor_id, grant_number, title, purpose, amount, currency, start_date, end_date, reporting_due, status, created_time)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, NULLIF($10, '')::date, NULLIF($11, '')::date, NULLIF($12, '')::date, $13, $14)`,
+		grant.ID, grant.ProjectID, grant.WorkspaceID, grant.DonorID, grant.GrantNumber, grant.Title, grant.Purpose,
+		grant.Amount, grant.Currency, grant.StartDate, grant.EndDate, grant.ReportingDue, grant.Status, grant.CreatedTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "grant could not be saved"})
+		return
+	}
+	c.JSON(http.StatusCreated, grant)
+}
+
+func dbUpdateGrant(c *gin.Context) {
+	grantID := c.Param("id")
+	var grant Grant
+	if err := c.ShouldBindJSON(&grant); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid grant"})
+		return
+	}
+	grant.Title = strings.TrimSpace(grant.Title)
+	grant.GrantNumber = strings.TrimSpace(grant.GrantNumber)
+	grant.Purpose = strings.TrimSpace(grant.Purpose)
+	grant.Currency = strings.TrimSpace(grant.Currency)
+	grant.Status = strings.TrimSpace(grant.Status)
+	if grant.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+	if grant.Amount < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must not be negative"})
+		return
+	}
+	if grant.Currency == "" {
+		grant.Currency = "USD"
+	}
+	if grant.Status == "" {
+		grant.Status = "Draft"
+	}
+	if err := validateGrantDates(grant.StartDate, grant.EndDate, grant.ReportingDue); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if grant.DonorID != "" && !workspaceDonorExists(c, grant.DonorID) {
+		return
+	}
+	var projectID string
+	if err := DB.QueryRow(`SELECT project_id FROM pms.grants WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, grantID, workspaceIDContext(c)).Scan(&projectID); err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "grant not found in workspace"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "grant unavailable"})
+		return
+	}
+	result, err := DB.Exec(`
+		UPDATE pms.grants SET donor_id = NULLIF($1, ''), grant_number = $2, title = $3, purpose = $4,
+		amount = $5, currency = $6, start_date = NULLIF($7, '')::date, end_date = NULLIF($8, '')::date,
+		reporting_due = NULLIF($9, '')::date, status = $10
+		WHERE id = $11 AND (workspace_id = NULLIF($12, '') OR NULLIF($12, '') IS NULL)`,
+		grant.DonorID, grant.GrantNumber, grant.Title, grant.Purpose, grant.Amount, grant.Currency,
+		grant.StartDate, grant.EndDate, grant.ReportingDue, grant.Status, grantID, workspaceIDContext(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "grant could not be updated"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "grant not found in workspace"})
+		return
+	}
+	grant.ID, grant.ProjectID, grant.WorkspaceID = grantID, projectID, workspaceIDContext(c)
+	c.JSON(http.StatusOK, grant)
+}
+
+func dbDeleteGrant(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM pms.grants WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "grant could not be deleted"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "grant not found in workspace"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Grant deleted successfully"})
+}
+
+func validateGrantDates(start, end, reportingDue string) error {
+	for label, value := range map[string]string{"start_date": start, "end_date": end, "reporting_due": reportingDue} {
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return fmt.Errorf("%s must use YYYY-MM-DD", label)
+		}
+	}
+	if start != "" && end != "" && end < start {
+		return fmt.Errorf("end_date must not precede start_date")
+	}
+	return nil
+}
+
+func workspaceDonorExists(c *gin.Context, donorID string) bool {
+	var exists bool
+	if err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM pms.donors WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL))`, donorID, workspaceIDContext(c)).Scan(&exists); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor ownership unavailable"})
+		return false
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "donor not found in workspace"})
+		return false
+	}
+	return true
 }
 
 func dbGetCostCentres(c *gin.Context) {
@@ -1773,6 +2137,160 @@ func dbGetProjectCalendar(c *gin.Context) {
 	c.JSON(200, events)
 }
 
+func dbGetProjectGantt(c *gin.Context) {
+	projectID := c.Param("id")
+	workspaceID := workspaceIDContext(c)
+	var projectStart, projectEnd string
+	if err := DB.QueryRow(`SELECT COALESCE(start_date::text, ''), COALESCE(end_date::text, '') FROM pms.projects WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, projectID, workspaceID).Scan(&projectStart, &projectEnd); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	type ganttItem struct {
+		ID           string   `json:"id"`
+		Type         string   `json:"type"`
+		WBSCode      string   `json:"wbsCode,omitempty"`
+		Title        string   `json:"title"`
+		StartDate    string   `json:"startDate"`
+		EndDate      string   `json:"endDate"`
+		Progress     float64  `json:"progress"`
+		Status       string   `json:"status"`
+		AssignedTo   string   `json:"assignedTo,omitempty"`
+		Dependencies []string `json:"dependencies,omitempty"`
+		DurationDays int      `json:"durationDays"`
+	}
+	items := make([]ganttItem, 0)
+	appendItem := func(item ganttItem) {
+		if item.StartDate == "" && item.EndDate != "" {
+			item.StartDate = item.EndDate
+		}
+		if item.EndDate == "" && item.StartDate != "" {
+			item.EndDate = item.StartDate
+		}
+		if item.StartDate == "" || item.EndDate == "" {
+			return
+		}
+		if item.EndDate < item.StartDate {
+			item.StartDate, item.EndDate = item.EndDate, item.StartDate
+		}
+		item.DurationDays = ganttInclusiveDays(item.StartDate, item.EndDate)
+		items = append(items, item)
+	}
+
+	taskRows, err := DB.Query(`SELECT id, COALESCE(wbs_code, ''), title, COALESCE(start_date::text, ''), COALESCE(end_date::text, ''), COALESCE(progress, 0), COALESCE(status, ''), COALESCE(assigned_to, ''), COALESCE(dependencies, '{}') FROM pms.tasks WHERE project_id = $1`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+		return
+	}
+	for taskRows.Next() {
+		var item ganttItem
+		if err := taskRows.Scan(&item.ID, &item.WBSCode, &item.Title, &item.StartDate, &item.EndDate, &item.Progress, &item.Status, &item.AssignedTo, (*pq.StringArray)(&item.Dependencies)); err != nil {
+			taskRows.Close()
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+			return
+		}
+		item.Type = "Task"
+		appendItem(item)
+	}
+	taskRows.Close()
+
+	activityRows, err := DB.Query(`SELECT id, COALESCE(code, ''), name, COALESCE(start_date::text, ''), COALESCE(end_date::text, ''), COALESCE(progress, 0), COALESCE(status, '') FROM pms.activities WHERE project_id = $1`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+		return
+	}
+	for activityRows.Next() {
+		var item ganttItem
+		if err := activityRows.Scan(&item.ID, &item.WBSCode, &item.Title, &item.StartDate, &item.EndDate, &item.Progress, &item.Status); err != nil {
+			activityRows.Close()
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+			return
+		}
+		item.Type = "Activity"
+		appendItem(item)
+	}
+	activityRows.Close()
+
+	milestoneRows, err := DB.Query(`SELECT id, name, COALESCE(due_date::text, ''), COALESCE(status, ''), COALESCE(owner, '') FROM pms.milestones WHERE project_id = $1`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+		return
+	}
+	for milestoneRows.Next() {
+		var item ganttItem
+		if err := milestoneRows.Scan(&item.ID, &item.Title, &item.StartDate, &item.Status, &item.AssignedTo); err != nil {
+			milestoneRows.Close()
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+			return
+		}
+		item.Type, item.EndDate = "Milestone", item.StartDate
+		if item.Status == "Completed" {
+			item.Progress = 100
+		}
+		appendItem(item)
+	}
+	milestoneRows.Close()
+
+	deliverableRows, err := DB.Query(`SELECT id, name, COALESCE(due_date::text, ''), COALESCE(status, ''), COALESCE(owner, '') FROM pms.deliverables WHERE project_id = $1`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+		return
+	}
+	for deliverableRows.Next() {
+		var item ganttItem
+		if err := deliverableRows.Scan(&item.ID, &item.Title, &item.StartDate, &item.Status, &item.AssignedTo); err != nil {
+			deliverableRows.Close()
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "gantt data unavailable"})
+			return
+		}
+		item.Type, item.EndDate = "Deliverable", item.StartDate
+		if item.Status == "Completed" {
+			item.Progress = 100
+		}
+		appendItem(item)
+	}
+	deliverableRows.Close()
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].StartDate == items[j].StartDate {
+			return items[i].Title < items[j].Title
+		}
+		return items[i].StartDate < items[j].StartDate
+	})
+	boundStart, boundEnd := projectStart, projectEnd
+	for _, item := range items {
+		if boundStart == "" || item.StartDate < boundStart {
+			boundStart = item.StartDate
+		}
+		if boundEnd == "" || item.EndDate > boundEnd {
+			boundEnd = item.EndDate
+		}
+	}
+	spanDays := ganttInclusiveDays(boundStart, boundEnd)
+	if spanDays == 0 {
+		spanDays = 1
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"scope":       gin.H{"workspaceId": workspaceID, "projectId": projectID},
+		"bounds":      gin.H{"start": boundStart, "end": boundEnd, "spanDays": spanDays},
+		"items":       items,
+		"itemCount":   len(items),
+		"calculation": "server-side inclusive calendar-day bounds across tasks, activities, milestones, and deliverables",
+	})
+}
+
+func ganttInclusiveDays(start, end string) int {
+	if start == "" || end == "" {
+		return 0
+	}
+	startDate, startErr := time.Parse("2006-01-02", start)
+	endDate, endErr := time.Parse("2006-01-02", end)
+	if startErr != nil || endErr != nil || endDate.Before(startDate) {
+		return 0
+	}
+	return int(endDate.Sub(startDate).Hours()/24) + 1
+}
+
 func dbGetCalendarByProject(projectID string) ([]CalendarEvent, error) {
 	rows, err := DB.Query(`SELECT id, project_id, title, description, event_type, start_time, end_time, location, attendees, created_time FROM pms.calendar_events WHERE project_id = $1 ORDER BY start_time`, projectID)
 	if err != nil {
@@ -1801,6 +2319,246 @@ func dbGetProjectReports(c *gin.Context) {
 		return
 	}
 	c.JSON(200, reports)
+}
+
+var donorReportTemplates = []gin.H{
+	{
+		"id": "donor_progress", "name": "Donor progress report",
+		"description": "Delivery progress, milestones, activities, and implementation status.", "type": "Donor",
+	},
+	{
+		"id": "donor_financial", "name": "Donor financial report",
+		"description": "Budget, expenditure, funding receipts, and financial variance indicators.", "type": "Donor",
+	},
+	{
+		"id": "donor_results", "name": "Donor results report",
+		"description": "Results narrative with delivery, milestone, risk, issue, and survey evidence.", "type": "Donor",
+	},
+}
+
+func dbGetDonorReportTemplates(c *gin.Context) {
+	c.JSON(http.StatusOK, donorReportTemplates)
+}
+
+func dbGenerateDonorReport(c *gin.Context) {
+	projectID := c.Param("id")
+	workspaceID := workspaceIDContext(c)
+	var req struct {
+		TemplateID           string `json:"templateId"`
+		DonorID              string `json:"donorId"`
+		Title                string `json:"title"`
+		Format               string `json:"format"`
+		GeneratedBy          string `json:"generatedBy"`
+		ReportingPeriodStart string `json:"reportingPeriodStart"`
+		ReportingPeriodEnd   string `json:"reportingPeriodEnd"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.TemplateID == "" {
+		req.TemplateID = "donor_progress"
+	}
+	if !donorReportTemplateExists(req.TemplateID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported donor report template"})
+		return
+	}
+	start, end, err := donorReportPeriod(req.ReportingPeriodStart, req.ReportingPeriodEnd)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var project struct {
+		ID          string
+		Code        string
+		Name        string
+		Description sql.NullString
+		Stage       string
+		Progress    float64
+		Owner       sql.NullString
+		StartDate   sql.NullTime
+		EndDate     sql.NullTime
+		Budget      float64
+		Spent       float64
+		Currency    sql.NullString
+	}
+	if err := DB.QueryRow(`
+		SELECT id, code, name, description, stage, COALESCE(progress, 0), owner,
+		       start_date, end_date, COALESCE(budget_total, 0), COALESCE(spent_total, 0),
+		       COALESCE((SELECT currency FROM pms.funding_sources WHERE project_id = p.id ORDER BY created_time LIMIT 1), 'USD')
+		FROM pms.projects p
+		WHERE p.id = $1 AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, projectID, workspaceID).Scan(
+		&project.ID, &project.Code, &project.Name, &project.Description, &project.Stage,
+		&project.Progress, &project.Owner, &project.StartDate, &project.EndDate,
+		&project.Budget, &project.Spent, &project.Currency); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+
+	donor := map[string]interface{}{"id": "", "name": "Not specified", "code": "", "type": "", "funding": 0.0, "currency": project.Currency.String}
+	if req.DonorID != "" {
+		var donorName, donorCode, donorType, donorCurrency string
+		var donorFunding float64
+		err := DB.QueryRow(`
+			SELECT name, COALESCE(code, ''), COALESCE(type, ''), COALESCE(total_funding, 0), COALESCE(currency, 'USD')
+			FROM pms.donors
+			WHERE id = $1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, req.DonorID, workspaceID).
+			Scan(&donorName, &donorCode, &donorType, &donorFunding, &donorCurrency)
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "donor not found in workspace"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+			return
+		}
+		donor = map[string]interface{}{"id": req.DonorID, "name": donorName, "code": donorCode, "type": donorType, "funding": donorFunding, "currency": donorCurrency}
+	}
+
+	var taskCount, completedTasks, inProgressTasks int
+	var taskProgress float64
+	if err := DB.QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'Done'), COUNT(*) FILTER (WHERE status = 'In Progress'), COALESCE(AVG(progress), 0) FROM pms.tasks WHERE project_id = $1`, projectID).Scan(&taskCount, &completedTasks, &inProgressTasks, &taskProgress); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+		return
+	}
+	var milestoneCount, completedMilestones int
+	if err := DB.QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'Completed') FROM pms.milestones WHERE project_id = $1`, projectID).Scan(&milestoneCount, &completedMilestones); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+		return
+	}
+	var riskCount, openRiskCount, issueCount, openIssueCount int
+	if err := DB.QueryRow(`
+		SELECT (SELECT COUNT(*) FROM pms.risks WHERE project_id = $1),
+		       (SELECT COUNT(*) FROM pms.risks WHERE project_id = $1 AND COALESCE(status, '') NOT IN ('Closed', 'Resolved')),
+		       (SELECT COUNT(*) FROM pms.issues WHERE project_id = $1),
+		       (SELECT COUNT(*) FROM pms.issues WHERE project_id = $1 AND COALESCE(status, '') NOT IN ('Closed', 'Resolved'))`, projectID).Scan(&riskCount, &openRiskCount, &issueCount, &openIssueCount); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+		return
+	}
+	var surveyCount, surveySubmissions, surveyTarget int
+	if err := DB.QueryRow(`SELECT COUNT(*), COALESCE(SUM(submissions), 0), COALESCE(SUM(target_sample), 0) FROM pms.surveys WHERE project_id = $1`, projectID).Scan(&surveyCount, &surveySubmissions, &surveyTarget); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+		return
+	}
+
+	type fundingLine struct {
+		Name     string  `json:"name"`
+		Donor    string  `json:"donor"`
+		Amount   float64 `json:"amount"`
+		Received float64 `json:"received"`
+		Currency string  `json:"currency"`
+		Status   string  `json:"status"`
+	}
+	fundingLines := make([]fundingLine, 0)
+	rows, err := DB.Query(`SELECT name, COALESCE(donor, ''), COALESCE(amount, 0), COALESCE(received, 0), COALESCE(currency, 'USD'), COALESCE(status, '') FROM pms.funding_sources WHERE project_id = $1 ORDER BY created_time`, projectID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+		return
+	}
+	for rows.Next() {
+		var line fundingLine
+		if err := rows.Scan(&line.Name, &line.Donor, &line.Amount, &line.Received, &line.Currency, &line.Status); err != nil {
+			rows.Close()
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "donor report unavailable"})
+			return
+		}
+		fundingLines = append(fundingLines, line)
+	}
+	rows.Close()
+
+	periodStart, periodEnd := start, end
+	if periodStart == "" && project.StartDate.Valid {
+		periodStart = project.StartDate.Time.Format("2006-01-02")
+	}
+	if periodEnd == "" && project.EndDate.Valid {
+		periodEnd = project.EndDate.Time.Format("2006-01-02")
+	}
+	if periodStart == "" {
+		periodStart = "Not specified"
+	}
+	if periodEnd == "" {
+		periodEnd = "Not specified"
+	}
+	if req.Title == "" {
+		req.Title = fmt.Sprintf("%s - %s", project.Name, donorReportTemplateName(req.TemplateID))
+	}
+	if req.Format == "" {
+		req.Format = "HTML"
+	}
+	if req.GeneratedBy == "" {
+		req.GeneratedBy = c.GetString("user_id")
+		if req.GeneratedBy == "" {
+			req.GeneratedBy = "Workspace user"
+		}
+	}
+
+	contentData := map[string]interface{}{
+		"template":        map[string]string{"id": req.TemplateID, "name": donorReportTemplateName(req.TemplateID)},
+		"reportingPeriod": map[string]string{"start": periodStart, "end": periodEnd},
+		"project":         map[string]interface{}{"id": project.ID, "code": project.Code, "name": project.Name, "description": project.Description.String, "stage": project.Stage, "owner": project.Owner.String, "progress": project.Progress},
+		"donor":           donor,
+		"delivery": map[string]interface{}{
+			"tasks":      map[string]interface{}{"total": taskCount, "completed": completedTasks, "inProgress": inProgressTasks, "averageProgress": taskProgress},
+			"milestones": map[string]int{"total": milestoneCount, "completed": completedMilestones},
+		},
+		"finance":       map[string]interface{}{"budget": project.Budget, "spent": project.Spent, "remaining": project.Budget - project.Spent, "utilizationPercent": donorReportPercent(project.Spent, project.Budget), "fundingSources": fundingLines},
+		"riskAndIssues": map[string]int{"risks": riskCount, "openRisks": openRiskCount, "issues": issueCount, "openIssues": openIssueCount},
+		"evidence":      map[string]int{"surveys": surveyCount, "surveySubmissions": surveySubmissions, "surveyTarget": surveyTarget},
+		"generatedAt":   time.Now().UTC().Format(time.RFC3339),
+		"governance":    "Generated from workspace-scoped PMS records. Validate narrative and figures before external submission.",
+	}
+	content, err := json.MarshalIndent(contentData, "", "  ")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "donor report serialization failed"})
+		return
+	}
+	report := Report{ID: generateUUID(), ProjectID: projectID, Title: req.Title, Type: "Donor", Format: req.Format, GeneratedBy: req.GeneratedBy, GeneratedAt: time.Now(), Content: string(content), Status: "Generated"}
+	if _, err := DB.Exec(`INSERT INTO pms.reports (id, project_id, title, type, format, generated_by, generated_at, content, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, report.ID, report.ProjectID, report.Title, report.Type, report.Format, report.GeneratedBy, report.GeneratedAt, report.Content, report.Status); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "donor report could not be saved"})
+		return
+	}
+	c.JSON(http.StatusCreated, report)
+}
+
+func donorReportTemplateExists(templateID string) bool {
+	for _, template := range donorReportTemplates {
+		if template["id"] == templateID {
+			return true
+		}
+	}
+	return false
+}
+
+func donorReportTemplateName(templateID string) string {
+	for _, template := range donorReportTemplates {
+		if template["id"] == templateID {
+			return template["name"].(string)
+		}
+	}
+	return "Donor progress report"
+}
+
+func donorReportPeriod(start, end string) (string, string, error) {
+	for _, value := range []string{start, end} {
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return "", "", fmt.Errorf("reporting period must use YYYY-MM-DD")
+		}
+	}
+	if start != "" && end != "" && start > end {
+		return "", "", fmt.Errorf("reporting period end must not precede start")
+	}
+	return start, end, nil
+}
+
+func donorReportPercent(value, total float64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return value / total * 100
 }
 
 func dbGetReportsByProject(projectID string) ([]Report, error) {
@@ -2571,6 +3329,116 @@ func dbGetProjectProgressSummary(c *gin.Context) {
 		"openRisks":       openRisks,
 		"recommendations": recommendations,
 		"generatedFrom":   "workspace-scoped PMS project, task, milestone, risk, and budget records",
+	})
+}
+
+func dbGetProjectWBS(c *gin.Context) {
+	projectID := c.Param("id")
+	workspaceID := workspaceIDContext(c)
+	type wbsNode struct {
+		ID         string     `json:"id"`
+		ParentID   string     `json:"-"`
+		WBSCode    string     `json:"wbsCode"`
+		Title      string     `json:"title"`
+		Status     string     `json:"status"`
+		Progress   float64    `json:"progress"`
+		AssignedTo string     `json:"assignedTo"`
+		Children   []*wbsNode `json:"children"`
+	}
+	rows, err := DB.Query(`
+		SELECT t.id, COALESCE(t.parent_id, ''), COALESCE(t.wbs_code, ''), t.title,
+		       COALESCE(t.status, 'Todo'), COALESCE(t.progress, 0), COALESCE(t.assigned_to, '')
+		FROM pms.tasks t JOIN pms.projects p ON p.id = t.project_id
+		WHERE t.project_id = $1 AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+	`, projectID, workspaceID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WBS unavailable"})
+		return
+	}
+	defer rows.Close()
+
+	nodes := make(map[string]*wbsNode)
+	order := make([]*wbsNode, 0)
+	for rows.Next() {
+		var node wbsNode
+		if err := rows.Scan(&node.ID, &node.ParentID, &node.WBSCode, &node.Title, &node.Status, &node.Progress, &node.AssignedTo); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WBS unavailable"})
+			return
+		}
+		node.Children = make([]*wbsNode, 0)
+		nodes[node.ID] = &node
+		order = append(order, &node)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WBS unavailable"})
+		return
+	}
+
+	state := make(map[string]int)
+	var visit func(*wbsNode) bool
+	visit = func(node *wbsNode) bool {
+		if state[node.ID] == 1 {
+			return false
+		}
+		if state[node.ID] == 2 {
+			return true
+		}
+		state[node.ID] = 1
+		if node.ParentID != "" {
+			parent, exists := nodes[node.ParentID]
+			if exists && !visit(parent) {
+				return false
+			}
+		}
+		state[node.ID] = 2
+		return true
+	}
+	for _, node := range order {
+		if !visit(node) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "WBS parent cycle detected"})
+			return
+		}
+	}
+
+	missingParents := make(map[string]bool)
+	roots := make([]*wbsNode, 0)
+	for _, node := range order {
+		if node.ParentID == "" {
+			roots = append(roots, node)
+			continue
+		}
+		if parent, exists := nodes[node.ParentID]; exists {
+			parent.Children = append(parent.Children, node)
+		} else {
+			missingParents[node.ParentID] = true
+			roots = append(roots, node)
+		}
+	}
+	var sortTree func([]*wbsNode)
+	sortTree = func(items []*wbsNode) {
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].WBSCode == items[j].WBSCode {
+				return items[i].Title < items[j].Title
+			}
+			return items[i].WBSCode < items[j].WBSCode
+		})
+		for _, item := range items {
+			sortTree(item.Children)
+		}
+	}
+	sortTree(roots)
+	missing := make([]string, 0, len(missingParents))
+	for parentID := range missingParents {
+		missing = append(missing, parentID)
+	}
+	sort.Strings(missing)
+
+	c.JSON(http.StatusOK, gin.H{
+		"scope":          gin.H{"workspaceId": workspaceID, "projectId": projectID},
+		"roots":          roots,
+		"taskCount":      len(order),
+		"missingParents": missing,
+		"method":         "hierarchical projection of workspace-scoped task parent_id and WBS code records",
 	})
 }
 

@@ -149,7 +149,7 @@ func workspaceProjectChildIDMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		prefixes := []string{"/api/tasks/", "/api/members/", "/api/budgets/", "/api/risks/", "/api/issues/", "/api/assumptions/", "/api/lessons/", "/api/corrective-actions/", "/api/documents/", "/api/meetings/", "/api/surveys/", "/api/donors/", "/api/logframes/", "/api/theory-of-change/"}
+		prefixes := []string{"/api/tasks/", "/api/members/", "/api/budgets/", "/api/resource-allocations/", "/api/grants/", "/api/field-activities/", "/api/risks/", "/api/issues/", "/api/assumptions/", "/api/lessons/", "/api/corrective-actions/", "/api/documents/", "/api/meetings/", "/api/surveys/", "/api/donors/", "/api/logframes/", "/api/theory-of-change/"}
 		matched := false
 		for _, prefix := range prefixes {
 			matched = matched || strings.HasPrefix(path, prefix)
@@ -172,7 +172,7 @@ func workspaceProjectChildIDMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		tables := []string{"tasks", "project_members", "budget_lines", "funding_sources", "cost_centres", "budget_revisions", "procurement_refs", "risks", "issues", "assumptions", "lessons_learned", "corrective_actions", "documents", "meetings", "surveys", "chat_messages", "reports", "calendar_events"}
+		tables := []string{"tasks", "project_members", "budget_lines", "resource_allocations", "grants", "field_activity_locations", "funding_sources", "cost_centres", "budget_revisions", "procurement_refs", "risks", "issues", "assumptions", "lessons_learned", "corrective_actions", "documents", "meetings", "surveys", "chat_messages", "reports", "calendar_events"}
 		for _, table := range tables {
 			var exists bool
 			query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM pms.%s child JOIN pms.projects project ON project.id=child.project_id WHERE child.id=$1 AND project.workspace_id=$2)`, table)

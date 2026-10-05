@@ -62,6 +62,10 @@ func RegisterRoutes(r *mux.Router) {
 	api.HandleFunc("/content/{id}", UpdateContentHandler).Methods("PUT")
 	api.HandleFunc("/content/{id}", DeleteContentHandler).Methods("DELETE")
 	api.HandleFunc("/content/{id}/publish", PublishContentHandler).Methods("POST")
+	api.HandleFunc("/content/{id}/review", GetContentReviewHandler).Methods("GET")
+	api.HandleFunc("/content/{id}/review", SubmitContentReviewHandler).Methods("POST")
+	api.HandleFunc("/content/{id}/review", DecideContentReviewHandler).Methods("PUT")
+	api.HandleFunc("/reviews", ListContentReviewsHandler).Methods("GET")
 
 	// Open data sets
 	api.HandleFunc("/datasets", ListDatasetsHandler).Methods("GET")
@@ -84,6 +88,8 @@ func RegisterRoutes(r *mux.Router) {
 	// Cross-application object linkage
 	api.HandleFunc("/links", CreateLinkHandler).Methods("POST")
 	api.HandleFunc("/links", ListLinksHandler).Methods("GET")
+	api.HandleFunc("/links/{id}", DeleteLinkHandler).Methods("DELETE")
+	api.HandleFunc("/graph", GraphHandler).Methods("GET")
 
 	// Admin consoles
 	api.HandleFunc("/subscriptions", ListSubscriptionsHandler).Methods("GET")

@@ -2,27 +2,29 @@ import React, { useState, useEffect } from 'react';
 
 const ACCESS_COLORS = { Open: { bg: '#dcfce7', color: '#16a34a' }, Restricted: { bg: '#fee2e2', color: '#dc2626' }, Embargoed: { bg: '#fef9c3', color: '#ca8a04' } };
 
-export default function OpenScienceTab({ apiBase }) {
+export default function OpenScienceTab({ apiBase, researchId }) {
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', resourceType: 'Dataset', url: '', license: 'CC BY 4.0', accessLevel: 'Open', keywords: '', repoName: '' });
 
   const load = () => {
-    fetch(`${apiBase}/api/open-science/repo`)
+    if (!researchId) return setItems([]);
+    fetch(`${apiBase}/api/research/${researchId}/open-access`)
       .then(r => r.json())
       .then(d => setItems(Array.isArray(d) ? d : []))
       .catch(() => setItems([]));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [researchId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    fetch(`${apiBase}/api/open-science/repo`, {
+    fetch(`${apiBase}/api/open-access`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    }).then(() => { setShowForm(false); setForm({ title: '', description: '', resourceType: 'Dataset', url: '', license: 'CC BY 4.0', accessLevel: 'Open', keywords: '', repoName: '' }); load(); });
+      body: JSON.stringify({ researchId, title: form.title, description: form.description, resourceType: form.resourceType,
+        accessUrl: form.url, license: form.license, accessLevel: form.accessLevel, keywords: form.keywords, repoName: form.repoName }),
+    }).then(response => { if (!response.ok) throw new Error('Could not save resource'); setShowForm(false); setForm({ title: '', description: '', resourceType: 'Dataset', url: '', license: 'CC BY 4.0', accessLevel: 'Open', keywords: '', repoName: '' }); load(); }).catch(() => {});
   };
 
   const ICONS = { Dataset: '🗂️', Code: '💻', Protocol: '📋', Preprint: '📄', Report: '📊', Other: '📦' };
@@ -103,11 +105,11 @@ export default function OpenScienceTab({ apiBase }) {
             <h3 style={{ margin: '0 0 0.35rem', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{item.title}</h3>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5 }}>{item.description}</p>
             <div style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-              <span>📦 {item.resourceType} · {item.repoName || 'Repository'}</span>
+              <span>📦 {item.resourceType || item.format} · {item.repoName || 'Repository'}</span>
               <span>🔓 {item.license}</span>
             </div>
-            {item.url && (
-              <a href={item.url} target="_blank" rel="noopener noreferrer"
+            {(item.accessUrl || item.downloadUrl) && (
+              <a href={item.accessUrl || item.downloadUrl} target="_blank" rel="noopener noreferrer"
                 style={{ display: 'block', marginTop: '0.75rem', fontSize: '0.8rem', color: '#2563eb', textDecoration: 'none', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem' }}>
                 View Resource →
               </a>

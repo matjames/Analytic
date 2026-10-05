@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const CITATION_STYLES = ['APA', 'Chicago', 'Harvard', 'Vancouver', 'BibTeX'];
 
-export default function DOITab({ apiBase }) {
+export default function DOITab({ apiBase, researchId }) {
   const [dois, setDois] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', authors: '', journal: '', year: new Date().getFullYear(), doi: '', url: '', abstract: '', keywords: '', outputType: 'Journal Article' });
@@ -10,29 +10,34 @@ export default function DOITab({ apiBase }) {
   const [citStyle, setCitStyle] = useState('APA');
   const [citation, setCitation] = useState('');
   const [citLoading, setCitLoading] = useState(false);
+  const [providerChoice, setProviderChoice] = useState('local');
+  const [registeringId, setRegisteringId] = useState('');
+  const [registrationError, setRegistrationError] = useState('');
 
   const load = () => {
-    fetch(`${apiBase}/api/dois`)
+    if (!researchId) return setDois([]);
+    fetch(`${apiBase}/api/research/${researchId}/dois`)
       .then(r => r.json())
       .then(d => setDois(Array.isArray(d) ? d : []))
       .catch(() => setDois([]));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [researchId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     fetch(`${apiBase}/api/dois`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, year: Number(form.year) }),
-    }).then(() => { setShowForm(false); load(); });
+      body: JSON.stringify({ researchId, title: form.title, authors: form.authors.split(',').map(a => a.trim()).filter(Boolean), publisher: form.journal,
+        year: Number(form.year), doi: form.doi, url: form.url, status: 'Registered' }),
+    }).then(response => { if (!response.ok) throw new Error('Could not register DOI'); setShowForm(false); load(); }).catch(() => {});
   };
 
   const handleFormat = () => {
     if (!citInput.trim()) return;
     setCitLoading(true);
-    fetch(`${apiBase}/api/citations/format`, {
+    fetch(`${apiBase}/api/citation/format`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doi: citInput, style: citStyle }),
@@ -41,6 +46,24 @@ export default function DOITab({ apiBase }) {
       .then(d => setCitation(d.citation || d.error || 'No result'))
       .catch(() => setCitation('Error contacting citation service.'))
       .finally(() => setCitLoading(false));
+  };
+
+  const handleRegister = (doiId) => {
+    setRegisteringId(doiId);
+    setRegistrationError('');
+    fetch(`${apiBase}/api/dois/${doiId}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerChoice }),
+    })
+      .then(async response => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || `Registration failed (${response.status})`);
+        return result;
+      })
+      .then(() => load())
+      .catch(error => setRegistrationError(error.message))
+      .finally(() => setRegisteringId(''));
   };
 
   return (
@@ -118,16 +141,18 @@ export default function DOITab({ apiBase }) {
           </div>
         )}
 
+        {registrationError && <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem' }}>{registrationError}</div>}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
           {dois.length > 0 ? dois.map(d => (
             <div key={d.id} style={{ background: '#fff', padding: '1.25rem', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h3 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{d.title}</h3>
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{d.authors} — <em>{d.journal}</em>, {d.year}</p>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>{Array.isArray(d.authors) ? d.authors.join(', ') : d.authors} — <em>{d.publisher}</em>, {d.year}</p>
                 </div>
                 <span style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap', marginLeft: '0.75rem' }}>
-                  {d.outputType}
+                  {d.status || 'Registered'}
                 </span>
               </div>
               {d.doi && (
@@ -136,6 +161,22 @@ export default function DOITab({ apiBase }) {
                   <a href={`https://doi.org/${d.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none' }}>{d.doi}</a>
                 </div>
               )}
+              <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '0.72rem', color: '#64748b' }}>Provider
+                  <select value={providerChoice} onChange={e => setProviderChoice(e.target.value)} style={{ display: 'block', marginTop: '0.2rem', padding: '0.35rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
+                    <option value="local">Local registry</option>
+                    <option value="datacite">DataCite</option>
+                    <option value="crossref">Crossref</option>
+                  </select>
+                </label>
+                <button className="btn btn-secondary" onClick={() => handleRegister(d.id)} disabled={registeringId === d.id}>
+                  {registeringId === d.id ? 'Registering...' : d.providerStatus === 'Registered' && d.provider === providerChoice ? 'Registered' : d.providerStatus === 'Failed' ? 'Retry registration' : 'Register with provider'}
+                </button>
+                <span style={{ fontSize: '0.74rem', color: d.providerStatus === 'Failed' ? '#b91c1c' : '#64748b' }}>
+                  {d.provider || 'local'}: {d.providerStatus || 'Not Submitted'} | attempts: {d.registrationAttempts || 0}
+                </span>
+              </div>
+              {d.lastRegistrationError && <small style={{ display: 'block', marginTop: '0.45rem', color: '#b91c1c' }}>{d.lastRegistrationError}</small>}
             </div>
           )) : (
             <div style={{ padding: '3rem', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', color: '#94a3b8' }}>

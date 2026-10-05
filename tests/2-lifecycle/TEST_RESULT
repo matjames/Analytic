@@ -1,0 +1,64 @@
+﻿StatGate end-to-end data lifecycle acceptance gate
+run_at_utc: 2026-09-18 10:18:28Z
+statdata=http://localhost:8307 core=http://localhost:8302 tenant=tenant-alpha
+source_dataset=ds-lifecycle-src-1789726706 target_dataset=ds-lifecycle-tgt-1789726706 pipeline=pipe-lifecycle-1789726706
+passed=58 failed=0
+
+PASS  preflight: statdata /health
+PASS  preflight: statgate-core /health
+PASS  preflight: catalog requires auth (no token -> 401)
+PASS  preflight: core tabulate requires internal key (-> 401)
+PASS  stage1: create source dataset
+PASS  stage1: source dataset id present
+PASS  stage1: empty record batch refused (400)
+PASS  stage1: store 4 source rows
+PASS  stage1: records_stored reported
+PASS  stage1: total_rows reflects storage
+PASS  stage1: bytes_written > 0
+PASS  stage1: stored rows are readable
+PASS  stage1: create target dataset
+PASS  stage2: create NOT_NULL quality rule
+PASS  stage2: create pipeline
+PASS  stage3: pipeline run accepted
+PASS  stage3: run status SUCCESS
+PASS  stage3: records_read equals stored source rows
+PASS  stage3: records_written equals loaded rows
+PASS  stage3: records_rejected equals filtered rows
+PASS  stage3: four stages executed
+PASS  stage3: extract stage SUCCESS
+PASS  stage3: extract summary records_extracted
+PASS  stage3: transform summary records_in
+PASS  stage3: transform summary records_out
+PASS  stage3: validate summary quality_status
+PASS  stage3: validate evaluated a real rule
+PASS  stage3: load summary records_loaded
+PASS  stage3: load summary bytes_written > 0
+PASS  stage3: load summary total_rows in storage
+PASS  stage4: target holds transformed rows
+PASS  stage4: transformed row carries region
+PASS  stage4: district renamed away
+PASS  stage4: note removed
+PASS  stage4: catalog row_count reflects storage
+PASS  stage4: catalog size_bytes > 0
+PASS  stage4: second run SUCCESS
+PASS  stage4: second run reports 6 rows in storage
+PASS  stage4: record reset deletes every row
+PASS  stage4: target empty after reset
+PASS  stage5: ghost pipeline created
+PASS  stage5: missing source reports FAILED (no guaranteed SUCCESS)
+PASS  stage5: failure carries a real message
+PASS  stage5: failed run wrote nothing
+PASS  stage5: target untouched by the failed run
+PASS  stage5: clean target created
+PASS  stage5: quality violation fails the run
+PASS  stage5: validate stage is the failing stage
+PASS  stage5: failing validate names the violated rule
+PASS  stage5: load never ran after failure
+PASS  stage5: clean target stayed empty
+PASS  stage6: create tabulation dataset
+PASS  stage6: tabulation rows stored
+PASS  stage6: dataset-bound tabulation accepted
+PASS  stage6: tabulation used persisted rows
+PASS  stage6: North row total from storage
+PASS  stage6: payload rows ignored when dataset_id is set
+PASS  stage6: no payload category leaked into results

@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -36,6 +42,17 @@ func nullDate(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+func splitAuthors(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // ─────────────────────────────────────────────────────────
@@ -522,7 +539,7 @@ func dbDeleteProposal(c *gin.Context) {
 // ─────────────────────────────────────────────────────────
 
 func fetchEthics(researchID string) []EthicsApp {
-	rows, err := DB.Query(`SELECT id, research_id, irb_name, status,
+	rows, err := DB.Query(`SELECT id, research_id, COALESCE(committee_id,''), irb_name, status,
 		COALESCE(submission_date::TEXT,''), COALESCE(approval_date::TEXT,''), COALESCE(expiry_date::TEXT,''),
 		COALESCE(certificate_number,''), COALESCE(comments,''), COALESCE(amendment_notes,''),
 		COALESCE(renewal_notes,''), COALESCE(compliance_notes,''),
@@ -534,7 +551,7 @@ func fetchEthics(researchID string) []EthicsApp {
 	var results []EthicsApp
 	for rows.Next() {
 		var e EthicsApp
-		rows.Scan(&e.ID, &e.ResearchID, &e.IRBName, &e.Status,
+		rows.Scan(&e.ID, &e.ResearchID, &e.CommitteeID, &e.IRBName, &e.Status,
 			&e.SubmissionDate, &e.ApprovalDate, &e.ExpiryDate,
 			&e.CertificateNumber, &e.Comments, &e.AmendmentNotes,
 			&e.RenewalNotes, &e.ComplianceNotes, &e.CreatedTime, &e.UpdatedTime)
@@ -553,6 +570,7 @@ func dbGetEthics(c *gin.Context) {
 func dbCreateEthics(c *gin.Context) {
 	var req struct {
 		ResearchID        string `json:"researchId" binding:"required"`
+		CommitteeID       string `json:"committeeId"`
 		IRBName           string `json:"irbName" binding:"required"`
 		SubmissionDate    string `json:"submissionDate"`
 		CertificateNumber string `json:"certificateNumber"`
@@ -565,9 +583,9 @@ func dbCreateEthics(c *gin.Context) {
 	}
 	id := newID() + "e"
 	_, err := DB.Exec(`INSERT INTO rms.ethics_applications
-		(id, research_id, irb_name, submission_date, certificate_number, expiry_date, comments)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		id, req.ResearchID, req.IRBName, nullDate(req.SubmissionDate),
+		(id, research_id, committee_id, irb_name, submission_date, certificate_number, expiry_date, comments)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		id, req.ResearchID, nullStr(req.CommitteeID), req.IRBName, nullDate(req.SubmissionDate),
 		req.CertificateNumber, nullDate(req.ExpiryDate), req.Comments)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -580,6 +598,7 @@ func dbCreateEthics(c *gin.Context) {
 func dbUpdateEthics(c *gin.Context) {
 	id := c.Param("id")
 	var req struct {
+		CommitteeID       string `json:"committeeId"`
 		Status            string `json:"status"`
 		IRBName           string `json:"irbName"`
 		ApprovalDate      string `json:"approvalDate"`
@@ -594,10 +613,10 @@ func dbUpdateEthics(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	DB.Exec(`UPDATE rms.ethics_applications SET status=$1, irb_name=$2,
-		approval_date=$3, expiry_date=$4, certificate_number=$5, comments=$6,
-		amendment_notes=$7, renewal_notes=$8, compliance_notes=$9, updated_time=NOW() WHERE id=$10`,
-		req.Status, req.IRBName, nullDate(req.ApprovalDate), nullDate(req.ExpiryDate),
+	DB.Exec(`UPDATE rms.ethics_applications SET committee_id=$1, status=$2, irb_name=$3,
+		approval_date=$4, expiry_date=$5, certificate_number=$6, comments=$7,
+		amendment_notes=$8, renewal_notes=$9, compliance_notes=$10, updated_time=NOW() WHERE id=$11`,
+		nullStr(req.CommitteeID), req.Status, req.IRBName, nullDate(req.ApprovalDate), nullDate(req.ExpiryDate),
 		req.CertificateNumber, req.Comments, req.AmendmentNotes, req.RenewalNotes,
 		req.ComplianceNotes, id)
 	c.JSON(200, gin.H{"success": true})
@@ -1749,7 +1768,12 @@ func dbSearch(c *gin.Context) {
 // ─── Phase 5 Handlers: Ethics Committees, DOI, Citation, Open Science ───
 
 func dbGetEthicsCommittees(c *gin.Context) {
-	rows, err := DB.Query(`SELECT id, name, institution, COALESCE(chair_person,''), COALESCE(email,''), members, active, created_time FROM rms.ethics_committees ORDER BY name ASC`)
+	rows, err := DB.Query(`SELECT id, name, COALESCE(code,''), institution, COALESCE(chair_person,''), COALESCE(email,''),
+		COALESCE(phone,''), members, COALESCE(status, CASE WHEN active THEN 'Active' ELSE 'Suspended' END),
+		COALESCE(approval_validity, 12), active, COALESCE(workspace_id,''), created_time
+		FROM rms.ethics_committees
+		WHERE (workspace_id = NULLIF($1, '') OR NULLIF($1, '') IS NULL)
+		ORDER BY name ASC`, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1760,9 +1784,16 @@ func dbGetEthicsCommittees(c *gin.Context) {
 	for rows.Next() {
 		var ec EthicsCommittee
 		var members pq.StringArray
-		rows.Scan(&ec.ID, &ec.Name, &ec.Institution, &ec.ChairPerson, &ec.Email, &members, &ec.Active, &ec.CreatedTime)
+		if err := rows.Scan(&ec.ID, &ec.Name, &ec.Code, &ec.Institution, &ec.ChairPerson, &ec.Email,
+			&ec.Phone, &members, &ec.Status, &ec.ApprovalValidity, &ec.Active, &ec.WorkspaceID, &ec.CreatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
 		ec.Members = members
 		committees = append(committees, ec)
+	}
+	if committees == nil {
+		committees = []EthicsCommittee{}
 	}
 	c.JSON(200, committees)
 }
@@ -1773,24 +1804,283 @@ func dbCreateEthicsCommittee(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(ec.Name) == "" || strings.TrimSpace(ec.Institution) == "" {
+		c.JSON(400, gin.H{"error": "name and institution are required"})
+		return
+	}
 	if ec.ID == "" {
 		ec.ID = "irb-" + newID()
 	}
+	if ec.Status == "" {
+		ec.Status = "Active"
+	}
+	if ec.ApprovalValidity <= 0 {
+		ec.ApprovalValidity = 12
+	}
+	ec.Active = ec.Status == "Active"
+	ec.WorkspaceID = workspaceIDContext(c)
 	ec.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO rms.ethics_committees (id, name, institution, chair_person, email, members, active, created_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		ec.ID, ec.Name, ec.Institution, ec.ChairPerson, ec.Email, pq.Array(ec.Members), ec.Active, ec.CreatedTime)
+	_, err := DB.Exec(`INSERT INTO rms.ethics_committees
+		(id, name, code, institution, chair_person, email, phone, members, status, approval_validity, active, workspace_id, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULLIF($12,''), $13)`,
+		ec.ID, ec.Name, ec.Code, ec.Institution, ec.ChairPerson, ec.Email, ec.Phone,
+		pq.Array(ec.Members), ec.Status, ec.ApprovalValidity, ec.Active, ec.WorkspaceID, ec.CreatedTime)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(500, gin.H{"error": "could not create ethics committee"})
 		return
 	}
 	c.JSON(201, ec)
 }
 
+func dbUpdateEthicsCommittee(c *gin.Context) {
+	var ec EthicsCommittee
+	if err := c.ShouldBindJSON(&ec); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(ec.Name) == "" || strings.TrimSpace(ec.Institution) == "" {
+		c.JSON(400, gin.H{"error": "name and institution are required"})
+		return
+	}
+	if ec.Status == "" {
+		ec.Status = "Active"
+	}
+	if ec.ApprovalValidity <= 0 {
+		ec.ApprovalValidity = 12
+	}
+	ec.Active = ec.Status == "Active"
+	result, err := DB.Exec(`UPDATE rms.ethics_committees SET name=$1, code=$2, institution=$3,
+		chair_person=$4, email=$5, phone=$6, members=$7, status=$8, approval_validity=$9, active=$10
+		WHERE id=$11 AND (workspace_id = NULLIF($12, '') OR NULLIF($12, '') IS NULL)`,
+		ec.Name, ec.Code, ec.Institution, ec.ChairPerson, ec.Email, ec.Phone, pq.Array(ec.Members),
+		ec.Status, ec.ApprovalValidity, ec.Active, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update ethics committee"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "ethics committee not found"})
+		return
+	}
+	ec.ID = c.Param("id")
+	c.JSON(200, ec)
+}
+
+func dbDeleteEthicsCommittee(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.ethics_committees WHERE id=$1 AND (workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`,
+		c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete ethics committee"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "ethics committee not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func ethicsCommitteeInWorkspace(c *gin.Context, committeeID string) bool {
+	var exists bool
+	err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM rms.ethics_committees WHERE id=$1 AND (workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, committeeID, workspaceIDContext(c)).Scan(&exists)
+	if err != nil {
+		c.JSON(503, gin.H{"error": "workspace scope unavailable"})
+		return false
+	}
+	if !exists {
+		c.JSON(404, gin.H{"error": "ethics committee not found"})
+		return false
+	}
+	return true
+}
+
+func dbGetEthicsCommitteeMembers(c *gin.Context) {
+	if !ethicsCommitteeInWorkspace(c, c.Param("id")) {
+		return
+	}
+	rows, err := DB.Query(`SELECT m.id, m.committee_id, COALESCE(m.user_id,''), m.name, m.email,
+		COALESCE(m.role,'Reviewer'), COALESCE(m.status,'Pending'), m.invited_by, COALESCE(m.approved_by,''),
+		m.invited_at, m.approved_at, m.created_time, m.updated_time
+		FROM rms.ethics_committee_members m
+		WHERE m.committee_id=$1 ORDER BY m.created_time ASC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load ethics committee members"})
+		return
+	}
+	defer rows.Close()
+	members := make([]EthicsCommitteeMember, 0)
+	for rows.Next() {
+		var member EthicsCommitteeMember
+		var approvedAt sql.NullTime
+		if err := rows.Scan(&member.ID, &member.CommitteeID, &member.UserID, &member.Name, &member.Email,
+			&member.Role, &member.Status, &member.InvitedBy, &member.ApprovedBy, &member.InvitedAt,
+			&approvedAt, &member.CreatedTime, &member.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": "could not read ethics committee member"})
+			return
+		}
+		if approvedAt.Valid {
+			value := approvedAt.Time
+			member.ApprovedAt = &value
+		}
+		members = append(members, member)
+	}
+	c.JSON(200, members)
+}
+
+func dbInviteEthicsCommitteeMember(c *gin.Context) {
+	if !ethicsCommitteeInWorkspace(c, c.Param("id")) {
+		return
+	}
+	var member EthicsCommitteeMember
+	if err := c.ShouldBindJSON(&member); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(member.Name) == "" || strings.TrimSpace(member.Email) == "" {
+		c.JSON(400, gin.H{"error": "name and email are required"})
+		return
+	}
+	if member.ID == "" {
+		member.ID = "irb-member-" + newID()
+	}
+	if member.Role == "" {
+		member.Role = "Reviewer"
+	}
+	if member.Status == "" {
+		member.Status = "Pending"
+	}
+	if !validEthicsCommitteeMemberRole(member.Role) || !validEthicsCommitteeMemberStatus(member.Status) {
+		c.JSON(400, gin.H{"error": "invalid committee member role or status"})
+		return
+	}
+	member.CommitteeID = c.Param("id")
+	member.InvitedBy = c.GetString("user_id")
+	member.InvitedAt = time.Now()
+	member.CreatedTime, member.UpdatedTime = member.InvitedAt, member.InvitedAt
+	_, err := DB.Exec(`INSERT INTO rms.ethics_committee_members
+		(id, committee_id, user_id, name, email, role, status, invited_by, invited_at, created_time, updated_time)
+		VALUES ($1,$2,NULLIF($3,''),$4,$5,$6,$7,$8,$9,$10,$10)`, member.ID, member.CommitteeID, member.UserID,
+		member.Name, member.Email, member.Role, member.Status, member.InvitedBy, member.InvitedAt, member.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not invite ethics committee member"})
+		return
+	}
+	c.JSON(201, member)
+}
+
+func dbUpdateEthicsCommitteeMember(c *gin.Context) {
+	var member EthicsCommitteeMember
+	if err := c.ShouldBindJSON(&member); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(member.Name) == "" || strings.TrimSpace(member.Email) == "" {
+		c.JSON(400, gin.H{"error": "name and email are required"})
+		return
+	}
+	if member.Role == "" {
+		member.Role = "Reviewer"
+	}
+	if member.Status == "" {
+		member.Status = "Pending"
+	}
+	if !validEthicsCommitteeMemberRole(member.Role) || !validEthicsCommitteeMemberStatus(member.Status) {
+		c.JSON(400, gin.H{"error": "invalid committee member role or status"})
+		return
+	}
+	var existingCommitteeID, existingInvitedBy string
+	var existingInvitedAt, existingCreatedTime time.Time
+	var existingApprovedBy string
+	var existingApprovedAt sql.NullTime
+	if err := DB.QueryRow(`SELECT committee_id, invited_by, invited_at, COALESCE(approved_by,''), approved_at, created_time
+		FROM rms.ethics_committee_members m WHERE m.id=$1 AND EXISTS (
+			SELECT 1 FROM rms.ethics_committees committee WHERE committee.id=m.committee_id AND (committee.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`,
+		c.Param("id"), workspaceIDContext(c)).Scan(&existingCommitteeID, &existingInvitedBy, &existingInvitedAt, &existingApprovedBy, &existingApprovedAt, &existingCreatedTime); err != nil {
+		c.JSON(404, gin.H{"error": "ethics committee member not found"})
+		return
+	}
+	member.CommitteeID = existingCommitteeID
+	member.InvitedBy = existingInvitedBy
+	member.InvitedAt = existingInvitedAt
+	member.CreatedTime = existingCreatedTime
+	member.ApprovedBy = existingApprovedBy
+	if existingApprovedAt.Valid {
+		value := existingApprovedAt.Time
+		member.ApprovedAt = &value
+	}
+	approvedBy := member.ApprovedBy
+	if member.Status == "Approved" {
+		approvedBy = c.GetString("user_id")
+	}
+	var result sql.Result
+	var err error
+	if member.Status == "Approved" {
+		result, err = DB.Exec(`UPDATE rms.ethics_committee_members m SET user_id=NULLIF($1,''), name=$2, email=$3, role=$4, status=$5,
+			approved_by=$6, approved_at=NOW(), updated_time=NOW()
+			WHERE m.id=$7 AND EXISTS (SELECT 1 FROM rms.ethics_committees committee WHERE committee.id=m.committee_id AND (committee.workspace_id = NULLIF($8,'') OR NULLIF($8,'') IS NULL))`,
+			member.UserID, member.Name, member.Email, member.Role, member.Status, approvedBy, c.Param("id"), workspaceIDContext(c))
+	} else {
+		result, err = DB.Exec(`UPDATE rms.ethics_committee_members m SET user_id=NULLIF($1,''), name=$2, email=$3, role=$4, status=$5, updated_time=NOW()
+			WHERE m.id=$6 AND EXISTS (SELECT 1 FROM rms.ethics_committees committee WHERE committee.id=m.committee_id AND (committee.workspace_id = NULLIF($7,'') OR NULLIF($7,'') IS NULL))`,
+			member.UserID, member.Name, member.Email, member.Role, member.Status, c.Param("id"), workspaceIDContext(c))
+	}
+	if err != nil {
+		log.Printf("ethics committee member update failed: %v", err)
+		c.JSON(500, gin.H{"error": "could not update ethics committee member"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "ethics committee member not found"})
+		return
+	}
+	member.ID = c.Param("id")
+	member.UpdatedTime = time.Now()
+	if member.Status == "Approved" {
+		member.ApprovedBy = approvedBy
+		now := time.Now()
+		member.ApprovedAt = &now
+	}
+	c.JSON(200, member)
+}
+
+func dbDeleteEthicsCommitteeMember(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.ethics_committee_members m WHERE m.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.ethics_committees committee WHERE committee.id=m.committee_id AND (committee.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not remove ethics committee member"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "ethics committee member not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func validEthicsCommitteeMemberRole(role string) bool {
+	switch role {
+	case "Chair", "Reviewer", "Secretary", "Observer":
+		return true
+	default:
+		return false
+	}
+}
+
+func validEthicsCommitteeMemberStatus(status string) bool {
+	switch status {
+	case "Pending", "Approved", "Suspended", "Rejected", "Revoked":
+		return true
+	default:
+		return false
+	}
+}
+
 func dbGetDOIRecords(c *gin.Context) {
 	researchID := c.Param("id")
-	rows, err := DB.Query(`SELECT id, research_id, COALESCE(publication_id,''), doi, title, authors, year, publisher, COALESCE(url,''), status, created_time 
+	rows, err := DB.Query(`SELECT id, research_id, COALESCE(publication_id,''), doi, title, authors, year, publisher, COALESCE(url,''), status,
+		COALESCE(provider,'local'), COALESCE(provider_status,'Not Submitted'), COALESCE(external_id,''), COALESCE(registration_attempts,0),
+		COALESCE(last_registration_error,''), last_attempt_at, created_time
 		FROM rms.doi_records WHERE research_id = $1`, researchID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -1801,10 +2091,17 @@ func dbGetDOIRecords(c *gin.Context) {
 	var dois []DOIRecord
 	for rows.Next() {
 		var d DOIRecord
-		var authors pq.StringArray
-		rows.Scan(&d.ID, &d.ResearchID, &d.PublicationID, &d.DOI, &d.Title, &authors, &d.Year, &d.Publisher, &d.URL, &d.Status, &d.CreatedTime)
-		d.Authors = authors
+		var authors string
+		if err := rows.Scan(&d.ID, &d.ResearchID, &d.PublicationID, &d.DOI, &d.Title, &authors, &d.Year, &d.Publisher, &d.URL, &d.Status,
+			&d.Provider, &d.ProviderStatus, &d.ExternalID, &d.RegistrationAttempts, &d.LastRegistrationError, &d.LastAttemptAt, &d.CreatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		d.Authors = splitAuthors(authors)
 		dois = append(dois, d)
+	}
+	if dois == nil {
+		dois = []DOIRecord{}
 	}
 	c.JSON(200, dois)
 }
@@ -1813,6 +2110,10 @@ func dbCreateDOIRecord(c *gin.Context) {
 	var d DOIRecord
 	if err := c.ShouldBindJSON(&d); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(d.ResearchID) == "" || strings.TrimSpace(d.Title) == "" {
+		c.JSON(400, gin.H{"error": "researchId and title are required"})
 		return
 	}
 	if d.ID == "" {
@@ -1827,16 +2128,71 @@ func dbCreateDOIRecord(c *gin.Context) {
 	if d.Year == 0 {
 		d.Year = time.Now().Year()
 	}
+	if d.Status == "" {
+		d.Status = "Registered"
+	}
+	if d.Provider == "" {
+		d.Provider = "local"
+	}
+	if d.ProviderStatus == "" {
+		d.ProviderStatus = "Not Submitted"
+	}
 	d.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO rms.doi_records (id, research_id, publication_id, doi, title, authors, year, publisher, url, status, created_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		d.ID, d.ResearchID, d.PublicationID, d.DOI, d.Title, pq.Array(d.Authors), d.Year, d.Publisher, d.URL, d.Status, d.CreatedTime)
+	_, err := DB.Exec(`INSERT INTO rms.doi_records (id, research_id, publication_id, doi, title, authors, year, publisher, url, status, provider, provider_status, registration_attempts, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13)`,
+		d.ID, d.ResearchID, d.PublicationID, d.DOI, d.Title, strings.Join(d.Authors, ", "), d.Year, d.Publisher, d.URL, d.Status, d.Provider, d.ProviderStatus, d.CreatedTime)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(500, gin.H{"error": "could not register DOI"})
 		return
 	}
 	c.JSON(201, d)
+}
+
+func dbUpdateDOIRecord(c *gin.Context) {
+	var d DOIRecord
+	if err := c.ShouldBindJSON(&d); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(d.Title) == "" {
+		c.JSON(400, gin.H{"error": "title is required"})
+		return
+	}
+	if d.Status == "" {
+		d.Status = "Registered"
+	}
+	if d.Year == 0 {
+		d.Year = time.Now().Year()
+	}
+	result, err := DB.Exec(`UPDATE rms.doi_records SET doi=$1, title=$2, authors=$3, year=$4, publisher=$5, url=$6, status=$7
+		WHERE id=$8 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=rms.doi_records.research_id AND (p.workspace_id = NULLIF($9, '') OR NULLIF($9, '') IS NULL))`,
+		d.DOI, d.Title, strings.Join(d.Authors, ", "), d.Year, d.Publisher, d.URL, d.Status, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update DOI record"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "DOI record not found"})
+		return
+	}
+	d.ID = c.Param("id")
+	c.JSON(200, d)
+}
+
+func dbDeleteDOIRecord(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.doi_records d WHERE d.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.research_projects p WHERE p.id=d.research_id AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL))`,
+		c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete DOI record"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "DOI record not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
 }
 
 func dbFormatCitation(c *gin.Context) {
@@ -1849,6 +2205,7 @@ func dbFormatCitation(c *gin.Context) {
 		Issue   string `json:"issue"`
 		Pages   string `json:"pages"`
 		DOI     string `json:"doi"`
+		Style   string `json:"style"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -1859,6 +2216,25 @@ func dbFormatCitation(c *gin.Context) {
 	}
 	if req.Authors == "" {
 		req.Authors = "StatGate Research Team"
+	}
+	if req.DOI != "" && req.Title == "" {
+		var authors string
+		var year int
+		err := DB.QueryRow(`SELECT d.title, d.authors, d.year, COALESCE(d.publisher,'')
+			FROM rms.doi_records d JOIN rms.research_projects p ON p.id=d.research_id
+			WHERE d.doi=$1 AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)`, req.DOI, workspaceIDContext(c)).Scan(&req.Title, &authors, &year, &req.Journal)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "citation source not found"})
+			return
+		}
+		if authors != "" {
+			req.Authors = strings.Join(splitAuthors(authors), ", ")
+		}
+		req.Year = fmt.Sprintf("%d", year)
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		c.JSON(400, gin.H{"error": "title or a registered DOI is required"})
+		return
 	}
 
 	apa := fmt.Sprintf("%s (%s). %s. %s, %s(%s), %s. https://doi.org/%s",
@@ -1872,17 +2248,42 @@ func dbFormatCitation(c *gin.Context) {
 	bibtex := fmt.Sprintf("@article{statgate_%s,\n  author = {%s},\n  title = {%s},\n  journal = {%s},\n  year = {%s},\n  volume = {%s},\n  number = {%s},\n  pages = {%s},\n  doi = {%s}\n}",
 		newID()[:6], req.Authors, req.Title, req.Journal, req.Year, req.Volume, req.Issue, req.Pages, req.DOI)
 
-	c.JSON(200, CitationOutput{
+	output := CitationOutput{
+		Style:     strings.ToLower(req.Style),
 		APA:       apa,
 		Chicago:   chicago,
 		Harvard:   harvard,
 		Vancouver: vancouver,
 		BibTeX:    bibtex,
-	})
+	}
+	switch strings.ToLower(req.Style) {
+	case "apa":
+		output.Citation = apa
+	case "chicago":
+		output.Citation = chicago
+	case "harvard":
+		output.Citation = harvard
+	case "vancouver":
+		output.Citation = vancouver
+	case "bibtex":
+		output.Citation = bibtex
+	case "":
+		output.Citation = apa
+	default:
+		c.JSON(400, gin.H{"error": "unsupported citation style"})
+		return
+	}
+	c.JSON(200, output)
 }
 
 func dbGetOpenAccessRepo(c *gin.Context) {
-	rows, err := DB.Query(`SELECT id, research_id, title, COALESCE(abstract,''), license, COALESCE(access_url,''), COALESCE(download_url,''), COALESCE(file_size,''), format, views, downloads, created_time FROM rms.open_access_repo ORDER BY created_time DESC`)
+	researchID := c.Param("id")
+	rows, err := DB.Query(`SELECT r.id, r.research_id, r.title, COALESCE(r.abstract,''), COALESCE(r.description,''),
+		COALESCE(r.resource_type,'Dataset'), COALESCE(r.keywords,''), COALESCE(r.repo_name,''), COALESCE(r.access_level,'Open'),
+		r.license, COALESCE(r.access_url,''), COALESCE(r.download_url,''), COALESCE(r.file_size,''), r.format, r.views, r.downloads, r.created_time
+		FROM rms.open_access_repo r JOIN rms.research_projects p ON p.id=r.research_id
+		WHERE ($1 = '' OR r.research_id=$1) AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL)
+		ORDER BY r.created_time DESC`, researchID, workspaceIDContext(c))
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1892,8 +2293,16 @@ func dbGetOpenAccessRepo(c *gin.Context) {
 	var items []OpenAccessRepoItem
 	for rows.Next() {
 		var item OpenAccessRepoItem
-		rows.Scan(&item.ID, &item.ResearchID, &item.Title, &item.Abstract, &item.License, &item.AccessURL, &item.DownloadURL, &item.FileSize, &item.Format, &item.Views, &item.Downloads, &item.CreatedTime)
+		if err := rows.Scan(&item.ID, &item.ResearchID, &item.Title, &item.Abstract, &item.Description, &item.ResourceType,
+			&item.Keywords, &item.RepoName, &item.AccessLevel, &item.License, &item.AccessURL, &item.DownloadURL,
+			&item.FileSize, &item.Format, &item.Views, &item.Downloads, &item.CreatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
 		items = append(items, item)
+	}
+	if items == nil {
+		items = []OpenAccessRepoItem{}
 	}
 	c.JSON(200, items)
 }
@@ -1904,20 +2313,1165 @@ func dbCreateOpenAccessRepo(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(item.ResearchID) == "" || strings.TrimSpace(item.Title) == "" {
+		c.JSON(400, gin.H{"error": "researchId and title are required"})
+		return
+	}
+	if item.Abstract == "" {
+		item.Abstract = item.Description
+	}
+	if item.Description == "" {
+		item.Description = item.Abstract
+	}
+	if item.ResourceType == "" {
+		item.ResourceType = "Dataset"
+	}
+	if item.AccessLevel == "" {
+		item.AccessLevel = "Open"
+	}
+	if item.Format == "" {
+		item.Format = "PDF"
+	}
 	if item.ID == "" {
 		item.ID = "repo-" + newID()
 	}
 	if item.License == "" {
 		item.License = "CC-BY-4.0"
 	}
+	if item.Format == "" {
+		item.Format = "PDF"
+	}
 	item.CreatedTime = time.Now()
 
-	_, err := DB.Exec(`INSERT INTO rms.open_access_repo (id, research_id, title, abstract, license, access_url, download_url, file_size, format, views, downloads, created_time)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		item.ID, item.ResearchID, item.Title, item.Abstract, item.License, item.AccessURL, item.DownloadURL, item.FileSize, item.Format, 0, 0, item.CreatedTime)
+	_, err := DB.Exec(`INSERT INTO rms.open_access_repo
+		(id, research_id, title, abstract, description, resource_type, url, keywords, repo_name, access_level, license, access_url, download_url, file_size, format, views, downloads, created_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, 0, $16)`,
+		item.ID, item.ResearchID, item.Title, item.Abstract, item.Description, item.ResourceType, item.AccessURL,
+		item.Keywords, item.RepoName, item.AccessLevel, item.License, item.AccessURL, item.DownloadURL, item.FileSize, item.Format, item.CreatedTime)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(500, gin.H{"error": "could not register open science resource"})
 		return
 	}
 	c.JSON(201, item)
+}
+
+func dbUpdateOpenAccessRepo(c *gin.Context) {
+	var item OpenAccessRepoItem
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.Title) == "" {
+		c.JSON(400, gin.H{"error": "title is required"})
+		return
+	}
+	if item.Abstract == "" {
+		item.Abstract = item.Description
+	}
+	if item.Description == "" {
+		item.Description = item.Abstract
+	}
+	if item.ResourceType == "" {
+		item.ResourceType = "Dataset"
+	}
+	if item.AccessLevel == "" {
+		item.AccessLevel = "Open"
+	}
+	if item.License == "" {
+		item.License = "CC-BY-4.0"
+	}
+	result, err := DB.Exec(`UPDATE rms.open_access_repo r SET title=$1, abstract=$2, description=$3, resource_type=$4,
+		url=$5, keywords=$6, repo_name=$7, access_level=$8, license=$9, access_url=$10, download_url=$11, file_size=$12, format=$13
+		WHERE r.id=$14 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=r.research_id AND (p.workspace_id = NULLIF($15, '') OR NULLIF($15, '') IS NULL))`,
+		item.Title, item.Abstract, item.Description, item.ResourceType, item.AccessURL, item.Keywords, item.RepoName, item.AccessLevel,
+		item.License, item.AccessURL, item.DownloadURL, item.FileSize, item.Format, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update open science resource"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "open science resource not found"})
+		return
+	}
+	item.ID = c.Param("id")
+	c.JSON(200, item)
+}
+
+func dbDeleteOpenAccessRepo(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.open_access_repo r WHERE r.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.research_projects p WHERE p.id=r.research_id AND (p.workspace_id = NULLIF($2, '') OR NULLIF($2, '') IS NULL))`,
+		c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete open science resource"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "open science resource not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func dbGetJournalSubmissions(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, research_id, COALESCE(publication_id,''), journal, manuscript_title,
+		COALESCE(submission_date::TEXT,''), status, COALESCE(manuscript_url,''), COALESCE(corresponding_author,''),
+		COALESCE(reviewer_comments,''), COALESCE(next_action,''), created_time, updated_time
+		FROM rms.journal_submissions WHERE research_id=$1 ORDER BY created_time DESC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load journal submissions"})
+		return
+	}
+	defer rows.Close()
+	items := make([]JournalSubmission, 0)
+	for rows.Next() {
+		var item JournalSubmission
+		if err := rows.Scan(&item.ID, &item.ResearchID, &item.PublicationID, &item.Journal, &item.ManuscriptTitle,
+			&item.SubmissionDate, &item.Status, &item.ManuscriptURL, &item.CorrespondingAuthor,
+			&item.ReviewerComments, &item.NextAction, &item.CreatedTime, &item.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+	c.JSON(200, items)
+}
+
+func dbCreateJournalSubmission(c *gin.Context) {
+	var item JournalSubmission
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.ResearchID) == "" || strings.TrimSpace(item.Journal) == "" || strings.TrimSpace(item.ManuscriptTitle) == "" {
+		c.JSON(400, gin.H{"error": "researchId, journal, and manuscriptTitle are required"})
+		return
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	if item.ID == "" {
+		item.ID = "submission-" + newID()
+	}
+	item.CreatedTime = time.Now()
+	item.UpdatedTime = item.CreatedTime
+	_, err := DB.Exec(`INSERT INTO rms.journal_submissions
+		(id, research_id, publication_id, journal, manuscript_title, submission_date, status, manuscript_url, corresponding_author, reviewer_comments, next_action, created_time, updated_time)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, item.ID, item.ResearchID, nullStr(item.PublicationID), item.Journal,
+		item.ManuscriptTitle, nullDate(item.SubmissionDate), item.Status, item.ManuscriptURL, item.CorrespondingAuthor,
+		item.ReviewerComments, item.NextAction, item.CreatedTime, item.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not create journal submission"})
+		return
+	}
+	c.JSON(201, item)
+}
+
+func dbUpdateJournalSubmission(c *gin.Context) {
+	var item JournalSubmission
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.Journal) == "" || strings.TrimSpace(item.ManuscriptTitle) == "" {
+		c.JSON(400, gin.H{"error": "journal and manuscriptTitle are required"})
+		return
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	result, err := DB.Exec(`UPDATE rms.journal_submissions s SET publication_id=$1, journal=$2, manuscript_title=$3,
+		submission_date=$4, status=$5, manuscript_url=$6, corresponding_author=$7, reviewer_comments=$8, next_action=$9, updated_time=NOW()
+		WHERE s.id=$10 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=s.research_id AND (p.workspace_id = NULLIF($11,'') OR NULLIF($11,'') IS NULL))`,
+		nullStr(item.PublicationID), item.Journal, item.ManuscriptTitle, nullDate(item.SubmissionDate), item.Status,
+		item.ManuscriptURL, item.CorrespondingAuthor, item.ReviewerComments, item.NextAction, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update journal submission"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "journal submission not found"})
+		return
+	}
+	item.ID = c.Param("id")
+	c.JSON(200, item)
+}
+
+func dbDeleteJournalSubmission(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.journal_submissions s WHERE s.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.research_projects p WHERE p.id=s.research_id AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete journal submission"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "journal submission not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func dbGetResearchArchives(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, research_id, COALESCE(output_id,''), title, archive_type, COALESCE(repository,''),
+		COALESCE(access_url,''), COALESCE(checksum,''), status, COALESCE(retention_until::TEXT,''), created_time, updated_time
+		FROM rms.research_archives WHERE research_id=$1 ORDER BY created_time DESC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load research archives"})
+		return
+	}
+	defer rows.Close()
+	items := make([]ResearchArchive, 0)
+	for rows.Next() {
+		var item ResearchArchive
+		if err := rows.Scan(&item.ID, &item.ResearchID, &item.OutputID, &item.Title, &item.ArchiveType, &item.Repository,
+			&item.AccessURL, &item.Checksum, &item.Status, &item.RetentionUntil, &item.CreatedTime, &item.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+	c.JSON(200, items)
+}
+
+func dbCreateResearchArchive(c *gin.Context) {
+	var item ResearchArchive
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.ResearchID) == "" || strings.TrimSpace(item.Title) == "" {
+		c.JSON(400, gin.H{"error": "researchId and title are required"})
+		return
+	}
+	if item.ArchiveType == "" {
+		item.ArchiveType = "Dataset"
+	}
+	if item.Status == "" {
+		item.Status = "Planned"
+	}
+	if item.ID == "" {
+		item.ID = "archive-" + newID()
+	}
+	item.CreatedTime = time.Now()
+	item.UpdatedTime = item.CreatedTime
+	_, err := DB.Exec(`INSERT INTO rms.research_archives
+		(id, research_id, output_id, title, archive_type, repository, access_url, checksum, status, retention_until, created_time, updated_time)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, item.ID, item.ResearchID, nullStr(item.OutputID), item.Title,
+		item.ArchiveType, item.Repository, item.AccessURL, item.Checksum, item.Status, nullDate(item.RetentionUntil), item.CreatedTime, item.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not create research archive"})
+		return
+	}
+	c.JSON(201, item)
+}
+
+func dbUpdateResearchArchive(c *gin.Context) {
+	var item ResearchArchive
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.Title) == "" {
+		c.JSON(400, gin.H{"error": "title is required"})
+		return
+	}
+	if item.ArchiveType == "" {
+		item.ArchiveType = "Dataset"
+	}
+	if item.Status == "" {
+		item.Status = "Planned"
+	}
+	result, err := DB.Exec(`UPDATE rms.research_archives a SET output_id=$1, title=$2, archive_type=$3, repository=$4,
+		access_url=$5, checksum=$6, status=$7, retention_until=$8, updated_time=NOW()
+		WHERE a.id=$9 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=a.research_id AND (p.workspace_id = NULLIF($10,'') OR NULLIF($10,'') IS NULL))`,
+		nullStr(item.OutputID), item.Title, item.ArchiveType, item.Repository, item.AccessURL, item.Checksum, item.Status,
+		nullDate(item.RetentionUntil), c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update research archive"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "research archive not found"})
+		return
+	}
+	item.ID = c.Param("id")
+	c.JSON(200, item)
+}
+
+func dbDeleteResearchArchive(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.research_archives a WHERE a.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.research_projects p WHERE p.id=a.research_id AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete research archive"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "research archive not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func dbGetResearchAssistant(c *gin.Context) {
+	researchID := c.Param("id")
+	var name, stage string
+	var progress float64
+	if err := DB.QueryRow(`SELECT name, stage, progress FROM rms.research_projects WHERE id=$1 AND (workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL)`, researchID, workspaceIDContext(c)).Scan(&name, &stage, &progress); err != nil {
+		c.JSON(404, gin.H{"error": "research study not found"})
+		return
+	}
+	var proposals, ethics, overdueTasks, datasets, publications int
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.proposals WHERE research_id=$1 AND status IN ('Draft','Under Review','Submitted')`, researchID).Scan(&proposals)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.ethics_applications WHERE research_id=$1 AND status IN ('Pending','Under Review')`, researchID).Scan(&ethics)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.tasks WHERE research_id=$1 AND status NOT IN ('Completed','Done') AND end_date < CURRENT_DATE`, researchID).Scan(&overdueTasks)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.datasets WHERE research_id=$1`, researchID).Scan(&datasets)
+	DB.QueryRow(`SELECT COUNT(*) FROM rms.publications WHERE research_id=$1`, researchID).Scan(&publications)
+
+	recommendations := make([]string, 0, 5)
+	if proposals > 0 {
+		recommendations = append(recommendations, fmt.Sprintf("Review %d proposal record(s) still in drafting or review.", proposals))
+	}
+	if ethics > 0 {
+		recommendations = append(recommendations, fmt.Sprintf("Resolve %d pending ethics application(s) before field activity.", ethics))
+	}
+	if overdueTasks > 0 {
+		recommendations = append(recommendations, fmt.Sprintf("Replan or close %d overdue task(s) with the research team.", overdueTasks))
+	}
+	if datasets == 0 {
+		recommendations = append(recommendations, "Register the study dataset and metadata before analysis or publication.")
+	}
+	if publications == 0 && progress >= 75 {
+		recommendations = append(recommendations, "Start publication planning and preserve the final research outputs.")
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "No blocking readiness signals detected. Keep the study evidence and archive records current.")
+	}
+	readiness := "On track"
+	if ethics > 0 || overdueTasks > 0 {
+		readiness = "Needs attention"
+	}
+	c.JSON(200, gin.H{
+		"mode":            "governed-readiness-assistant",
+		"researchId":      researchID,
+		"researchName":    name,
+		"stage":           stage,
+		"progress":        progress,
+		"readiness":       readiness,
+		"recommendations": recommendations,
+		"evidence":        gin.H{"pendingProposals": proposals, "pendingEthics": ethics, "overdueTasks": overdueTasks, "datasets": datasets, "publications": publications},
+		"generatedAt":     time.Now(),
+	})
+}
+
+type researchQualityEvidence struct {
+	Name                      string
+	Description               string
+	PrincipalInvestigator     string
+	Stage                     string
+	Progress                  float64
+	ProposalCount             int
+	ApprovedProposalCount     int
+	IncompleteProposalCount   int
+	EthicsCount               int
+	ApprovedEthicsCount       int
+	PendingEthicsCount        int
+	DatasetCount              int
+	IncompleteDatasetCount    int
+	PublicationCount          int
+	PublishedPublicationCount int
+	PublicationMissingDOI     int
+	DOICount                  int
+	SubmissionCount           int
+	AcceptedSubmissionCount   int
+	ArchiveCount              int
+	VerifiedArchiveCount      int
+	PublishedTransferCount    int
+	OverdueTaskCount          int
+	UnlinkedDOICount          int
+}
+
+func loadResearchQualityEvidence(c *gin.Context) (researchQualityEvidence, error) {
+	var evidence researchQualityEvidence
+	researchID := c.Param("id")
+	err := DB.QueryRow(`SELECT
+		p.name, COALESCE(p.description,''), COALESCE(p.principal_investigator,''), COALESCE(p.stage,''), COALESCE(p.progress,0),
+		(SELECT COUNT(*) FROM rms.proposals WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.proposals WHERE research_id=p.id AND status IN ('Approved','Approved with Conditions','Accepted')),
+		(SELECT COUNT(*) FROM rms.proposals WHERE research_id=p.id AND (COALESCE(objectives,'')='' OR COALESCE(methodology,'')='')),
+		(SELECT COUNT(*) FROM rms.ethics_applications WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.ethics_applications WHERE research_id=p.id AND status IN ('Approved','Approved with Conditions','Renewed')),
+		(SELECT COUNT(*) FROM rms.ethics_applications WHERE research_id=p.id AND status IN ('Pending','Under Review','Submitted','Amendment Required')),
+		(SELECT COUNT(*) FROM rms.datasets WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.datasets WHERE research_id=p.id AND (COALESCE(description,'')='' OR COALESCE(metadata_info,'')='' OR COALESCE(variables_dict,'')='')),
+		(SELECT COUNT(*) FROM rms.publications WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.publications WHERE research_id=p.id AND status IN ('Published','Accepted','Final')),
+		(SELECT COUNT(*) FROM rms.publications WHERE research_id=p.id AND COALESCE(doi,'')=''),
+		(SELECT COUNT(*) FROM rms.doi_records WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.journal_submissions WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.journal_submissions WHERE research_id=p.id AND status IN ('Accepted','Published')),
+		(SELECT COUNT(*) FROM rms.research_archives WHERE research_id=p.id),
+		(SELECT COUNT(*) FROM rms.research_archives WHERE research_id=p.id AND status IN ('Verified','Archived','Preserved')),
+		(SELECT COUNT(*) FROM rms.knowledge_transfers WHERE research_id=p.id AND status='Published'),
+		(SELECT COUNT(*) FROM rms.tasks WHERE research_id=p.id AND status NOT IN ('Completed','Done') AND end_date < CURRENT_DATE),
+		(SELECT COUNT(*) FROM rms.doi_records d WHERE d.research_id=p.id AND d.publication_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rms.publications pub WHERE pub.id=d.publication_id AND pub.research_id=p.id))
+		FROM rms.research_projects p
+		WHERE p.id=$1 AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL)`, researchID, workspaceIDContext(c)).Scan(
+		&evidence.Name, &evidence.Description, &evidence.PrincipalInvestigator, &evidence.Stage, &evidence.Progress,
+		&evidence.ProposalCount, &evidence.ApprovedProposalCount, &evidence.IncompleteProposalCount,
+		&evidence.EthicsCount, &evidence.ApprovedEthicsCount, &evidence.PendingEthicsCount,
+		&evidence.DatasetCount, &evidence.IncompleteDatasetCount,
+		&evidence.PublicationCount, &evidence.PublishedPublicationCount, &evidence.PublicationMissingDOI, &evidence.DOICount,
+		&evidence.SubmissionCount, &evidence.AcceptedSubmissionCount,
+		&evidence.ArchiveCount, &evidence.VerifiedArchiveCount, &evidence.PublishedTransferCount,
+		&evidence.OverdueTaskCount, &evidence.UnlinkedDOICount)
+	return evidence, err
+}
+
+func researchReviewCheck(key, label string, passed bool, weight int, severity, detail string) gin.H {
+	return gin.H{"key": key, "label": label, "passed": passed, "weight": weight, "severity": severity, "detail": detail}
+}
+
+func reviewBand(score int, blocker bool) string {
+	if score >= 85 && !blocker {
+		return "Ready"
+	}
+	if score >= 65 {
+		return "Nearly ready"
+	}
+	return "Needs work"
+}
+
+func dbGetPublicationReadiness(c *gin.Context) {
+	evidence, err := loadResearchQualityEvidence(c)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "research study not found"})
+		return
+	}
+	checks := []gin.H{}
+	score := 0
+	metadataComplete := strings.TrimSpace(evidence.Name) != "" && strings.TrimSpace(evidence.Description) != "" && strings.TrimSpace(evidence.PrincipalInvestigator) != ""
+	if metadataComplete {
+		score += 10
+	}
+	checks = append(checks, researchReviewCheck("metadata", "Study metadata is complete", metadataComplete, 10, "blocker", fmt.Sprintf("Name, description, and principal investigator are required; missing %d of 3 fields.", 3-countNonEmpty(evidence.Name, evidence.Description, evidence.PrincipalInvestigator))))
+	proposalReady := evidence.ApprovedProposalCount > 0 && evidence.IncompleteProposalCount == 0
+	if proposalReady {
+		score += 15
+	}
+	checks = append(checks, researchReviewCheck("proposal", "An approved and complete proposal is recorded", proposalReady, 15, "blocker", fmt.Sprintf("Approved proposals: %d; proposals missing objectives or methodology: %d.", evidence.ApprovedProposalCount, evidence.IncompleteProposalCount)))
+	ethicsReady := evidence.EthicsCount > 0 && evidence.PendingEthicsCount == 0 && evidence.ApprovedEthicsCount > 0
+	if ethicsReady {
+		score += 15
+	}
+	checks = append(checks, researchReviewCheck("ethics", "Ethics disposition is recorded", ethicsReady, 15, "blocker", fmt.Sprintf("Ethics records: %d; approved: %d; pending: %d. Confirm an approval or documented exemption before publication.", evidence.EthicsCount, evidence.ApprovedEthicsCount, evidence.PendingEthicsCount)))
+	datasetReady := evidence.DatasetCount > 0 && evidence.IncompleteDatasetCount == 0
+	if datasetReady {
+		score += 10
+	}
+	checks = append(checks, researchReviewCheck("dataset", "At least one dataset has metadata", datasetReady, 10, "warning", fmt.Sprintf("Datasets: %d; incomplete metadata records: %d.", evidence.DatasetCount, evidence.IncompleteDatasetCount)))
+	publicationReady := evidence.PublicationCount > 0 && evidence.PublishedPublicationCount > 0
+	if publicationReady {
+		score += 15
+	}
+	checks = append(checks, researchReviewCheck("publication", "A final or published output is recorded", publicationReady, 15, "warning", fmt.Sprintf("Publications: %d; final/published: %d.", evidence.PublicationCount, evidence.PublishedPublicationCount)))
+	doiReady := evidence.PublicationCount == 0 || evidence.PublicationMissingDOI == 0 || evidence.DOICount > 0
+	if doiReady {
+		score += 10
+	}
+	checks = append(checks, researchReviewCheck("doi", "Publication identifiers are represented", doiReady, 10, "warning", fmt.Sprintf("DOI records: %d; publications without DOI: %d.", evidence.DOICount, evidence.PublicationMissingDOI)))
+	archiveReady := evidence.ArchiveCount > 0 && evidence.VerifiedArchiveCount > 0
+	if archiveReady {
+		score += 10
+	}
+	checks = append(checks, researchReviewCheck("archive", "A verified preservation record exists", archiveReady, 10, "warning", fmt.Sprintf("Archive records: %d; verified/preserved: %d.", evidence.ArchiveCount, evidence.VerifiedArchiveCount)))
+	transferReady := evidence.PublishedTransferCount > 0
+	if transferReady {
+		score += 5
+	}
+	checks = append(checks, researchReviewCheck("knowledge-transfer", "A knowledge-transfer record is published", transferReady, 5, "advisory", fmt.Sprintf("Published knowledge-transfer records: %d.", evidence.PublishedTransferCount)))
+	recommendations := make([]string, 0)
+	for _, check := range checks {
+		if !check["passed"].(bool) {
+			recommendations = append(recommendations, check["detail"].(string))
+		}
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "All governed publication-readiness checks passed. Maintain the evidence trail and external publisher requirements.")
+	}
+	blocker := !metadataComplete || !proposalReady || !ethicsReady
+	c.JSON(200, gin.H{"mode": "governed-publication-readiness", "researchId": c.Param("id"), "researchName": evidence.Name, "stage": evidence.Stage, "score": score, "band": reviewBand(score, blocker), "checks": checks, "recommendations": recommendations, "evidence": evidence, "generatedAt": time.Now()})
+}
+
+func dbGetResearchQualityReview(c *gin.Context) {
+	evidence, err := loadResearchQualityEvidence(c)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "research study not found"})
+		return
+	}
+	checks := []gin.H{}
+	score := 0
+	checks = append(checks, researchReviewCheck("metadata", "Required study metadata is present", strings.TrimSpace(evidence.Name) != "" && strings.TrimSpace(evidence.Description) != "" && strings.TrimSpace(evidence.PrincipalInvestigator) != "", 15, "blocker", "Complete the study name, description, and principal investigator."))
+	if checks[0]["passed"].(bool) {
+		score += 15
+	}
+	proposalQuality := evidence.ProposalCount == 0 || evidence.IncompleteProposalCount == 0
+	checks = append(checks, researchReviewCheck("proposal-content", "Proposal objectives and methodology are populated", proposalQuality, 15, "warning", fmt.Sprintf("Proposals with incomplete objectives or methodology: %d.", evidence.IncompleteProposalCount)))
+	if proposalQuality {
+		score += 15
+	}
+	ethicsQuality := evidence.PendingEthicsCount == 0
+	checks = append(checks, researchReviewCheck("ethics-status", "No unresolved ethics review status is recorded", ethicsQuality, 15, "blocker", fmt.Sprintf("Pending or action-required ethics records: %d.", evidence.PendingEthicsCount)))
+	if ethicsQuality {
+		score += 15
+	}
+	datasetQuality := evidence.DatasetCount == 0 || evidence.IncompleteDatasetCount == 0
+	checks = append(checks, researchReviewCheck("dataset-metadata", "Dataset descriptions and metadata fields are complete", datasetQuality, 15, "warning", fmt.Sprintf("Datasets with incomplete metadata: %d.", evidence.IncompleteDatasetCount)))
+	if datasetQuality {
+		score += 15
+	}
+	publicationQuality := evidence.UnlinkedDOICount == 0
+	checks = append(checks, researchReviewCheck("identifier-links", "DOI publication links resolve inside this study", publicationQuality, 15, "warning", fmt.Sprintf("DOI records with missing study publication links: %d.", evidence.UnlinkedDOICount)))
+	if publicationQuality {
+		score += 15
+	}
+	workQuality := evidence.OverdueTaskCount == 0
+	checks = append(checks, researchReviewCheck("delivery", "No overdue open research tasks remain", workQuality, 15, "warning", fmt.Sprintf("Overdue open tasks: %d.", evidence.OverdueTaskCount)))
+	if workQuality {
+		score += 15
+	}
+	preservationQuality := evidence.ArchiveCount == 0 || evidence.VerifiedArchiveCount > 0
+	checks = append(checks, researchReviewCheck("preservation", "Preservation records have a verified destination", preservationQuality, 10, "advisory", fmt.Sprintf("Archive records: %d; verified/preserved: %d.", evidence.ArchiveCount, evidence.VerifiedArchiveCount)))
+	if preservationQuality {
+		score += 10
+	}
+	recommendations := make([]string, 0)
+	for _, check := range checks {
+		if !check["passed"].(bool) {
+			recommendations = append(recommendations, check["detail"].(string))
+		}
+	}
+	if len(recommendations) == 0 {
+		recommendations = append(recommendations, "No deterministic research-quality issues were detected in the registered records.")
+	}
+	blocker := !ethicsQuality || !checks[0]["passed"].(bool)
+	c.JSON(200, gin.H{"mode": "governed-research-quality-review", "researchId": c.Param("id"), "researchName": evidence.Name, "score": score, "band": reviewBand(score, blocker), "checks": checks, "recommendations": recommendations, "evidence": evidence, "generatedAt": time.Now()})
+}
+
+func countNonEmpty(values ...string) int {
+	count := 0
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func dbPostResearchLanguageReview(c *gin.Context) {
+	var input struct {
+		Mode     string `json:"mode"`
+		Text     string `json:"text"`
+		Title    string `json:"title"`
+		Abstract string `json:"abstract"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil && err != io.EOF {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(input.Mode))
+	if mode == "" {
+		mode = "deterministic"
+	}
+	if mode != "deterministic" && mode != "provider" {
+		c.JSON(400, gin.H{"error": "mode must be deterministic or provider"})
+		return
+	}
+	original := strings.TrimSpace(input.Text)
+	source := "request"
+	if original == "" {
+		var name, description string
+		if err := DB.QueryRow(`SELECT name, COALESCE(description,'') FROM rms.research_projects WHERE id=$1 AND (workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL)`, c.Param("id"), workspaceIDContext(c)).Scan(&name, &description); err != nil {
+			c.JSON(404, gin.H{"error": "research study not found"})
+			return
+		}
+		parts := []string{strings.TrimSpace(input.Title), strings.TrimSpace(input.Abstract), strings.TrimSpace(name), strings.TrimSpace(description)}
+		for _, part := range parts {
+			if part != "" {
+				original += part + "\n\n"
+			}
+		}
+		original = strings.TrimSpace(original)
+		source = "registered-study-metadata"
+	}
+	lines := strings.Split(strings.ReplaceAll(original, "\r\n", "\n"), "\n")
+	cleanLines := make([]string, 0, len(lines))
+	issues := make([]gin.H, 0)
+	for _, line := range lines {
+		clean := strings.Join(strings.Fields(line), " ")
+		if clean != line {
+			issues = append(issues, gin.H{"key": "whitespace", "severity": "low", "detail": "Repeated or leading/trailing whitespace was normalized."})
+		}
+		cleanLines = append(cleanLines, clean)
+	}
+	suggested := strings.TrimSpace(strings.Join(cleanLines, "\n"))
+	if suggested != "" && suggested[:1] == strings.ToLower(suggested[:1]) && suggested[:1] != strings.ToUpper(suggested[:1]) {
+		suggested = strings.ToUpper(suggested[:1]) + suggested[1:]
+		issues = append(issues, gin.H{"key": "capitalization", "severity": "low", "detail": "The first sentence was capitalized."})
+	}
+	for _, sentence := range strings.FieldsFunc(suggested, func(r rune) bool { return r == '.' || r == '!' || r == '?' }) {
+		if len(strings.Fields(sentence)) > 40 {
+			issues = append(issues, gin.H{"key": "long-sentence", "severity": "advisory", "detail": "A sentence exceeds 40 words; consider splitting it for readability."})
+			break
+		}
+	}
+	if mode == "provider" {
+		if len(original) > 12000 {
+			c.JSON(400, gin.H{"error": "provider editing supports text up to 12000 characters"})
+			return
+		}
+		providerText, model, providerErr := generateResearchLanguageEdit(c.Request.Context(), original)
+		if providerErr != nil {
+			c.JSON(researchAssistantProviderErrorCode(providerErr), gin.H{"error": providerErr.Error(), "mode": mode})
+			return
+		}
+		c.JSON(200, gin.H{"mode": "provider-backed-language-edit", "provider": "chat-completions", "model": model, "researchId": c.Param("id"), "source": source, "originalText": original, "suggestedText": providerText, "issues": issues, "disclaimer": "Provider-generated editing is advisory. Verify the edited text against the original evidence, methods, citations, ethics status, and author intent before use.", "generatedAt": time.Now()})
+		return
+	}
+	c.JSON(200, gin.H{"mode": "governed-language-review", "researchId": c.Param("id"), "source": source, "originalText": original, "suggestedText": suggested, "issues": issues, "disclaimer": "This is a deterministic readability pass over supplied or registered text. It is not an LLM, a scientific copyeditor, or a substitute for author and peer review.", "generatedAt": time.Now()})
+}
+
+func dbGetConferenceSubmissions(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, research_id, conference_name, manuscript_title, COALESCE(submission_date::TEXT,''),
+		status, COALESCE(presentation_type,'Oral'), COALESCE(abstract_url,''), COALESCE(reviewer_comments,''), COALESCE(next_action,''), created_time, updated_time
+		FROM rms.conference_submissions WHERE research_id=$1 ORDER BY created_time DESC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load conference submissions"})
+		return
+	}
+	defer rows.Close()
+	items := make([]ConferenceSubmission, 0)
+	for rows.Next() {
+		var item ConferenceSubmission
+		if err := rows.Scan(&item.ID, &item.ResearchID, &item.ConferenceName, &item.ManuscriptTitle, &item.SubmissionDate, &item.Status, &item.PresentationType, &item.AbstractURL, &item.ReviewerComments, &item.NextAction, &item.CreatedTime, &item.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+	c.JSON(200, items)
+}
+
+func dbCreateConferenceSubmission(c *gin.Context) {
+	var item ConferenceSubmission
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.ResearchID) == "" || strings.TrimSpace(item.ConferenceName) == "" || strings.TrimSpace(item.ManuscriptTitle) == "" {
+		c.JSON(400, gin.H{"error": "researchId, conferenceName, and manuscriptTitle are required"})
+		return
+	}
+	if item.ID == "" {
+		item.ID = "conference-" + newID()
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	if item.PresentationType == "" {
+		item.PresentationType = "Oral"
+	}
+	item.CreatedTime, item.UpdatedTime = time.Now(), time.Now()
+	_, err := DB.Exec(`INSERT INTO rms.conference_submissions
+		(id, research_id, conference_name, manuscript_title, submission_date, status, presentation_type, abstract_url, reviewer_comments, next_action, created_time, updated_time)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, item.ID, item.ResearchID, item.ConferenceName, item.ManuscriptTitle, nullDate(item.SubmissionDate), item.Status, item.PresentationType, item.AbstractURL, item.ReviewerComments, item.NextAction, item.CreatedTime, item.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not create conference submission"})
+		return
+	}
+	c.JSON(201, item)
+}
+
+func dbUpdateConferenceSubmission(c *gin.Context) {
+	var item ConferenceSubmission
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.ConferenceName) == "" || strings.TrimSpace(item.ManuscriptTitle) == "" {
+		c.JSON(400, gin.H{"error": "conferenceName and manuscriptTitle are required"})
+		return
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	if item.PresentationType == "" {
+		item.PresentationType = "Oral"
+	}
+	result, err := DB.Exec(`UPDATE rms.conference_submissions s SET conference_name=$1, manuscript_title=$2, submission_date=$3, status=$4,
+		presentation_type=$5, abstract_url=$6, reviewer_comments=$7, next_action=$8, updated_time=NOW()
+		WHERE s.id=$9 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=s.research_id AND (p.workspace_id = NULLIF($10,'') OR NULLIF($10,'') IS NULL))`, item.ConferenceName, item.ManuscriptTitle, nullDate(item.SubmissionDate), item.Status, item.PresentationType, item.AbstractURL, item.ReviewerComments, item.NextAction, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update conference submission"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference submission not found"})
+		return
+	}
+	item.ID = c.Param("id")
+	c.JSON(200, item)
+}
+
+func dbDeleteConferenceSubmission(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.conference_submissions s WHERE s.id=$1 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=s.research_id AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete conference submission"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference submission not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func conferenceEventInWorkspace(c *gin.Context, eventID string) bool {
+	var exists bool
+	err := DB.QueryRow(`SELECT EXISTS(
+		SELECT 1 FROM rms.conference_events e
+		JOIN rms.research_projects project ON project.id=e.research_id
+		WHERE e.id=$1 AND (project.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, eventID, workspaceIDContext(c)).Scan(&exists)
+	if err != nil {
+		c.JSON(503, gin.H{"error": "workspace scope unavailable"})
+		return false
+	}
+	if !exists {
+		c.JSON(404, gin.H{"error": "conference event not found"})
+		return false
+	}
+	return true
+}
+
+func validateConferenceDates(startDate, endDate string) bool {
+	start, startErr := time.Parse("2006-01-02", startDate)
+	end, endErr := time.Parse("2006-01-02", endDate)
+	return startErr == nil && endErr == nil && !end.Before(start)
+}
+
+func dbGetConferenceEvents(c *gin.Context) {
+	rows, err := DB.Query(`SELECT e.id, e.research_id, e.event_name, e.start_date::TEXT, e.end_date::TEXT,
+		COALESCE(e.location,''), COALESCE(e.registration_url,''), COALESCE(e.status,'Planned'), e.created_time, e.updated_time
+		FROM rms.conference_events e JOIN rms.research_projects project ON project.id=e.research_id
+		WHERE e.research_id=$1 AND (project.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL)
+		ORDER BY e.start_date ASC, e.created_time DESC`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load conference events"})
+		return
+	}
+	defer rows.Close()
+	events := make([]ConferenceEvent, 0)
+	for rows.Next() {
+		var event ConferenceEvent
+		if err := rows.Scan(&event.ID, &event.ResearchID, &event.EventName, &event.StartDate, &event.EndDate, &event.Location,
+			&event.RegistrationURL, &event.Status, &event.CreatedTime, &event.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": "could not read conference event"})
+			return
+		}
+		events = append(events, event)
+	}
+	c.JSON(200, events)
+}
+
+func dbCreateConferenceEvent(c *gin.Context) {
+	var event ConferenceEvent
+	if err := c.ShouldBindJSON(&event); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(event.ResearchID) == "" || strings.TrimSpace(event.EventName) == "" || !validateConferenceDates(event.StartDate, event.EndDate) {
+		c.JSON(400, gin.H{"error": "researchId, eventName, and valid startDate/endDate are required"})
+		return
+	}
+	if !workspaceResearchReference(c, event.ResearchID, workspaceIDContext(c)) {
+		return
+	}
+	if event.ID == "" {
+		event.ID = "conference-event-" + newID()
+	}
+	if event.Status == "" {
+		event.Status = "Planned"
+	}
+	if !validConferenceEventStatus(event.Status) {
+		c.JSON(400, gin.H{"error": "invalid conference event status"})
+		return
+	}
+	event.CreatedTime, event.UpdatedTime = time.Now(), time.Now()
+	_, err := DB.Exec(`INSERT INTO rms.conference_events
+		(id, research_id, event_name, start_date, end_date, location, registration_url, status, created_time, updated_time)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`, event.ID, event.ResearchID, event.EventName, event.StartDate, event.EndDate,
+		event.Location, event.RegistrationURL, event.Status, event.CreatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not create conference event"})
+		return
+	}
+	c.JSON(201, event)
+}
+
+func dbUpdateConferenceEvent(c *gin.Context) {
+	var event ConferenceEvent
+	if err := c.ShouldBindJSON(&event); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(event.EventName) == "" || !validateConferenceDates(event.StartDate, event.EndDate) {
+		c.JSON(400, gin.H{"error": "eventName and valid startDate/endDate are required"})
+		return
+	}
+	if event.Status == "" {
+		event.Status = "Planned"
+	}
+	if !validConferenceEventStatus(event.Status) {
+		c.JSON(400, gin.H{"error": "invalid conference event status"})
+		return
+	}
+	result, err := DB.Exec(`UPDATE rms.conference_events e SET event_name=$1, start_date=$2, end_date=$3, location=$4,
+		registration_url=$5, status=$6, updated_time=NOW()
+		WHERE e.id=$7 AND EXISTS (SELECT 1 FROM rms.research_projects project WHERE project.id=e.research_id AND (project.workspace_id = NULLIF($8,'') OR NULLIF($8,'') IS NULL))`,
+		event.EventName, event.StartDate, event.EndDate, event.Location, event.RegistrationURL, event.Status, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update conference event"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference event not found"})
+		return
+	}
+	event.ID = c.Param("id")
+	c.JSON(200, event)
+}
+
+func dbDeleteConferenceEvent(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.conference_events e WHERE e.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.research_projects project WHERE project.id=e.research_id AND (project.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete conference event"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference event not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func dbGetConferenceAttendance(c *gin.Context) {
+	if !conferenceEventInWorkspace(c, c.Param("id")) {
+		return
+	}
+	rows, err := DB.Query(`SELECT id, event_id, COALESCE(user_id,''), name, email, COALESCE(attendance_type,'Delegate'),
+		COALESCE(status,'Registered'), registered_at, checked_in_at, created_time, updated_time
+		FROM rms.conference_attendance WHERE event_id=$1 ORDER BY created_time ASC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load conference attendance"})
+		return
+	}
+	defer rows.Close()
+	attendees := make([]ConferenceAttendance, 0)
+	for rows.Next() {
+		var attendee ConferenceAttendance
+		var checkedInAt sql.NullTime
+		if err := rows.Scan(&attendee.ID, &attendee.EventID, &attendee.UserID, &attendee.Name, &attendee.Email, &attendee.AttendanceType,
+			&attendee.Status, &attendee.RegisteredAt, &checkedInAt, &attendee.CreatedTime, &attendee.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": "could not read conference attendance"})
+			return
+		}
+		if checkedInAt.Valid {
+			value := checkedInAt.Time
+			attendee.CheckedInAt = &value
+		}
+		attendees = append(attendees, attendee)
+	}
+	c.JSON(200, attendees)
+}
+
+func dbRegisterConferenceAttendance(c *gin.Context) {
+	if !conferenceEventInWorkspace(c, c.Param("id")) {
+		return
+	}
+	var attendee ConferenceAttendance
+	if err := c.ShouldBindJSON(&attendee); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(attendee.Name) == "" || strings.TrimSpace(attendee.Email) == "" {
+		c.JSON(400, gin.H{"error": "name and email are required"})
+		return
+	}
+	if attendee.ID == "" {
+		attendee.ID = "attendee-" + newID()
+	}
+	if attendee.AttendanceType == "" {
+		attendee.AttendanceType = "Delegate"
+	}
+	if attendee.Status == "" {
+		attendee.Status = "Registered"
+	}
+	if !validConferenceAttendanceType(attendee.AttendanceType) || !validConferenceAttendanceStatus(attendee.Status) {
+		c.JSON(400, gin.H{"error": "invalid attendance type or status"})
+		return
+	}
+	attendee.EventID = c.Param("id")
+	attendee.RegisteredAt = time.Now()
+	attendee.CreatedTime, attendee.UpdatedTime = attendee.RegisteredAt, attendee.RegisteredAt
+	_, err := DB.Exec(`INSERT INTO rms.conference_attendance
+		(id, event_id, user_id, name, email, attendance_type, status, registered_at, created_time, updated_time)
+		VALUES ($1,$2,NULLIF($3::TEXT,''),$4,$5,$6,$7,$8,$8,$8)`, attendee.ID, attendee.EventID, attendee.UserID, attendee.Name, attendee.Email,
+		attendee.AttendanceType, attendee.Status, attendee.RegisteredAt)
+	if err != nil {
+		log.Printf("conference attendance registration failed: %v", err)
+		c.JSON(500, gin.H{"error": "could not register conference attendance"})
+		return
+	}
+	c.JSON(201, attendee)
+}
+
+func dbUpdateConferenceAttendance(c *gin.Context) {
+	var attendee ConferenceAttendance
+	if err := c.ShouldBindJSON(&attendee); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(attendee.Name) == "" || strings.TrimSpace(attendee.Email) == "" {
+		c.JSON(400, gin.H{"error": "name and email are required"})
+		return
+	}
+	if attendee.AttendanceType == "" {
+		attendee.AttendanceType = "Delegate"
+	}
+	if attendee.Status == "" {
+		attendee.Status = "Registered"
+	}
+	if !validConferenceAttendanceType(attendee.AttendanceType) || !validConferenceAttendanceStatus(attendee.Status) {
+		c.JSON(400, gin.H{"error": "invalid attendance type or status"})
+		return
+	}
+	var result sql.Result
+	var err error
+	if attendee.Status == "Attended" {
+		result, err = DB.Exec(`UPDATE rms.conference_attendance a SET user_id=NULLIF($1,''), name=$2, email=$3, attendance_type=$4,
+			status=$5, checked_in_at=COALESCE(a.checked_in_at,NOW()), updated_time=NOW()
+			WHERE a.id=$6 AND EXISTS (SELECT 1 FROM rms.conference_events e JOIN rms.research_projects project ON project.id=e.research_id WHERE e.id=a.event_id AND (project.workspace_id = NULLIF($7,'') OR NULLIF($7,'') IS NULL))`,
+			attendee.UserID, attendee.Name, attendee.Email, attendee.AttendanceType, attendee.Status, c.Param("id"), workspaceIDContext(c))
+	} else {
+		result, err = DB.Exec(`UPDATE rms.conference_attendance a SET user_id=NULLIF($1,''), name=$2, email=$3, attendance_type=$4,
+			status=$5, updated_time=NOW()
+			WHERE a.id=$6 AND EXISTS (SELECT 1 FROM rms.conference_events e JOIN rms.research_projects project ON project.id=e.research_id WHERE e.id=a.event_id AND (project.workspace_id = NULLIF($7,'') OR NULLIF($7,'') IS NULL))`,
+			attendee.UserID, attendee.Name, attendee.Email, attendee.AttendanceType, attendee.Status, c.Param("id"), workspaceIDContext(c))
+	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update conference attendance"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference attendance not found"})
+		return
+	}
+	attendee.ID = c.Param("id")
+	attendee.UpdatedTime = time.Now()
+	if attendee.Status == "Attended" {
+		now := time.Now()
+		attendee.CheckedInAt = &now
+	}
+	c.JSON(200, attendee)
+}
+
+func dbDeleteConferenceAttendance(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.conference_attendance a WHERE a.id=$1 AND EXISTS (
+		SELECT 1 FROM rms.conference_events e JOIN rms.research_projects project ON project.id=e.research_id
+		WHERE e.id=a.event_id AND (project.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete conference attendance"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "conference attendance not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func validConferenceEventStatus(status string) bool {
+	switch status {
+	case "Planned", "Registration Open", "Completed", "Cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func validConferenceAttendanceType(attendanceType string) bool {
+	switch attendanceType {
+	case "Presenter", "Delegate", "Chair", "Organiser":
+		return true
+	default:
+		return false
+	}
+}
+
+func validConferenceAttendanceStatus(status string) bool {
+	switch status {
+	case "Registered", "Attended", "Cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func dbGetKnowledgeTransfers(c *gin.Context) {
+	rows, err := DB.Query(`SELECT id, research_id, title, COALESCE(summary,''), COALESCE(body,''), tags, status, COALESCE(knowledge_id,''), published_at, created_time, updated_time
+		FROM rms.knowledge_transfers WHERE research_id=$1 ORDER BY created_time DESC`, c.Param("id"))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not load knowledge transfers"})
+		return
+	}
+	defer rows.Close()
+	items := make([]KnowledgeTransfer, 0)
+	for rows.Next() {
+		var item KnowledgeTransfer
+		var tags pq.StringArray
+		if err := rows.Scan(&item.ID, &item.ResearchID, &item.Title, &item.Summary, &item.Body, &tags, &item.Status, &item.KnowledgeID, &item.PublishedAt, &item.CreatedTime, &item.UpdatedTime); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		item.Tags = tags
+		items = append(items, item)
+	}
+	c.JSON(200, items)
+}
+
+func dbCreateKnowledgeTransfer(c *gin.Context) {
+	var item KnowledgeTransfer
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.ResearchID) == "" || strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.Body) == "" {
+		c.JSON(400, gin.H{"error": "researchId, title, and body are required"})
+		return
+	}
+	if item.ID == "" {
+		item.ID = "transfer-" + newID()
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	item.CreatedTime, item.UpdatedTime = time.Now(), time.Now()
+	_, err := DB.Exec(`INSERT INTO rms.knowledge_transfers (id, research_id, title, summary, body, tags, status, created_time, updated_time)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, item.ID, item.ResearchID, item.Title, item.Summary, item.Body, pq.Array(item.Tags), item.Status, item.CreatedTime, item.UpdatedTime)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not create knowledge transfer"})
+		return
+	}
+	c.JSON(201, item)
+}
+
+func dbUpdateKnowledgeTransfer(c *gin.Context) {
+	var item KnowledgeTransfer
+	if err := c.ShouldBindJSON(&item); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.Body) == "" {
+		c.JSON(400, gin.H{"error": "title and body are required"})
+		return
+	}
+	if item.Status == "" {
+		item.Status = "Draft"
+	}
+	result, err := DB.Exec(`UPDATE rms.knowledge_transfers t SET title=$1, summary=$2, body=$3, tags=$4, status=$5, updated_time=NOW()
+		WHERE t.id=$6 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=t.research_id AND (p.workspace_id = NULLIF($7,'') OR NULLIF($7,'') IS NULL))`, item.Title, item.Summary, item.Body, pq.Array(item.Tags), item.Status, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not update knowledge transfer"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "knowledge transfer not found"})
+		return
+	}
+	item.ID = c.Param("id")
+	c.JSON(200, item)
+}
+
+func dbDeleteKnowledgeTransfer(c *gin.Context) {
+	result, err := DB.Exec(`DELETE FROM rms.knowledge_transfers t WHERE t.id=$1 AND EXISTS (SELECT 1 FROM rms.research_projects p WHERE p.id=t.research_id AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL))`, c.Param("id"), workspaceIDContext(c))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "could not delete knowledge transfer"})
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		c.JSON(404, gin.H{"error": "knowledge transfer not found"})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
+func dbPublishKnowledgeTransfer(c *gin.Context) {
+	var item KnowledgeTransfer
+	var tags pq.StringArray
+	err := DB.QueryRow(`SELECT t.id, t.research_id, t.title, COALESCE(t.summary,''), COALESCE(t.body,''), t.tags, t.status, COALESCE(t.knowledge_id,''), t.published_at, t.created_time, t.updated_time
+		FROM rms.knowledge_transfers t JOIN rms.research_projects p ON p.id=t.research_id WHERE t.id=$1 AND (p.workspace_id = NULLIF($2,'') OR NULLIF($2,'') IS NULL)`, c.Param("id"), workspaceIDContext(c)).Scan(&item.ID, &item.ResearchID, &item.Title, &item.Summary, &item.Body, &tags, &item.Status, &item.KnowledgeID, &item.PublishedAt, &item.CreatedTime, &item.UpdatedTime)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "knowledge transfer not found"})
+		return
+	}
+	item.Tags = tags
+	if item.Status == "Published" && item.KnowledgeID != "" {
+		c.JSON(200, item)
+		return
+	}
+	slug := strings.ToLower(strings.NewReplacer(" ", "-", "/", "-", "_", "-").Replace(item.Title)) + "-" + item.ID
+	payload, _ := json.Marshal(map[string]interface{}{"kind": "research", "title": item.Title, "slug": slug, "summary": item.Summary, "body": item.Body, "status": "published", "author_id": c.GetString("user_id"), "tags": item.Tags})
+	base := strings.TrimRight(os.Getenv("KNOWLEDGE_API_URL"), "/")
+	if base == "" {
+		base = "http://knowledge-portal:8099"
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, base+"/api/v1/content", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("knowledge transfer request build failed: %v", err)
+		c.JSON(503, gin.H{"error": "knowledge service unavailable"})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", c.GetHeader("Authorization"))
+	if workspaceID := workspaceIDContext(c); workspaceID != "" {
+		req.Header.Set("X-Workspace-ID", workspaceID)
+	}
+	if tenantID := c.GetString("tenant_id"); tenantID != "" {
+		req.Header.Set("X-Tenant-ID", tenantID)
+	}
+	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+	if err != nil {
+		log.Printf("knowledge transfer publish failed: %v", err)
+		c.JSON(503, gin.H{"error": "knowledge service unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("knowledge transfer rejected by portal: status=%d", resp.StatusCode)
+		c.JSON(502, gin.H{"error": "knowledge service rejected publication", "status": resp.StatusCode})
+		return
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil || created.ID == "" {
+		c.JSON(502, gin.H{"error": "knowledge service returned an invalid publication"})
+		return
+	}
+	now := time.Now()
+	if _, err := DB.Exec(`UPDATE rms.knowledge_transfers SET status='Published', knowledge_id=$1, published_at=$2, updated_time=$2 WHERE id=$3`, created.ID, now, item.ID); err != nil {
+		c.JSON(500, gin.H{"error": "could not record publication"})
+		return
+	}
+	item.Status, item.KnowledgeID, item.PublishedAt, item.UpdatedTime = "Published", created.ID, &now, now
+	c.JSON(200, item)
 }

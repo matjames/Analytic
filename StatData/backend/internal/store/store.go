@@ -33,6 +33,15 @@ type Store interface {
 	ListDataContracts(ctx context.Context, tenantID, datasetID string) ([]*models.DataContract, error)
 	UpdateDataContract(ctx context.Context, contract *models.DataContract) error
 
+	// ─── Data Plane: Dataset Record Storage (real row storage for datasets) ───
+	// Datasets hold their actual records in the platform data plane. Pipeline
+	// stages read from and write to this storage; row counts and sizes are
+	// derived from what is really stored.
+	AppendDatasetRecords(ctx context.Context, datasetID, tenantID string, records []map[string]interface{}) (bytesWritten int64, err error)
+	ListDatasetRecords(ctx context.Context, datasetID string, limit int) ([]map[string]interface{}, error)
+	CountDatasetRecords(ctx context.Context, datasetID string) (int64, error)
+	DeleteDatasetRecords(ctx context.Context, datasetID string) (deleted int64, err error)
+
 	// ─── Data Quality & Governance (P37) ───────────────────────────────────────
 	CreateQualityRule(ctx context.Context, rule *models.DataQualityRule) error
 	ListQualityRules(ctx context.Context, tenantID, datasetID string) ([]*models.DataQualityRule, error)

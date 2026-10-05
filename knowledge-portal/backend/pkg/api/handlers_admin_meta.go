@@ -1,11 +1,14 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 
 	"knowledgeportal/pkg/model"
 	"knowledgeportal/pkg/store"
+
+	"github.com/gorilla/mux"
 )
 
 // ─── Cross-application object links ────────────────────────────────────────
@@ -21,6 +24,7 @@ func CreateLinkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l.TenantID = actorTenant(r)
+	l.WorkspaceID = actorWorkspace(r)
 	if err := store.CreateObjectLink(r.Context(), &l); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -38,12 +42,40 @@ func ListLinksHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "type and id query parameters are required")
 		return
 	}
-	links, err := store.ListObjectLinks(r.Context(), objectType, objectID)
+	links, err := store.ListObjectLinksScoped(r.Context(), actorTenant(r), actorWorkspace(r), objectType, objectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, links)
+}
+
+func DeleteLinkHandler(w http.ResponseWriter, r *http.Request) {
+	if err := store.DeleteObjectLink(r.Context(), actorTenant(r), actorWorkspace(r), mux.Vars(r)["id"]); err != nil {
+		if err == sql.ErrNoRows {
+			writeError(w, http.StatusNotFound, "object link not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	recordAudit(r, "object.link.deleted", "object_link", mux.Vars(r)["id"], nil)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func GraphHandler(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	objectType, objectID := q.Get("type"), q.Get("id")
+	if objectType == "" || objectID == "" {
+		writeError(w, http.StatusBadRequest, "type and id query parameters are required")
+		return
+	}
+	links, err := store.ListObjectLinksScoped(r.Context(), actorTenant(r), actorWorkspace(r), objectType, objectID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"root": map[string]string{"type": objectType, "id": objectID}, "links": links})
 }
 
 // ─── Subscriptions & feedback consoles ─────────────────────────────────────

@@ -7,6 +7,7 @@ import "time"
 type ContentItem struct {
 	ID          string     `json:"id"`
 	TenantID    string     `json:"tenant_id"`
+	WorkspaceID string     `json:"workspace_id,omitempty"`
 	OrgID       string     `json:"org_id,omitempty"`
 	Kind        string     `json:"kind"`
 	Title       string     `json:"title"`
@@ -25,25 +26,25 @@ type ContentItem struct {
 // PublicDataset represents an open data set exposed on the Open Data Portal
 // (P41), with versioning and machine-readable formats.
 type PublicDataset struct {
-	ID              string    `json:"id"`
-	TenantID        string    `json:"tenant_id"`
-	Title           string    `json:"title"`
-	Slug            string    `json:"slug"`
-	Description     string    `json:"description,omitempty"`
-	License         string    `json:"license"`
-	Format          string    `json:"format"`
-	SizeBytes       int64     `json:"size_bytes"`
-	DownloadURL     string    `json:"download_url,omitempty"`
-	SourceApp       string    `json:"source_app,omitempty"`
-	SourceObjType   string    `json:"source_object_type,omitempty"`
-	SourceObjID     string    `json:"source_object_id,omitempty"`
-	Status          string    `json:"status"`
-	Version         string    `json:"version"`
-	Tags            []string  `json:"tags,omitempty"`
-	UpdatedBy       string    `json:"updated_by,omitempty"`
-	PublishedAt     *time.Time `json:"published_at,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	TenantID      string     `json:"tenant_id"`
+	Title         string     `json:"title"`
+	Slug          string     `json:"slug"`
+	Description   string     `json:"description,omitempty"`
+	License       string     `json:"license"`
+	Format        string     `json:"format"`
+	SizeBytes     int64      `json:"size_bytes"`
+	DownloadURL   string     `json:"download_url,omitempty"`
+	SourceApp     string     `json:"source_app,omitempty"`
+	SourceObjType string     `json:"source_object_type,omitempty"`
+	SourceObjID   string     `json:"source_object_id,omitempty"`
+	Status        string     `json:"status"`
+	Version       string     `json:"version"`
+	Tags          []string   `json:"tags,omitempty"`
+	UpdatedBy     string     `json:"updated_by,omitempty"`
+	PublishedAt   *time.Time `json:"published_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // RepositoryItem represents a library / repository asset in the National
@@ -109,6 +110,7 @@ type Feedback struct {
 type ObjectLink struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
+	WorkspaceID  string    `json:"workspace_id,omitempty"`
 	SourceType   string    `json:"source_type"`
 	SourceID     string    `json:"source_id"`
 	TargetType   string    `json:"target_type"`
@@ -117,22 +119,38 @@ type ObjectLink struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// ContentReview records the editorial and moderation decision for portal content.
+type ContentReview struct {
+	ID          string     `json:"id"`
+	TenantID    string     `json:"tenant_id"`
+	WorkspaceID string     `json:"workspace_id,omitempty"`
+	ContentID   string     `json:"content_id"`
+	Status      string     `json:"status"`
+	Note        string     `json:"note,omitempty"`
+	SubmittedBy string     `json:"submitted_by"`
+	ReviewerID  string     `json:"reviewer_id,omitempty"`
+	SubmittedAt time.Time  `json:"submitted_at"`
+	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 // SearchResult is a combined cross-catalog public search hit (P17 / P47).
 type SearchResult struct {
-	Type        string `json:"type"` // content|dataset|repository
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Summary     string `json:"summary,omitempty"`
-	Status      string `json:"status"`
+	Type        string     `json:"type"` // content|dataset|repository
+	ID          string     `json:"id"`
+	Title       string     `json:"title"`
+	Summary     string     `json:"summary,omitempty"`
+	Status      string     `json:"status"`
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 }
 
 // PortalSummary is the administrative overview of the portal.
 type PortalSummary struct {
-	ContentCount   int64 `json:"content_count"`
-	DatasetCount   int64 `json:"dataset_count"`
-	RepositoryCount int64 `json:"repository_count"`
-	PublishedCount int64 `json:"published_count"`
+	ContentCount      int64 `json:"content_count"`
+	DatasetCount      int64 `json:"dataset_count"`
+	RepositoryCount   int64 `json:"repository_count"`
+	PublishedCount    int64 `json:"published_count"`
 	SubscriptionCount int64 `json:"subscription_count"`
-	FeedbackCount  int64 `json:"feedback_count"`
+	FeedbackCount     int64 `json:"feedback_count"`
 }

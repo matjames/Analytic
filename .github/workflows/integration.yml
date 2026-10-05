@@ -155,6 +155,13 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/certify-stack.ps1 -UpTimeoutMin 60
+      - name: End-to-end data lifecycle acceptance gate
+        # Anti-simulation gate: proves ingest -> real pipeline execution ->
+        # durable storage -> dataset-bound analysis, and that broken pipelines
+        # fail instead of reporting SUCCESS. See tests/2-lifecycle/README.md.
+        shell: pwsh
+        run: |
+          ./tests/2-lifecycle/lifecycle.ps1
       - name: Tear down
         if: always()
         run: |

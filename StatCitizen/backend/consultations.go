@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 )
 
 // ─── Consultation Handlers ────────────────────────────────────────────────────
@@ -127,7 +129,7 @@ func handleGetConsultation(c *gin.Context, cfg *Config) {
 		for qRows.Next() {
 			var q ConsultationQuestion
 			var opts []string
-			_ = qRows.Scan(&q.ID, &q.ConsultID, &q.TenantID, &q.Text, &q.Type, &opts, &q.Required, &q.SortOrder)
+			_ = qRows.Scan(&q.ID, &q.ConsultID, &q.TenantID, &q.Text, &q.Type, pq.Array(&opts), &q.Required, &q.SortOrder)
 			q.Options = opts
 			cons.Questions = append(cons.Questions, q)
 		}
@@ -202,8 +204,9 @@ func handleSubmitConsultationResponse(c *gin.Context, cfg *Config) {
 
 		answers := "{}"
 		if req.Answers != nil {
-			import_json_b, _ := answerJSON(req.Answers)
-			answers = import_json_b
+			if ansStr, err := answerJSON(req.Answers); err == nil {
+				answers = ansStr
+			}
 		}
 
 		_, err := dbPool.ExecContext(ctx,
@@ -288,13 +291,11 @@ func handleCreateConsultation(c *gin.Context, cfg *Config) {
 		// Insert questions
 		for i, q := range req.Questions {
 			qID := fmt.Sprintf("cq_%d_%d", time.Now().UnixNano(), i)
-			optJSON, _ := answerJSON(map[string]interface{}{"opts": q.Options})
 			_, _ = dbPool.ExecContext(ctx,
-				`INSERT INTO consultation_questions (id,consultation_id,tenant_id,text,type,required,sort_order)
-				VALUES($1,$2,$3,$4,$5,$6,$7)`,
-				qID, id, tenantID, q.Text, q.Type, q.Required, i+1,
+				`INSERT INTO consultation_questions (id,consultation_id,tenant_id,text,type,options,required,sort_order)
+				VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+				qID, id, tenantID, q.Text, q.Type, pq.Array(q.Options), q.Required, i+1,
 			)
-			_ = optJSON
 		}
 	}
 
@@ -467,78 +468,9 @@ func handleSubmitRating(c *gin.Context, cfg *Config) {
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 func answerJSON(data interface{}) (string, error) {
-	import_json_b, err := marshalJSON(data)
-	return import_json_b, err
-}
-
-func marshalJSON(v interface{}) (string, error) {
-	import_json := jsonMarshal(v)
-	return import_json, nil
-}
-
-func jsonMarshal(v interface{}) string {
-	import_json_b, _ := import_json_marshal(v)
-	return import_json_b
-}
-
-func import_json_marshal(v interface{}) (string, error) {
-	import_json_b := fmt.Sprintf(`{}`)
-	switch tv := v.(type) {
-	case map[string]interface{}:
-		// Use built-in encoding
-		return formatJSONMap(tv), nil
-	case map[string]int:
-		return formatJSONMapInt(tv), nil
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "{}", err
 	}
-	return import_json_b, nil
-}
-
-func formatJSONMap(m map[string]interface{}) string {
-	if len(m) == 0 {
-		return "{}"
-	}
-	result := "{"
-	first := true
-	for k, v := range m {
-		if !first {
-			result += ","
-		}
-		result += fmt.Sprintf(`"%s":%v`, k, formatVal(v))
-		first = false
-	}
-	return result + "}"
-}
-
-func formatJSONMapInt(m map[string]int) string {
-	if len(m) == 0 {
-		return "{}"
-	}
-	result := "{"
-	first := true
-	for k, v := range m {
-		if !first {
-			result += ","
-		}
-		result += fmt.Sprintf(`"%s":%d`, k, v)
-		first = false
-	}
-	return result + "}"
-}
-
-func formatVal(v interface{}) string {
-	switch tv := v.(type) {
-	case string:
-		return fmt.Sprintf(`"%s"`, tv)
-	case bool:
-		if tv {
-			return "true"
-		}
-		return "false"
-	case int:
-		return fmt.Sprintf("%d", tv)
-	case float64:
-		return fmt.Sprintf("%g", tv)
-	default:
-		return fmt.Sprintf(`"%v"`, tv)
-	}
+	return string(b), nil
 }

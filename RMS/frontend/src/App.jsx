@@ -25,6 +25,13 @@ import ChatTab from './components/ChatTab';
 import IRBCommitteesTab from './components/IRBCommitteesTab';
 import DOITab from './components/DOITab';
 import OpenScienceTab from './components/OpenScienceTab';
+import SubmissionsTab from './components/SubmissionsTab';
+import PreservationTab from './components/PreservationTab';
+import ResearchAssistantTab from './components/ResearchAssistantTab';
+import ConferencesTab from './components/ConferencesTab';
+import KnowledgeTransferTab from './components/KnowledgeTransferTab';
+import PublicationQualityTab from './components/PublicationQualityTab';
+import StatisticalRecommendationsTab from './components/StatisticalRecommendationsTab';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -386,6 +393,8 @@ export default function App() {
                   { key: 'literature', label: 'Literature' },
                   { key: 'datasets', label: 'Datasets' },
                   { key: 'publications', label: 'Publications' },
+                  { key: 'submissions', label: 'Submissions' },
+                  { key: 'conferences', label: 'Conferences' },
                   { key: 'tasks', label: 'Tasks' },
                   { key: 'meetings', label: 'Meetings' },
                   { key: 'risks', label: 'Risks' },
@@ -398,6 +407,11 @@ export default function App() {
                   { key: 'irb', label: 'IRB Committees' },
                   { key: 'doi', label: 'DOI Registry' },
                   { key: 'open-science', label: 'Open Science' },
+                  { key: 'preservation', label: 'Preservation' },
+                  { key: 'assistant', label: 'Readiness Assistant' },
+                  { key: 'quality', label: 'Quality & Readiness' },
+                  { key: 'statistics', label: 'Statistical Plan' },
+                  { key: 'knowledge', label: 'Knowledge Transfer' },
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -434,6 +448,12 @@ export default function App() {
                 {activeTab === 'publications' && (
                   <PublicationsTab publications={workspaceData.publications} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
                 )}
+                {activeTab === 'submissions' && (
+                  <SubmissionsTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'conferences' && (
+                  <ConferencesTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
                 {activeTab === 'tasks' && (
                   <TasksTab tasks={workspaceData.tasks} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
                 )}
@@ -450,7 +470,7 @@ export default function App() {
                   <DocumentsTab documents={workspaceData.documents} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
                 )}
                 {activeTab === 'surveys' && (
-                  <SurveysTab surveys={workspaceData.surveys} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
+                  <SurveysTab apiBase={API_URL} surveys={workspaceData.surveys} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
                 )}
                 {activeTab === 'reports' && (
                   <ReportsTab reports={workspaceData.reports} researchId={selectedResearchId} onRefresh={refreshWorkspace} />
@@ -465,10 +485,25 @@ export default function App() {
                   <IRBCommitteesTab apiBase={API_URL} />
                 )}
                 {activeTab === 'doi' && (
-                  <DOITab apiBase={API_URL} />
+                  <DOITab apiBase={API_URL} researchId={selectedResearchId} />
                 )}
                 {activeTab === 'open-science' && (
-                  <OpenScienceTab apiBase={API_URL} />
+                  <OpenScienceTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'preservation' && (
+                  <PreservationTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'assistant' && (
+                  <ResearchAssistantTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'quality' && (
+                  <PublicationQualityTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'statistics' && (
+                  <StatisticalRecommendationsTab apiBase={API_URL} researchId={selectedResearchId} />
+                )}
+                {activeTab === 'knowledge' && (
+                  <KnowledgeTransferTab apiBase={API_URL} researchId={selectedResearchId} />
                 )}
               </div>
             </div>

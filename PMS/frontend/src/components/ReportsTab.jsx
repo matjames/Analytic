@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
 
@@ -8,23 +8,53 @@ export default function ReportsTab({ reports = [], projectId, onRefresh }) {
   const [reportType, setReportType] = useState('Progress');
   const [reportFormat, setReportFormat] = useState('PDF');
   const [generatedBy, setGeneratedBy] = useState('Dr. Sarah Jenkins');
+  const [templateId, setTemplateId] = useState('');
+  const [templates, setTemplates] = useState([]);
+  const [donors, setDonors] = useState([]);
+  const [donorId, setDonorId] = useState('');
+  const [reportingPeriodStart, setReportingPeriodStart] = useState('');
+  const [reportingPeriodEnd, setReportingPeriodEnd] = useState('');
+  const [error, setError] = useState('');
   const [viewingReport, setViewingReport] = useState(null);
 
-  const handleGenerate = (e) => {
+  useEffect(() => {
+    if (!projectId) return;
+    Promise.all([
+      fetch(`${API_BASE}/api/projects/${projectId}/report-templates`).then(res => res.ok ? res.json() : []),
+      fetch(`${API_BASE}/api/donors`).then(res => res.ok ? res.json() : []),
+    ])
+      .then(([availableTemplates, availableDonors]) => {
+        setTemplates(Array.isArray(availableTemplates) ? availableTemplates : []);
+        setDonors(Array.isArray(availableDonors) ? availableDonors : []);
+      })
+      .catch(() => setError('Reporting templates could not be loaded.'));
+  }, [projectId]);
+
+  const handleGenerate = async (e) => {
     e.preventDefault();
-    fetch(`${API_BASE}/api/projects/${projectId}/reports`, {
+    setError('');
+    const isDonorReport = Boolean(templateId);
+    const endpoint = isDonorReport
+      ? `${API_BASE}/api/projects/${projectId}/donor-reports`
+      : `${API_BASE}/api/projects/${projectId}/reports`;
+    const body = isDonorReport
+      ? { title: reportTitle, templateId, donorId, format: reportFormat, generatedBy, reportingPeriodStart, reportingPeriodEnd }
+      : { title: reportTitle, type: reportType, format: reportFormat, generatedBy };
+    try {
+      const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: reportTitle, type: reportType, format: reportFormat, generatedBy })
-    })
-      .then(res => res.json())
-      .then(data => {
-        onRefresh();
-        setIsGenerating(false);
-        setReportTitle('');
-        setViewingReport(data);
-      })
-      .catch(err => console.error("Error generating report:", err));
+      body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Report generation failed.');
+      onRefresh();
+      setIsGenerating(false);
+      setReportTitle('');
+      setViewingReport(data);
+    } catch (err) {
+      setError(err.message || 'Report generation failed.');
+    }
   };
 
   const getTypeIcon = (type) => {
@@ -60,10 +90,40 @@ export default function ReportsTab({ reports = [], projectId, onRefresh }) {
         <div className="modal-overlay">
           <form className="modal-content glass-panel" onSubmit={handleGenerate}>
             <h3>Generate Project Report</h3>
+            {error && <div className="form-error" role="alert">{error}</div>}
             <div className="form-group">
               <label>Report Title</label>
               <input type="text" value={reportTitle} onChange={e => setReportTitle(e.target.value)} placeholder="e.g. Q3 Progress Report" required />
             </div>
+            <div className="form-group">
+              <label>Reporting Template</label>
+              <select value={templateId} onChange={e => setTemplateId(e.target.value)}>
+                <option value="">Standard project report</option>
+                {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+              {templateId && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{templates.find(template => template.id === templateId)?.description}</span>}
+            </div>
+            {templateId && (
+              <>
+                <div className="form-group">
+                  <label>Donor (optional)</label>
+                  <select value={donorId} onChange={e => setDonorId(e.target.value)}>
+                    <option value="">All project funding / donor not specified</option>
+                    {donors.map(donor => <option key={donor.id} value={donor.id}>{donor.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Period start (optional)</label>
+                    <input type="date" value={reportingPeriodStart} onChange={e => setReportingPeriodStart(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Period end (optional)</label>
+                    <input type="date" value={reportingPeriodEnd} onChange={e => setReportingPeriodEnd(e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>Report Type</label>
@@ -92,7 +152,7 @@ export default function ReportsTab({ reports = [], projectId, onRefresh }) {
               <input type="text" value={generatedBy} onChange={e => setGeneratedBy(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '10px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsGenerating(false)}>Cancel</button>
+              <button type="button" className="btn btn-secondary" onClick={() => { setIsGenerating(false); setError(''); }}>Cancel</button>
               <button type="submit" className="btn btn-primary">Generate</button>
             </div>
           </form>

@@ -53,6 +53,7 @@ func ensureSchema(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS content_items (
 			id TEXT PRIMARY KEY,
 			tenant_id TEXT NOT NULL,
+			workspace_id TEXT,
 			org_id TEXT,
 			kind TEXT NOT NULL,
 			title TEXT NOT NULL,
@@ -68,6 +69,8 @@ func ensureSchema(ctx context.Context) error {
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_content_tenant ON content_items(tenant_id)`,
+		`ALTER TABLE content_items ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+		`CREATE INDEX IF NOT EXISTS idx_content_workspace ON content_items(tenant_id, workspace_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_content_status ON content_items(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_content_slug ON content_items(slug)`,
 
@@ -154,6 +157,7 @@ func ensureSchema(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS object_links (
 			id TEXT PRIMARY KEY,
 			tenant_id TEXT NOT NULL,
+			workspace_id TEXT,
 			source_type TEXT NOT NULL,
 			source_id TEXT NOT NULL,
 			target_type TEXT NOT NULL,
@@ -161,8 +165,27 @@ func ensureSchema(ctx context.Context) error {
 			relationship TEXT,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
+		`ALTER TABLE object_links ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
 		`CREATE INDEX IF NOT EXISTS idx_links_source ON object_links(source_type, source_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_links_target ON object_links(target_type, target_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_links_workspace ON object_links(tenant_id, workspace_id)`,
+
+		`CREATE TABLE IF NOT EXISTS content_reviews (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL,
+			workspace_id TEXT,
+			content_id TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'submitted',
+			note TEXT,
+			submitted_by TEXT NOT NULL,
+			reviewer_id TEXT,
+			submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			reviewed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_content_reviews_scope ON content_reviews(tenant_id, COALESCE(workspace_id, ''), content_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_content_reviews_queue ON content_reviews(tenant_id, workspace_id, status, updated_at)`,
 
 		`CREATE TABLE IF NOT EXISTS portal_settings (
 			tenant_id TEXT NOT NULL,
@@ -437,18 +460,32 @@ func CreateObjectLink(ctx context.Context, l *model.ObjectLink) error {
 	l.ID = newID()
 	l.CreatedAt = now()
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO object_links (id, tenant_id, source_type, source_id, target_type, target_id, relationship, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		l.ID, l.TenantID, l.SourceType, l.SourceID, l.TargetType, l.TargetID, l.Relationship, l.CreatedAt)
+		INSERT INTO object_links (id, tenant_id, workspace_id, source_type, source_id, target_type, target_id, relationship, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		l.ID, l.TenantID, l.WorkspaceID, l.SourceType, l.SourceID, l.TargetType, l.TargetID, l.Relationship, l.CreatedAt)
 	return err
 }
 
 func ListObjectLinks(ctx context.Context, objectType, objectID string) ([]model.ObjectLink, error) {
+	return listObjectLinks(ctx, "", "", objectType, objectID)
+}
+
+func ListObjectLinksScoped(ctx context.Context, tenantID, workspaceID, objectType, objectID string) ([]model.ObjectLink, error) {
+	return listObjectLinks(ctx, tenantID, workspaceID, objectType, objectID)
+}
+
+func listObjectLinks(ctx context.Context, tenantID, workspaceID, objectType, objectID string) ([]model.ObjectLink, error) {
+	where := "((source_type=$1 AND source_id=$2) OR (target_type=$1 AND target_id=$2))"
+	args := []interface{}{objectType, objectID}
+	if tenantID != "" {
+		where += " AND tenant_id=$3 AND COALESCE(workspace_id,'')=COALESCE($4,'')"
+		args = append(args, tenantID, workspaceID)
+	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, tenant_id, source_type, source_id, target_type, target_id, relationship, created_at
+		SELECT id, tenant_id, COALESCE(workspace_id,''), source_type, source_id, target_type, target_id, relationship, created_at
 		FROM object_links
-		WHERE (source_type=$1 AND source_id=$2) OR (target_type=$1 AND target_id=$2)
-		ORDER BY created_at DESC`, objectType, objectID)
+		WHERE `+where+`
+		ORDER BY created_at DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -456,12 +493,23 @@ func ListObjectLinks(ctx context.Context, objectType, objectID string) ([]model.
 	var out []model.ObjectLink
 	for rows.Next() {
 		var l model.ObjectLink
-		if err := rows.Scan(&l.ID, &l.TenantID, &l.SourceType, &l.SourceID, &l.TargetType, &l.TargetID, &l.Relationship, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.TenantID, &l.WorkspaceID, &l.SourceType, &l.SourceID, &l.TargetType, &l.TargetID, &l.Relationship, &l.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+func DeleteObjectLink(ctx context.Context, tenantID, workspaceID, id string) error {
+	result, err := db.ExecContext(ctx, `DELETE FROM object_links WHERE id=$1 AND tenant_id=$2 AND COALESCE(workspace_id,'')=COALESCE($3,'')`, id, tenantID, workspaceID)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // ─── Public cross-catalog search (P17 / P41 / P47) ─────────────────────────
@@ -514,10 +562,6 @@ func PortalSummary(ctx context.Context, tenantID string) (*model.PortalSummary, 
 	return s, nil
 }
 
-
-
-
-
 // ─── Content (P17 CMS) ─────────────────────────────────────────────────────
 
 func CreateContentItem(ctx context.Context, c *model.ContentItem) error {
@@ -526,16 +570,29 @@ func CreateContentItem(ctx context.Context, c *model.ContentItem) error {
 	c.UpdatedAt = c.CreatedAt
 	tags, _ := json.Marshal(c.Tags)
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO content_items (id, tenant_id, org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-		c.ID, c.TenantID, c.OrgID, c.Kind, c.Title, c.Slug, c.Summary, c.Body, c.Status, c.AuthorID, tags, c.PublishedAt, c.UpdatedBy, c.CreatedAt, c.UpdatedAt)
+		INSERT INTO content_items (id, tenant_id, workspace_id, org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		c.ID, c.TenantID, c.WorkspaceID, c.OrgID, c.Kind, c.Title, c.Slug, c.Summary, c.Body, c.Status, c.AuthorID, tags, c.PublishedAt, c.UpdatedBy, c.CreatedAt, c.UpdatedAt)
 	return err
 }
 
 func ListContentItems(ctx context.Context, tenantID, kind, status, q string) ([]model.ContentItem, error) {
+	return listContentItems(ctx, tenantID, "", false, kind, status, q)
+}
+
+func ListContentItemsScoped(ctx context.Context, tenantID, workspaceID, kind, status, q string) ([]model.ContentItem, error) {
+	return listContentItems(ctx, tenantID, workspaceID, true, kind, status, q)
+}
+
+func listContentItems(ctx context.Context, tenantID, workspaceID string, scoped bool, kind, status, q string) ([]model.ContentItem, error) {
 	where := []string{"tenant_id=$1"}
 	args := []interface{}{tenantID}
 	argc := 1
+	if scoped {
+		argc++
+		args = append(args, workspaceID)
+		where = append(where, fmt.Sprintf("COALESCE(workspace_id,'')=COALESCE($%d,'')", argc))
+	}
 	if kind != "" {
 		argc++
 		args = append(args, kind)
@@ -552,7 +609,7 @@ func ListContentItems(ctx context.Context, tenantID, kind, status, q string) ([]
 		where = append(where, fmt.Sprintf("(lower(title) LIKE $%d OR lower(summary) LIKE $%d OR lower(body) LIKE $%d)", argc, argc, argc))
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, tenant_id, org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at
+		SELECT id, tenant_id, COALESCE(workspace_id,''), org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at
 		FROM content_items WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC`, args...)
 	if err != nil {
 		return nil, err
@@ -563,7 +620,7 @@ func ListContentItems(ctx context.Context, tenantID, kind, status, q string) ([]
 		var c model.ContentItem
 		var tags []byte
 		var pub sql.NullTime
-		if err := rows.Scan(&c.ID, &c.TenantID, &c.OrgID, &c.Kind, &c.Title, &c.Slug, &c.Summary, &c.Body, &c.Status, &c.AuthorID, &tags, &pub, &c.UpdatedBy, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.OrgID, &c.Kind, &c.Title, &c.Slug, &c.Summary, &c.Body, &c.Status, &c.AuthorID, &tags, &pub, &c.UpdatedBy, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(tags, &c.Tags)
@@ -576,13 +633,35 @@ func ListContentItems(ctx context.Context, tenantID, kind, status, q string) ([]
 }
 
 func GetContentItem(ctx context.Context, id string) (*model.ContentItem, error) {
+	return getContentItem(ctx, id, "", "", false)
+}
+
+func GetContentItemForTenant(ctx context.Context, tenantID, id string) (*model.ContentItem, error) {
+	return getContentItem(ctx, id, tenantID, "", false)
+}
+
+func GetContentItemScoped(ctx context.Context, tenantID, workspaceID, id string) (*model.ContentItem, error) {
+	return getContentItem(ctx, id, tenantID, workspaceID, true)
+}
+
+func getContentItem(ctx context.Context, id, tenantID, workspaceID string, scoped bool) (*model.ContentItem, error) {
 	var c model.ContentItem
 	var tags []byte
 	var pub sql.NullTime
+	where := "id=$1"
+	args := []interface{}{id}
+	if tenantID != "" {
+		where += " AND tenant_id=$2"
+		args = append(args, tenantID)
+	}
+	if scoped {
+		where += " AND COALESCE(workspace_id,'')=COALESCE($3,'')"
+		args = append(args, workspaceID)
+	}
 	err := db.QueryRowContext(ctx, `
-		SELECT id, tenant_id, org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at
-		FROM content_items WHERE id=$1`, id).
-		Scan(&c.ID, &c.TenantID, &c.OrgID, &c.Kind, &c.Title, &c.Slug, &c.Summary, &c.Body, &c.Status, &c.AuthorID, &tags, &pub, &c.UpdatedBy, &c.CreatedAt, &c.UpdatedAt)
+		SELECT id, tenant_id, COALESCE(workspace_id,''), org_id, kind, title, slug, summary, body, status, author_id, tags, published_at, updated_by, created_at, updated_at
+		FROM content_items WHERE `+where, args...).
+		Scan(&c.ID, &c.TenantID, &c.WorkspaceID, &c.OrgID, &c.Kind, &c.Title, &c.Slug, &c.Summary, &c.Body, &c.Status, &c.AuthorID, &tags, &pub, &c.UpdatedBy, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -608,3 +687,98 @@ func DeleteContentItem(ctx context.Context, id string) error {
 	return err
 }
 
+func DeleteContentItemScoped(ctx context.Context, tenantID, workspaceID, id string) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM content_reviews WHERE tenant_id=$1 AND COALESCE(workspace_id,'')=COALESCE($2,'') AND content_id=$3`, tenantID, workspaceID, id); err != nil {
+		return err
+	}
+	result, err := db.ExecContext(ctx, `DELETE FROM content_items WHERE id=$1 AND tenant_id=$2 AND COALESCE(workspace_id,'')=COALESCE($3,'')`, id, tenantID, workspaceID)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func GetContentReview(ctx context.Context, tenantID, workspaceID, contentID string) (*model.ContentReview, error) {
+	var review model.ContentReview
+	var reviewedAt sql.NullTime
+	err := db.QueryRowContext(ctx, `
+		SELECT id, tenant_id, COALESCE(workspace_id,''), content_id, status, COALESCE(note,''), submitted_by,
+			COALESCE(reviewer_id,''), submitted_at, reviewed_at, created_at, updated_at
+		FROM content_reviews
+		WHERE tenant_id=$1 AND COALESCE(workspace_id,'')=COALESCE($2,'') AND content_id=$3`, tenantID, workspaceID, contentID).
+		Scan(&review.ID, &review.TenantID, &review.WorkspaceID, &review.ContentID, &review.Status, &review.Note,
+			&review.SubmittedBy, &review.ReviewerID, &review.SubmittedAt, &reviewedAt, &review.CreatedAt, &review.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if reviewedAt.Valid {
+		review.ReviewedAt = &reviewedAt.Time
+	}
+	return &review, nil
+}
+
+func ListContentReviews(ctx context.Context, tenantID, workspaceID, status string) ([]model.ContentReview, error) {
+	where := "tenant_id=$1 AND COALESCE(workspace_id,'')=COALESCE($2,'')"
+	args := []interface{}{tenantID, workspaceID}
+	if status != "" {
+		where += " AND status=$3"
+		args = append(args, status)
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, tenant_id, COALESCE(workspace_id,''), content_id, status, COALESCE(note,''), submitted_by,
+			COALESCE(reviewer_id,''), submitted_at, reviewed_at, created_at, updated_at
+		FROM content_reviews WHERE `+where+` ORDER BY updated_at DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ContentReview
+	for rows.Next() {
+		var review model.ContentReview
+		var reviewedAt sql.NullTime
+		if err := rows.Scan(&review.ID, &review.TenantID, &review.WorkspaceID, &review.ContentID, &review.Status, &review.Note,
+			&review.SubmittedBy, &review.ReviewerID, &review.SubmittedAt, &reviewedAt, &review.CreatedAt, &review.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if reviewedAt.Valid {
+			review.ReviewedAt = &reviewedAt.Time
+		}
+		out = append(out, review)
+	}
+	return out, rows.Err()
+}
+
+func SaveContentReview(ctx context.Context, review *model.ContentReview) error {
+	if review.ID == "" {
+		review.ID = newID()
+	}
+	if review.CreatedAt.IsZero() {
+		review.CreatedAt = now()
+	}
+	if review.SubmittedAt.IsZero() {
+		review.SubmittedAt = review.CreatedAt
+	}
+	review.UpdatedAt = now()
+	result, err := db.ExecContext(ctx, `
+		UPDATE content_reviews SET status=$1, note=$2, submitted_by=$3, reviewer_id=$4, submitted_at=$5,
+			reviewed_at=$6, updated_at=$7
+		WHERE tenant_id=$8 AND COALESCE(workspace_id,'')=COALESCE($9,'') AND content_id=$10`,
+		review.Status, review.Note, review.SubmittedBy, review.ReviewerID, review.SubmittedAt, review.ReviewedAt,
+		review.UpdatedAt, review.TenantID, review.WorkspaceID, review.ContentID)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO content_reviews (id, tenant_id, workspace_id, content_id, status, note, submitted_by, reviewer_id,
+			submitted_at, reviewed_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		review.ID, review.TenantID, review.WorkspaceID, review.ContentID, review.Status, review.Note, review.SubmittedBy,
+		review.ReviewerID, review.SubmittedAt, review.ReviewedAt, review.CreatedAt, review.UpdatedAt)
+	return err
+}

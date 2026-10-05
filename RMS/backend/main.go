@@ -116,7 +116,7 @@ func main() {
 			"http://host.docker.internal:5176",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "Accept", "accept", "origin", "Cache-Control", "X-Requested-With"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "Accept", "accept", "origin", "Cache-Control", "X-Requested-With", "X-Workspace-ID", "X-Tenant-ID"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           12 * 3600,

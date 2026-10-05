@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import GrantManagement from './GrantManagement';
 
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
 
@@ -162,6 +163,8 @@ export default function FundingTab({ fundingSources = [], projectId, onRefresh }
           </div>
         )}
       </div>
+
+      <GrantManagement projectId={projectId} apiBase={API_BASE} />
     </div>
   );
 }

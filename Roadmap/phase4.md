@@ -68,6 +68,8 @@ GET    /api/projects/:id/reports       ← project reports list
 POST   /api/projects/:id/reports       ← generate project report
 GET    /api/projects/:id/relationships ← cross-module object links
 GET    /api/projects/:id/progress-summary ← automated workspace progress summary
+GET    /api/projects/:id/critical-path ← dependency-aware critical path analysis
+GET    /api/projects/:id/wbs           ← hierarchical work breakdown projection
 ```
 
 **Activities, Components, Deliverables, Milestones**
@@ -94,9 +96,14 @@ PUT    /api/tasks/:id/status           ← update task status
 ```
 POST   /api/members                    ← add team member
 DELETE /api/members/:id                ← remove team member
+GET    /api/projects/:id/resources    ← resource allocations
+POST   /api/resource-allocations       ← assign project capacity
+DELETE /api/resource-allocations/:id   ← remove project capacity
 ```
 
 **Budget & Finance**
+
+Grant management is exposed through workspace-scoped `GET /api/projects/:id/grants`, `POST /api/grants`, `PUT /api/grants/:id`, and `DELETE /api/grants/:id` routes. Grants are persisted separately from funding sources and support award identifiers, donor links, reporting deadlines, and lifecycle status.
 ```
 POST   /api/budgets                    ← create budget line
 PUT    /api/budgets/:id                ← update budget line
@@ -201,24 +208,34 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 
 ## What is Missing ❌
 
+Status correction (18 September 2026): donor reporting templates, grant management, server-side Gantt calculation, and field-activity mapping are implemented below. No listed Phase 4 implementation item remains open. Source-backed Docker database certification has passed, rebuilt PMS API/UI images are deployed and healthy, and the selected/foreign workspace authorization matrix is certified.
+
+Implementation update: grant records are now separate from funding sources and include award identifiers, donor ownership, purpose, amount, lifecycle dates, reporting deadlines, status, workspace-scoped CRUD, and a project funding UI panel.
+The Gantt endpoint now calculates workspace-scoped bounds and inclusive durations for tasks, activities, milestones, and deliverables; the existing chart consumes the server projection and retains a client fallback.
+Field activity mapping now persists workspace-owned coordinate observations linked to project activities, with worker/status/timestamp metadata, protected CRUD, and an authenticated project overview map/list.
+
 ### Programme & Portfolio Features
-- **Gantt chart view** — no server-side timeline calculation; frontend renders from milestone/activity dates
+- **Gantt chart view** — implemented with workspace-scoped server-side bounds and inclusive duration calculation; frontend consumes the server projection
 - **Portfolio dashboard** — implemented with workspace-scoped aggregate KPIs, filters, and rollups
-- **Grant Management** — grants not tracked separately from funding sources
+- **Grant Management** — implemented as workspace-scoped first-class grant records distinct from funding sources
 
 ### Planning Tools
-- **Work Breakdown Structure (WBS)** — no hierarchical WBS tree beyond components/activities
-- **Critical Path Analysis** — not implemented
-- **Resource planner / resource allocation** — not implemented
+
+The server-calculated timeline is available at workspace-scoped `GET /api/projects/:id/gantt`; it returns bounds and inclusive durations for tasks, activities, milestones, and deliverables.
+- **Work Breakdown Structure (WBS)** — implemented as a workspace-scoped hierarchical task projection with missing-parent and cycle protection
+- **Critical Path Analysis** — implemented with dependency-aware server-side longest-path calculation, cycle detection, and missing-link reporting
+- **Resource planner / resource allocation** — implemented with dated capacity allocations and workspace-safe CRUD
 
 ### Reporting & AI
 - **Project AI Assistant** — implemented for governed risk, schedule, milestone, and budget forecasting advisory
 - **Automated progress summaries** — implemented from workspace-scoped project, task, milestone, risk, and budget records
-- **Donor reporting templates** — not implemented
+- **Donor reporting templates** — implemented with workspace-safe progress, financial, and results templates
 
 ### GIS Integration
+
+Field mapping is available through workspace-scoped `GET /api/projects/:id/field-activities`, `POST /api/field-activities`, and `DELETE /api/field-activities/:id`; the project overview renders the persisted points on its field activity map.
 - **Map project locations** — implemented through workspace-scoped StatSpatial project-location persistence, PMS coordinate editing, and an OSM map preview
-- **Field activity tracking on map** — not implemented
+- **Field activity tracking on map** — implemented with workspace-owned coordinate observations, activity linking, and map/list UI
 
 ---
 
@@ -255,7 +272,14 @@ pms.workflow_rules, pms.permissions, pms.audit_logs, pms.calendar_events, pms.re
 - [x] Donor management operational
 - [x] AI project health assistant operational
 - [x] Automated progress summaries operational
+- [x] Critical path analysis operational
+- [x] Resource planner and allocation operational
+- [x] Hierarchical WBS operational
 - [x] GIS project location mapping operational
+- [x] Donor reporting templates operational
+- [x] Grant management operational
+- [x] Server-calculated Gantt timeline operational
+- [x] Field activity mapping operational
 
 ---
 
@@ -276,6 +300,18 @@ The workspace-scoped `GET /api/portfolio-dashboard` endpoint now aggregates proj
 
 The workspace-scoped `GET /api/projects/:id/progress-summary` endpoint now derives delivery progress, task and milestone completion, next milestone, open risks, budget utilization, and follow-up recommendations from authoritative PMS records. The project overview renders this summary with provenance and a confirmation notice; live certification returned `200` in the selected workspace, `404` for the foreign workspace, and `401` without authentication.
 
+### Phase 4 Critical Path Checkpoint - 15 September 2026
+
+The workspace-scoped `GET /api/projects/:id/critical-path` endpoint now calculates the longest dependency chain using inclusive task date durations, accepts task IDs or WBS references, reports unresolved dependencies, and rejects dependency cycles with `422`. The project overview renders the calculated path and analysis method; live certification returned `200` with a real path, `404` for the foreign workspace, and `401` without authentication.
+
+### Phase 4 Resource Planner Checkpoint - 15 September 2026
+
+PMS now stores project-owned resource allocations with resource name, role, capacity percentage, dates, and notes. Authenticated workspace users can list, create, and delete allocations from the project overview; live certification verified create/read/delete, invalid `150%` capacity rejection with `400`, foreign-workspace `404` denial, and unauthenticated `401` enforcement.
+
+### Phase 4 WBS Checkpoint - 15 September 2026
+
+The workspace-scoped `GET /api/projects/:id/wbs` endpoint now projects task `parent_id` and WBS codes into a nested hierarchy, reports missing parent references, and rejects parent cycles with `422`. The project overview renders the hierarchy with assignees and progress; live certification returned `200` in the selected workspace, `404` for the foreign workspace, and `401` without authentication.
+
 ### Phase 4 GIS Checkpoint - 15 September 2026
 
 PMS now integrates with StatSpatial through workspace-scoped `GET` and `POST /api/spatial/project-locations` routes. The project overview provides coordinate and administrative-unit editing plus an OSM preview; live certification saved and read back project `proj-66626` in workspace `ws-1789477440495211553` with `201` and `200` responses, rejected latitude `100` with `400`, returned no rows from the other workspace, and rejected unauthenticated access with `401`. The governed project assistant also supports budget forecasting; live certification returned the approved `$1,000` baseline for a zero-spend project, with `0%` variance and `0%` utilization, plus `400`, `404`, and `401` fail-closed checks. The broader GIS roadmap remains open for geocoding, GPS streaming, PostGIS analysis, vector tiles, and field-activity mapping.
@@ -291,3 +327,19 @@ Enterprise Project Management Platform complete. Every project, programme, and p
 ### Phase 4 Scope Checkpoint - 15 September 2026
 
 LogFrame, Theory of Change, and Donor workflows are now operational for authenticated workspace members. PMS persists ownership columns and compatibility-migrates legacy `created_at` and ToC column variants; API and middleware checks prevent foreign-workspace item and donor mutations. The ToC designer supports editing and persistence, and the Donor UI supports create, list, edit, and remove. Live checks passed for nested LogFrame readback, ToC save, workspace-filtered donor listing, unauthenticated `401` enforcement, and foreign-workspace `404` denial.
+
+### Phase 4 Donor Reporting Checkpoint - 15 September 2026
+
+PMS now exposes workspace-protected donor report templates for progress, financial, and results reporting. A selected project can generate and persist a structured donor report using live delivery, milestone, budget, funding, risk, issue, survey, and optional donor records, with reporting-period validation and a human-review governance notice. Live certification returned `200` for template discovery, `201` for report creation and readback, `400` for an invalid period, `404` for a foreign-workspace project, and `401` without authentication.
+
+### Phase 4 Grant Management Checkpoint - 18 September 2026
+
+PMS now persists grants independently from funding sources, with workspace-safe project listing, create, update, and delete operations. Grant records support award number, donor link, purpose, amount and currency, start/end dates, reporting due date, and lifecycle status; the funding tab exposes the workflow to authenticated project users. Deployed Docker certification passed selected-workspace create/list/delete (`201/200`), foreign-workspace denial (`404`), reversed-date validation (`400`), and unauthenticated rejection (`401`). Rebuilt Compose API/UI images are deployed and healthy.
+
+### Phase 4 Gantt Checkpoint - 18 September 2026
+
+PMS now exposes workspace-scoped `GET /api/projects/:id/gantt`, calculating authoritative project bounds and inclusive calendar-day durations across dated tasks, activities, milestones, and deliverables. The existing task/overview chart consumes the server projection and falls back to its prior client calculation when the endpoint is unavailable. Deployed Docker certification returned `200` with authoritative bounds and items in the selected workspace, `404` for a foreign workspace, and `401` without authentication.
+
+### Phase 4 Field Activity Mapping Checkpoint - 18 September 2026
+
+PMS now persists workspace-owned field activity locations linked to project activities, with coordinate validation, worker/status/timestamp metadata, protected list/create/delete routes, and an authenticated overview map/list. Deployed Docker certification passed selected-workspace create/list/delete (`201/200`), invalid-coordinate rejection (`400`), and unauthenticated rejection (`401`); the shared selected/foreign project gate returned `404` for a foreign workspace.

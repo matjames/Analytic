@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-export default function SurveysTab({ surveys, researchId, onRefresh }) {
+export default function SurveysTab({ apiBase, surveys, researchId, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', status: 'Template', targetSample: 1000 });
+  const [links, setLinks] = useState([]);
+  const [linkForm, setLinkForm] = useState({ submissionId: '', formId: '' });
+  const [linkError, setLinkError] = useState('');
+
+  const loadLinks = () => {
+    if (!researchId) return;
+    fetch(`${apiBase}/api/research/${researchId}/statcollect-links`)
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Could not load StatCollect links.')))
+      .then(setLinks)
+      .catch(error => setLinkError(error.message));
+  };
+
+  useEffect(loadLinks, [apiBase, researchId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch(`${API_URL}/api/surveys`, {
+    await fetch(`${apiBase}/api/surveys`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...formData, researchId })
@@ -14,6 +27,28 @@ export default function SurveysTab({ surveys, researchId, onRefresh }) {
     setShowForm(false);
     setFormData({ name: '', status: 'Template', targetSample: 1000 });
     onRefresh();
+  };
+
+  const handleLink = async (event) => {
+    event.preventDefault();
+    setLinkError('');
+    const response = await fetch(`${apiBase}/api/research/${researchId}/statcollect-links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(linkForm),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      setLinkError(body.error || 'Could not link the StatCollect submission.');
+      return;
+    }
+    setLinks(current => [body, ...current.filter(link => link.id !== body.id)]);
+    setLinkForm({ submissionId: '', formId: '' });
+  };
+
+  const removeLink = async (linkId) => {
+    const response = await fetch(`${apiBase}/api/research/${researchId}/statcollect-links/${linkId}`, { method: 'DELETE' });
+    if (response.ok) setLinks(current => current.filter(link => link.id !== linkId));
   };
 
   return (
@@ -66,6 +101,23 @@ export default function SurveysTab({ surveys, researchId, onRefresh }) {
             </div>
           ))
         )}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '24px', marginTop: '24px' }}>
+        <h4>StatCollect evidence links</h4>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Attach a collected submission to this workspace-owned study without copying raw response data into RMS. StatCollect events with explicit research and workspace context are linked automatically.</p>
+        <form onSubmit={handleLink} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', margin: '16px 0' }}>
+          <input style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--border-light)', flex: 1, minWidth: '220px' }} placeholder="Submission instance ID" required value={linkForm.submissionId} onChange={e => setLinkForm({ ...linkForm, submissionId: e.target.value })} />
+          <input style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--border-light)', flex: 1, minWidth: '180px' }} placeholder="Form ID (optional)" value={linkForm.formId} onChange={e => setLinkForm({ ...linkForm, formId: e.target.value })} />
+          <button type="submit" className="btn btn-primary">Link submission</button>
+        </form>
+        {linkError && <p style={{ color: '#b91c1c' }}>{linkError}</p>}
+        {links.length === 0 ? <p style={{ color: 'var(--text-secondary)' }}>No StatCollect submissions linked yet.</p> : links.map(link => (
+          <div key={link.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', borderTop: '1px solid var(--border-light)', padding: '12px 0' }}>
+            <div><strong>{link.submissionId}</strong><div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{link.formId || 'form not supplied'} | {link.status} | {link.sourceEventType || 'user-linked'}</div></div>
+            <button type="button" className="btn btn-secondary" onClick={() => removeLink(link.id)}>Unlink</button>
+          </div>
+        ))}
       </div>
     </div>
   );

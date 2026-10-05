@@ -2,14 +2,51 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"statgate/internal/abac"
 	"statgate/internal/lakehouse"
 	"statgate/internal/semantic"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+// pgCoreTestDB opens a real PostgreSQL connection for server tests and skips
+// when the database is not reachable.
+func pgCoreTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	dsn := os.Getenv("STATGATE_CORE_TEST_DSN")
+	if dsn == "" {
+		host := os.Getenv("STATGATE_TEST_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		dsn = "postgres://pgtest:pgtest_secret@" + host + ":5432/statgate_ml_staging?sslmode=disable"
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Skipf("core postgres unavailable (%v); skipping durable server test", err)
+	}
+	if err := db.Ping(); err != nil {
+		t.Skipf("core postgres ping failed (%v); skipping durable server test", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// mustLakehouse builds a durable engine against the test database.
+func mustLakehouse(t *testing.T, db *sql.DB) *lakehouse.StorageEngine {
+	t.Helper()
+	se, err := lakehouse.NewStorageEngine(db)
+	if err != nil {
+		t.Fatalf("lakehouse NewStorageEngine failed: %v", err)
+	}
+	return se
+}
 
 // asInternalCall marks the request exactly as requireInternalKey does after a
 // valid service-to-service key is presented. Unit tests for the ABAC layer
@@ -31,6 +68,21 @@ func TestIsSafeIdentifier(t *testing.T) {
 	for _, value := range invalid {
 		if isSafeIdentifier(value) {
 			t.Errorf("expected %q to be invalid", value)
+		}
+	}
+}
+
+func TestIsSafeWorkspaceIdentifier(t *testing.T) {
+	valid := []string{"ws-handoff-a", "workspace.2026_10", "A"}
+	invalid := []string{"", "workspace/name", "workspace name", "workspace\"name"}
+	for _, value := range valid {
+		if !isSafeWorkspaceIdentifier(value) {
+			t.Errorf("expected workspace %q to be valid", value)
+		}
+	}
+	for _, value := range invalid {
+		if isSafeWorkspaceIdentifier(value) {
+			t.Errorf("expected workspace %q to be invalid", value)
 		}
 	}
 }
@@ -103,7 +155,7 @@ func TestHandleIndicatorsUsesTenantScopedRegistryData(t *testing.T) {
 	server := &Server{
 		abacEngine:    abac.NewEngine(),
 		semRegistry:   semantic.NewRegistry(),
-		storageEngine: lakehouse.NewStorageEngine(),
+		storageEngine: mustLakehouse(t, pgCoreTestDB(t)),
 	}
 
 	req := asInternalCall(httptest.NewRequest(http.MethodGet, "/api/v1/indicators?tenant_id=tenant-alpha", nil))

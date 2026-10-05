@@ -11,9 +11,13 @@ export default function IRBCommitteesTab({ apiBase }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', institution: '', chairPerson: '', email: '', phone: '', status: 'Active', approvalValidity: 12 });
   const [saving, setSaving] = useState(false);
+  const [selectedCommittee, setSelectedCommittee] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [memberForm, setMemberForm] = useState({ userId: '', name: '', email: '', role: 'Reviewer' });
+  const [memberSaving, setMemberSaving] = useState(false);
 
   const load = () => {
-    fetch(`${apiBase}/api/ethics/committees`)
+    fetch(`${apiBase}/api/ethics-committees`)
       .then(r => r.json())
       .then(d => setCommittees(Array.isArray(d) ? d : []))
       .catch(() => setCommittees([]));
@@ -21,16 +25,65 @@ export default function IRBCommitteesTab({ apiBase }) {
 
   useEffect(() => { load(); }, []);
 
+  const loadMembers = (committeeId) => {
+    fetch(`${apiBase}/api/ethics-committees/${committeeId}/members`)
+      .then(r => r.json())
+      .then(d => setMembers(Array.isArray(d) ? d : []))
+      .catch(() => setMembers([]));
+  };
+
+  const toggleMembers = (committeeId) => {
+    if (selectedCommittee === committeeId) {
+      setSelectedCommittee(null);
+      setMembers([]);
+      return;
+    }
+    setSelectedCommittee(committeeId);
+    loadMembers(committeeId);
+  };
+
+  const inviteMember = (e, committeeId) => {
+    e.preventDefault();
+    setMemberSaving(true);
+    fetch(`${apiBase}/api/ethics-committees/${committeeId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberForm),
+    })
+      .then(r => { if (!r.ok) throw new Error('Could not invite member'); setMemberForm({ userId: '', name: '', email: '', role: 'Reviewer' }); loadMembers(committeeId); })
+      .catch(() => {})
+      .finally(() => setMemberSaving(false));
+  };
+
+  const updateMember = (member, changes) => {
+    fetch(`${apiBase}/api/ethics-committee-members/${member.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...member, ...changes }),
+    }).then(r => { if (r.ok) loadMembers(member.committeeId); });
+  };
+
+  const removeMember = (member) => {
+    if (!window.confirm(`Remove ${member.name} from this committee?`)) return;
+    fetch(`${apiBase}/api/ethics-committee-members/${member.id}`, { method: 'DELETE' }).then(r => { if (r.ok) loadMembers(member.committeeId); });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     setSaving(true);
-    fetch(`${apiBase}/api/ethics/committees`, {
+    fetch(`${apiBase}/api/ethics-committees`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, approvalValidity: Number(form.approvalValidity) }),
     })
-      .then(() => { setShowForm(false); setForm({ name: '', code: '', institution: '', chairPerson: '', email: '', phone: '', status: 'Active', approvalValidity: 12 }); load(); })
+      .then(response => { if (!response.ok) throw new Error('Could not save committee'); setShowForm(false); setForm({ name: '', code: '', institution: '', chairPerson: '', email: '', phone: '', status: 'Active', approvalValidity: 12 }); load(); })
+      .catch(() => {})
       .finally(() => setSaving(false));
+  };
+
+  const remove = (id) => {
+    if (!window.confirm('Remove this ethics committee?')) return;
+    fetch(`${apiBase}/api/ethics-committees/${id}`, { method: 'DELETE' }).then(response => { if (response.ok) load(); });
   };
 
   return (
@@ -93,7 +146,30 @@ export default function IRBCommitteesTab({ apiBase }) {
               <span>🏫 {c.institution}</span>
               <span>👤 {c.chairPerson || 'Chair not assigned'}</span>
               <span>📧 <a href={`mailto:${c.email}`} style={{ color: '#2563eb' }}>{c.email || 'N/A'}</a></span>
+              <span>Approval validity: {c.approvalValidity || 12} months</span>
             </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}>
+              <button className="btn btn-secondary" style={{ fontSize: '0.75rem' }} onClick={() => toggleMembers(c.id)}>{selectedCommittee === c.id ? 'Close members' : 'Manage members'}</button>
+              <button className="btn btn-secondary" style={{ fontSize: '0.75rem' }} onClick={() => remove(c.id)}>Remove committee</button>
+            </div>
+            {selectedCommittee === c.id && <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+              <strong style={{ fontSize: '0.85rem' }}>Committee members</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', margin: '0.75rem 0' }}>
+                {members.length ? members.map(member => <div key={member.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.35rem', alignItems: 'center', fontSize: '0.78rem' }}>
+                  <span><strong>{member.name}</strong><br />{member.email} | {member.status}</span>
+                  <select value={member.role} onChange={e => updateMember(member, { role: e.target.value })}><option>Chair</option><option>Reviewer</option><option>Secretary</option><option>Observer</option></select>
+                  <select value={member.status} onChange={e => updateMember(member, { status: e.target.value })}><option>Pending</option><option>Approved</option><option>Suspended</option><option>Rejected</option><option>Revoked</option></select>
+                  <button className="btn btn-secondary" onClick={() => removeMember(member)}>Remove</button>
+                </div>) : <small>No members invited yet.</small>}
+              </div>
+              <form onSubmit={e => inviteMember(e, c.id)} style={{ display: 'grid', gap: '0.4rem' }}>
+                <input placeholder="User ID (optional)" value={memberForm.userId} onChange={e => setMemberForm(p => ({ ...p, userId: e.target.value }))} />
+                <input placeholder="Member name" required value={memberForm.name} onChange={e => setMemberForm(p => ({ ...p, name: e.target.value }))} />
+                <input type="email" placeholder="Member email" required value={memberForm.email} onChange={e => setMemberForm(p => ({ ...p, email: e.target.value }))} />
+                <select value={memberForm.role} onChange={e => setMemberForm(p => ({ ...p, role: e.target.value }))}><option>Reviewer</option><option>Chair</option><option>Secretary</option><option>Observer</option></select>
+                <button type="submit" className="btn btn-primary" disabled={memberSaving}>{memberSaving ? 'Inviting...' : 'Invite member'}</button>
+              </form>
+            </div>}
           </div>
         )) : (
           <div style={{ gridColumn: 'span 3', padding: '3rem', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', color: '#94a3b8' }}>

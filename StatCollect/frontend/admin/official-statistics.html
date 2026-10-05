@@ -1,0 +1,1985 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Official Statistics, Surveys & Census Management Platform — StatGate Phase 6</title>
+  <meta name="description" content="GSBPM-aligned National Statistical Production System: in-platform survey designer, master sampling frame, enumeration areas, workforce assignments, supervisor field console, tabulation engine, SDMX metadata, census operations, PES undercount, and SDG monitoring." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #0b2545;
+      --primary-accent: #134074;
+      --statgate-blue: #165c92;
+      --statgate-light: #1e7fc4;
+      --accent: #2563eb;
+      --accent-glow: rgba(37, 99, 235, 0.25);
+      --bg: #09121d;
+      --bg-card: rgba(18, 30, 49, 0.85);
+      --bg-card-hover: rgba(26, 44, 71, 0.95);
+      --border: rgba(148, 163, 184, 0.15);
+      --border-accent: rgba(30, 127, 196, 0.4);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --amber-glow: rgba(245, 158, 11, 0.2);
+      --red: #ef4444;
+      --purple: #a855f7;
+      --cyan: #06b6d4;
+      --font: 'Inter', -apple-system, sans-serif;
+      --font-title: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+      --glass: backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(22, 92, 146, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(37, 99, 235, 0.12) 0%, transparent 40%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: rgba(11, 37, 69, 0.8);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      height: 68px;
+      padding: 0 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--statgate-blue) 0%, var(--accent) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+    .brand h1 {
+      font-family: var(--font-title);
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #fff;
+    }
+    .brand-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+    .nav-link:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    /* ── Subheader & Navigation Tabs ── */
+    .nav-bar {
+      background: rgba(15, 23, 42, 0.6);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      padding: 14px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      color: #fff;
+      border-bottom-color: rgba(37, 99, 235, 0.5);
+    }
+    .tab-btn.active {
+      color: #60a5fa;
+      border-bottom-color: #3b82f6;
+    }
+
+    /* ── Main Workspace ── */
+    .workspace {
+      flex: 1;
+      padding: 28px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .view-section {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .view-section.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Section Header ── */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .section-title {
+      font-family: var(--font-title);
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    /* ── KPI Grid ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: var(--shadow);
+      transition: all 0.2s;
+    }
+    .kpi-card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+    }
+    .kpi-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-val {
+      font-family: var(--font-title);
+      font-size: 30px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Content Grid Layouts ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .grid-sidebar {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 24px;
+    }
+
+    /* ── Cards & Tables ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .card-title {
+      font-family: var(--font-title);
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+    table.data-table th {
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.7);
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+    table.data-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      color: var(--text);
+    }
+    table.data-table tr:hover td {
+      background: rgba(30, 58, 138, 0.15);
+    }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+    .badge-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    /* ── Buttons & Inputs ── */
+    .btn {
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--statgate-blue) 0%, var(--accent) 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px var(--accent-glow);
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--border-accent);
+      color: #fff;
+    }
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+
+    .form-control {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      color: #fff;
+      font-size: 13px;
+      font-family: var(--font);
+      outline: none;
+      transition: border 0.2s;
+    }
+    .form-control:focus {
+      border-color: var(--accent);
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    /* ── Progress Bar ── */
+    .progress-bar-bg {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 99px;
+      height: 8px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+      transition: width 0.3s;
+    }
+
+    /* ── Code Display ── */
+    pre.code-block {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      overflow-x: auto;
+      max-height: 400px;
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .modal-dialog {
+      background: #0f172a;
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 650px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-body {
+      padding: 24px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: rgba(11, 19, 35, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-icon">🏛️</div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h1>StatGate Official Statistics Platform</h1>
+          <span class="brand-badge">GSBPM Compliant</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-nav">
+      <label class="nav-link" for="admin_key_input">Admin/API key</label>
+      <input id="admin_key_input" type="password" autocomplete="current-password" placeholder="Enter StatCollect key" style="max-width:190px" />
+      <button class="btn btn-outline btn-sm" onclick="saveAdminKey()">Use key</button>
+      <span class="badge badge-blue" id="active_scope_label">Workspace scope</span>
+      <a href="index.html" class="nav-link">📥 Submissions</a>
+      <a href="templates.html" class="nav-link">📝 Form Builder</a>
+      <a href="survey-dashboard.html" class="nav-link">📊 Survey Intelligence</a>
+      <a href="operations.html" class="nav-link">⚙️ Operations</a>
+      <a href="http://localhost:5000" target="_blank" class="btn btn-outline btn-sm">Analytics Hub ↗</a>
+    </div>
+  </header>
+
+  <!-- Secondary Tab Navigation -->
+  <nav class="nav-bar">
+    <button class="tab-btn active" id="tab_projects" onclick="switchTab('projects')">📁 Survey Projects</button>
+    <button class="tab-btn" id="tab_designer" onclick="switchTab('designer')">📐 Form Designer &amp; Question Bank</button>
+    <button class="tab-btn" id="tab_sampling" onclick="switchTab('sampling')">🎯 Sampling Designer &amp; EAs</button>
+    <button class="tab-btn" id="tab_workforce" onclick="switchTab('workforce')">👥 Workforce &amp; Assignments</button>
+    <button class="tab-btn" id="tab_supervisor" onclick="switchTab('supervisor')">🛡️ Supervisor Field Dashboard</button>
+    <button class="tab-btn" id="tab_tabulation" onclick="switchTab('tabulation')">📈 Official Tabulation</button>
+    <button class="tab-btn" id="tab_processing" onclick="switchTab('processing')">Processing &amp; Schedules</button>
+    <button class="tab-btn" id="tab_census" onclick="switchTab('census')">👥 Census &amp; PES Evaluation</button>
+    <button class="tab-btn" id="tab_sdg" onclick="switchTab('sdg')">🌐 UN SDG Framework</button>
+    <button class="tab-btn" id="tab_sdmx" onclick="switchTab('sdmx')">📋 SDMX 2.1 Metadata</button>
+    <button class="tab-btn" id="tab_dissemination" onclick="switchTab('dissemination')">🌍 Open Data &amp; Dissemination</button>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="workspace">
+
+    <!-- ── 1. SURVEY PROJECTS & GSBPM LIFECYCLE ── -->
+    <section class="view-section active" id="view_projects">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📁 Official Survey Projects &amp; GSBPM Lifecycle</h2>
+          <p class="section-desc">Manage institutional statistical production cycles aligned with the Generic Statistical Business Process Model.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openNewProjectModal()">+ New Survey Project</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Active Surveys</span>
+          <span class="kpi-val" id="kpi_active_surveys">4</span>
+          <span class="kpi-sub">Across 135 national districts</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Current Fieldwork Phase</span>
+          <span class="kpi-val" style="color:#60a5fa">Collect (Phase 4)</span>
+          <span class="kpi-sub">CAPI mobile enumeration</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Target Sample Units</span>
+          <span class="kpi-val" id="kpi_target_sample">27,600</span>
+          <span class="kpi-sub">Household &amp; facility clusters</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Quality Baseline</span>
+          <span class="kpi-val" style="color:#34d399">98.2%</span>
+          <span class="kpi-sub">Validated &amp; verified</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">National Survey Portfolio</h3>
+          <span class="badge badge-blue">UBOS National Accounts</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Survey Code &amp; Title</th>
+                <th>Survey Type</th>
+                <th>GSBPM Phase</th>
+                <th>Sample Target</th>
+                <th>Fieldwork Dates</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="projects_table_body">
+              <tr>
+                <td><strong>Uganda National Household Survey 2026 (UNHS)</strong><br><span style="color:var(--text-dim);font-size:11px">sp_unhs_2026</span></td>
+                <td><span class="badge badge-purple">Household</span></td>
+                <td><span class="badge badge-blue">4. Collect</span></td>
+                <td>15,600</td>
+                <td>Jan 2026 – Nov 2026</td>
+                <td><span class="badge badge-green">Fieldwork Active</span></td>
+                <td>
+                  <button class="btn btn-outline btn-sm" onclick="advanceGSBPM('sp_unhs_2026')">Advance Phase</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Demographic and Health Survey 2026 (DHS)</strong><br><span style="color:var(--text-dim);font-size:11px">sp_dhs_2026</span></td>
+                <td><span class="badge badge-purple">Facility / Health</span></td>
+                <td><span class="badge badge-amber">2. Design</span></td>
+                <td>12,000</td>
+                <td>Jun 2026 – Feb 2027</td>
+                <td><span class="badge badge-blue">Sampling Design</span></td>
+                <td>
+                  <button class="btn btn-outline btn-sm" onclick="advanceGSBPM('sp_dhs_2026')">Advance Phase</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 2. IN-PLATFORM FORM DESIGNER & QUESTION BANK ── -->
+    <section class="view-section" id="view_designer">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📐 In-Platform Questionnaire Designer &amp; Question Bank</h2>
+          <p class="section-desc">Compose GSBPM-compliant statistical forms using validated questions, custom logic, and instant OpenRosa XForm XML compilation.</p>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" onclick="loadSampleXForm()">Preview XForm XML</button>
+          <button class="btn btn-primary" onclick="openNewQuestionModal()">+ Add Question to Bank</button>
+        </div>
+      </div>
+
+      <div class="grid-sidebar">
+        <!-- Question Bank Browser -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📚 Question Bank</h3>
+          </div>
+          <div style="margin-bottom:12px">
+            <label class="form-label">Domain Filter</label>
+            <select class="form-control" id="qb_domain_filter" onchange="filterQuestionBank()">
+              <option value="all">All Domains</option>
+              <option value="demographics">Demographics &amp; Census</option>
+              <option value="health">Health &amp; Nutrition</option>
+              <option value="education">Education &amp; Literacy</option>
+              <option value="labor_economy">Labor &amp; Economic Activity</option>
+              <option value="water_sanitation">Water, Sanitation &amp; Hygiene</option>
+              <option value="housing">Housing &amp; Energy Access</option>
+            </select>
+          </div>
+          <div style="margin-bottom:14px">
+            <input type="text" class="form-control" id="qb_search_input" placeholder="Search standard questions..." onkeyup="filterQuestionBank()" />
+          </div>
+          <div id="question_bank_list" style="display:flex;flex-direction:column;gap:10px;max-height:550px;overflow-y:auto">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Interactive Form Canvas & XForm Preview -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📝 Questionnaire Canvas</h3>
+            <span class="badge badge-green">Ready for collect-master (ODK)</span>
+          </div>
+
+          <div style="margin-bottom:18px;display:flex;gap:12px">
+            <div style="flex:1">
+              <label class="form-label">Form Title</label>
+              <input type="text" class="form-control" id="designer_form_title" value="Uganda National Household Survey 2026 - Welfare Module" />
+            </div>
+            <div style="width:160px">
+              <label class="form-label">Version</label>
+              <input type="text" class="form-control" id="designer_form_version" value="2026.1" />
+            </div>
+          </div>
+
+          <div style="margin-bottom:20px;border:1px dashed var(--border-accent);border-radius:var(--radius-sm);padding:16px;background:rgba(15,23,42,0.4)">
+            <h4 style="font-size:14px;color:#60a5fa;margin-bottom:10px">Selected Survey Sections &amp; Questions</h4>
+            <div id="designer_sections_container" style="display:flex;flex-direction:column;gap:10px">
+              <!-- Dynamically populated or filled with defaults -->
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+            <button class="btn btn-outline" onclick="addCustomSection()">+ Add Form Section</button>
+            <button class="btn btn-primary" onclick="compileAndDownloadXForm()">🚀 Compile to OpenRosa XForm XML</button>
+          </div>
+
+          <div style="margin-top:20px" id="xform_preview_card">
+            <label class="form-label">Compiled OpenRosa XForm XML Output</label>
+            <pre class="code-block" id="xform_xml_preview">&lt;!-- Click Compile to generate verified XML for ODK Collect / collect-master --&gt;</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 3. SAMPLING DESIGNER & EA MANAGEMENT ── -->
+    <section class="view-section" id="view_sampling">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🎯 Probability Proportional to Size (PPS) Sampling Designer &amp; EAs</h2>
+          <p class="section-desc">National cartographic enumeration frame, multi-stage cluster sampling, and design weight computation.</p>
+        </div>
+        <button class="btn btn-primary" onclick="runPPSClusterDesigner()">🎲 Execute PPS Cluster Sampling</button>
+      </div>
+
+      <div class="grid-sidebar">
+        <!-- PPS Parameters Control Panel -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">⚙️ Sampling Parameters</h3>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div>
+              <label class="form-label">Master Sampling Frame</label>
+              <select class="form-control" id="samp_frame_select">
+                <option value="msf_uganda_2026">Uganda Master Sampling Frame 2026 (78,500 EAs)</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Stratum Allocation</label>
+              <select class="form-control" id="samp_stratum">
+                <option value="all">National (All Strata)</option>
+                <option value="Central">Central Region</option>
+                <option value="Eastern">Eastern Region</option>
+                <option value="Western">Western Region</option>
+                <option value="Northern">Northern Region</option>
+                <option value="Urban">Urban Only</option>
+                <option value="Rural">Rural Only</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Number of Clusters (Stage 1 EAs)</label>
+              <input type="number" class="form-control" id="samp_clusters_count" value="4" min="1" max="50" />
+            </div>
+            <div>
+              <label class="form-label">Households per Cluster (Stage 2)</label>
+              <input type="number" class="form-control" id="samp_hh_per_cluster" value="30" min="5" max="100" />
+            </div>
+            <div>
+              <label class="form-label">Random Seed (Reproducibility)</label>
+              <input type="number" class="form-control" id="samp_seed" value="20260901" />
+            </div>
+            <button class="btn btn-primary" style="margin-top:8px" onclick="runPPSClusterDesigner()">Generate Sample &amp; Weights</button>
+          </div>
+        </div>
+
+        <!-- Selected Clusters Table & Inclusion Probabilities -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📋 Selected Cluster Allocations &amp; Design Weights</h3>
+            <span class="badge badge-purple" id="samp_clusters_badge">4 Selected Clusters</span>
+          </div>
+
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>EA Code</th>
+                  <th>Name &amp; District</th>
+                  <th>Strata</th>
+                  <th>Measure of Size (HHs)</th>
+                  <th>P(Stage 1)</th>
+                  <th>P(Stage 2)</th>
+                  <th>Design Weight (w)</th>
+                  <th>Non-Response Weight</th>
+                </tr>
+              </thead>
+              <tbody id="pps_clusters_tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 4. WORKFORCE & ASSIGNMENT MANAGEMENT ── -->
+    <section class="view-section" id="view_workforce">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">👥 Field Workforce &amp; Operational Assignments</h2>
+          <p class="section-desc">Manage field supervisors, mobile enumerators, EA quotas, and balanced assignment plans.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openNewAssignmentModal()">+ Create Assignment Plan</button>
+      </div>
+
+      <div class="grid-2">
+        <!-- Field Supervisors Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🧑‍💼 Field Supervisors</h3>
+            <span class="badge badge-blue">Regional Leads</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Supervisor</th>
+                  <th>Assigned Region</th>
+                  <th>Team Size</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="supervisors_tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Enumerators Directory -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📱 Mobile Enumerators</h3>
+            <span class="badge badge-green">CAPI Certified</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Enumerator</th>
+                  <th>Region</th>
+                  <th>Device ID</th>
+                  <th>Submissions</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="enumerators_tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="card-header">
+          <h3 class="card-title">🎯 Active EA Assignment Plans &amp; Progress</h3>
+          <span class="badge badge-amber">Field Monitoring</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>EA Code &amp; District</th>
+                <th>Survey Project</th>
+                <th>Assigned Enumerator</th>
+                <th>Supervisor</th>
+                <th>Quota Progress</th>
+                <th>Deadline</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="assignments_tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 5. SUPERVISOR FIELD MONITORING DASHBOARD ── -->
+    <section class="view-section" id="view_supervisor">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🛡️ Supervisor Field Monitoring &amp; Quality Console</h2>
+          <p class="section-desc">Real-time supervision of field interviews, speedrun anomalies, geofence breaches, and field validations.</p>
+        </div>
+        <button class="btn btn-outline" onclick="loadSupervisorDashboard()">🔄 Refresh Field Stream</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Active Field Teams</span>
+          <span class="kpi-val" id="sup_active_teams">4</span>
+          <span class="kpi-sub">Across 4 statistical zones</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Cumulative Submissions</span>
+          <span class="kpi-val" id="sup_cum_subs">121</span>
+          <span class="kpi-sub">Target: 160 HHs (75.6%)</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Pending Reviews</span>
+          <span class="kpi-val" style="color:#fbbf24" id="sup_pending_revs">8</span>
+          <span class="kpi-sub">Requires supervisor approval</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Geofence / Speed Flags</span>
+          <span class="kpi-val" style="color:#f87171" id="sup_flags_count">2</span>
+          <span class="kpi-sub">&gt;500m breach or &lt;3 min interview</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">🔍 Field Submissions Quality Inspector</h3>
+          <span class="badge badge-blue">Real-Time GPS Validation</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Instance ID</th>
+                <th>Enumerator</th>
+                <th>EA Code</th>
+                <th>Interview Duration</th>
+                <th>Distance to EA Centroid</th>
+                <th>Quality Flags</th>
+                <th>Supervisor Actions</th>
+              </tr>
+            </thead>
+            <tbody id="supervisor_submissions_tbody">
+              <tr>
+                <td><strong>inst_sub_001</strong><br><span style="color:var(--text-dim);font-size:11px">2026-03-31 09:15</span></td>
+                <td>John Baptist Kato</td>
+                <td>EA-KLA-CEN-001</td>
+                <td>18m 42s</td>
+                <td><span class="badge badge-green">38m (Within Boundary)</span></td>
+                <td><span class="badge badge-green">Verified</span></td>
+                <td>
+                  <button class="btn btn-primary btn-sm" onclick="reviewSubmission('inst_sub_001', 'approved')">Approve</button>
+                  <button class="btn btn-outline btn-sm" onclick="reviewSubmission('inst_sub_001', 'flag_for_revisit')">Flag Revisit</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>inst_sub_002</strong><br><span style="color:var(--text-dim);font-size:11px">2026-03-31 10:02</span></td>
+                <td>Moses Wafula</td>
+                <td>EA-JJA-WAL-001</td>
+                <td>2m 14s</td>
+                <td><span class="badge badge-red">840m (Breach &gt;500m)</span></td>
+                <td><span class="badge badge-red">Speedrun (&lt;3m)</span> <span class="badge badge-red">Geofence Breach</span></td>
+                <td>
+                  <button class="btn btn-outline btn-sm" style="color:#f87171" onclick="reviewSubmission('inst_sub_002', 'rejected')">Reject Interview</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 6. OFFICIAL STATISTICS TABULATION ENGINE ── -->
+    <section class="view-section" id="view_tabulation">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📈 Multi-Way Official Tabulation Engine</h2>
+          <p class="section-desc">Generate statistical crosstabs with survey weights, marginal totals, and Pearson Chi-Square test of independence.</p>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" onclick="exportCrosstab('csv')">Export CSV</button>
+          <button class="btn btn-primary" onclick="computeCrosstab()">Compute Crosstab</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px">
+          <div>
+            <label class="form-label">Row Variable</label>
+            <select class="form-control" id="tab_row_var">
+              <option value="water_source">Main Drinking Water Source</option>
+              <option value="region">Geographic Region</option>
+              <option value="education">Educational Attainment</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Column Variable</label>
+            <select class="form-control" id="tab_col_var">
+              <option value="residence">Residence (Urban / Rural)</option>
+              <option value="sex">Sex (Male / Female)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Aggregation Function</label>
+            <select class="form-control" id="tab_agg_fn">
+              <option value="PERCENTAGE">Distribution (%)</option>
+              <option value="COUNT">Frequency Count</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Survey Weighting</label>
+            <select class="form-control" id="tab_weighted_toggle">
+              <option value="true">Weighted (Design &amp; NR Weights)</option>
+              <option value="false">Unweighted</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title" id="tab_result_title">Table 3.4: Main Drinking Water Source by Urban/Rural Residence (%)</h3>
+          <span class="badge badge-purple">Chi-Square Independence Test Included</span>
+        </div>
+
+        <div class="table-container" id="tab_matrix_container">
+          <!-- Dynamically populated matrix table -->
+        </div>
+
+        <div style="margin-top:20px;padding:16px;background:rgba(15,23,42,0.6);border-radius:var(--radius-sm);border:1px solid var(--border)" id="tab_stat_tests_card">
+          <!-- Statistical inference results -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 7. CENSUS & PES POST-ENUMERATION EVALUATION ── -->
+    <section class="view-section" id="view_processing">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Processing &amp; Scheduled Dataset Refresh</h2>
+          <p class="section-desc">Manage workspace-owned schedules and review execution outcomes. A refresh republishes a newer completed processing run; it does not rerun transformations.</p>
+          <p class="section-desc" id="schedule_scope_label"></p>
+        </div>
+        <button class="btn btn-outline" onclick="loadProcessingSchedules()">Refresh status</button>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3 class="card-title">Create or update a dataset schedule</h3>
+          <span class="badge badge-amber">Admin action</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;align-items:end">
+          <div><label class="form-label" for="schedule_dataset">Published dataset</label><select class="form-control" id="schedule_dataset"><option value="">Load published datasets first</option></select></div>
+          <div><label class="form-label" for="schedule_frequency">Frequency</label><select class="form-control" id="schedule_frequency"><option value="hourly">Hourly</option><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="on_demand">On demand</option></select></div>
+          <div><label class="form-label" for="schedule_first_run">First run (optional)</label><input class="form-control" id="schedule_first_run" type="datetime-local" /></div>
+          <div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveProcessingSchedule()">Save schedule</button></div>
+        </div>
+        <p class="section-desc">Recurring schedules default to one frequency interval after creation. On-demand schedules run only when an authorized operator triggers them.</p>
+        <div id="schedule_notice" role="status" aria-live="polite" class="section-desc"></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Schedules</h3><span class="badge badge-blue" id="schedule_count">0</span></div>
+          <div class="table-container"><table class="data-table"><thead><tr><th>Dataset</th><th>Frequency</th><th>Next / last result</th><th>Action</th></tr></thead><tbody id="schedule_table_body"><tr><td colspan="4">Enter a valid key and load schedules.</td></tr></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Recent executions</h3><span class="badge badge-blue" id="schedule_run_count">0</span></div>
+          <div class="table-container"><table class="data-table"><thead><tr><th>Started</th><th>Dataset</th><th>Outcome</th><th>Details</th></tr></thead><tbody id="schedule_runs_body"><tr><td colspan="4">No execution history loaded.</td></tr></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view-section" id="view_census">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">👥 Census Operations &amp; Post-Enumeration Survey (PES)</h2>
+          <p class="section-desc">National population counting, 5-year demographic age-sex pyramid, and Chandra-Sekar-Deming undercount evaluation.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openPESCalculatorModal()">🧮 Calculate PES Undercount</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Total Enumerated Pop</span>
+          <span class="kpi-val" style="color:#60a5fa">42,180,000</span>
+          <span class="kpi-sub">National Census 2026</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Households Enumerated</span>
+          <span class="kpi-val">9,420,000</span>
+          <span class="kpi-sub">100% digital CAPI census</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Estimated Coverage Rate</span>
+          <span class="kpi-val" style="color:#34d399">93.0%</span>
+          <span class="kpi-sub">PES verified coverage</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Net Undercount Rate</span>
+          <span class="kpi-val" style="color:#fbbf24">7.0%</span>
+          <span class="kpi-sub">95% CI: [5.8% – 8.2%]</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Demographic Age-Sex Pyramid -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📊 5-Year Age-Sex Population Pyramid</h3>
+            <span class="badge badge-blue">National Census Profile</span>
+          </div>
+          <div id="pyramid_chart_container" style="display:flex;flex-direction:column;gap:6px">
+            <!-- Pyramid rows dynamically rendered -->
+          </div>
+        </div>
+
+        <!-- Dependency Ratios & PES Details -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📐 Demographic Dependency Ratios</h3>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="padding:14px;background:rgba(15,23,42,0.6);border-radius:var(--radius-sm)">
+              <div style="display:flex;justify-content:space-between">
+                <span style="font-weight:600">Child Dependency Ratio (0–14 / 15–64)</span>
+                <span style="color:#60a5fa;font-weight:700">78.4%</span>
+              </div>
+              <p style="font-size:12px;color:var(--text-dim);margin-top:4px">78.4 dependents under age 15 per 100 working-age adults.</p>
+            </div>
+
+            <div style="padding:14px;background:rgba(15,23,42,0.6);border-radius:var(--radius-sm)">
+              <div style="display:flex;justify-content:space-between">
+                <span style="font-weight:600">Old-Age Dependency Ratio (65+ / 15–64)</span>
+                <span style="color:#a855f7;font-weight:700">6.8%</span>
+              </div>
+              <p style="font-size:12px;color:var(--text-dim);margin-top:4px">6.8 elderly dependents per 100 working-age adults.</p>
+            </div>
+
+            <div style="padding:14px;background:rgba(15,23,42,0.6);border-radius:var(--radius-sm)">
+              <div style="display:flex;justify-content:space-between">
+                <span style="font-weight:600">Total Dependency Ratio</span>
+                <span style="color:#34d399;font-weight:700">85.2%</span>
+              </div>
+              <p style="font-size:12px;color:var(--text-dim);margin-top:4px">Combined economic demographic pressure index.</p>
+            </div>
+
+            <div style="margin-top:10px;padding:16px;border:1px solid var(--border-accent);border-radius:var(--radius-sm)">
+              <h4 style="font-size:14px;color:#fff;margin-bottom:8px">PES Chandra-Sekar-Deming Dual-System Model</h4>
+              <p style="font-size:12px;color:var(--text-muted);line-height:1.5">
+                Formula: <code style="color:#38bdf8">N = (N₁ × N₂) / M</code><br>
+                Census Enumerated Count (N₁): 42,180,000<br>
+                PES Sample Estimate (N₂): 185,000 | Matched (M): 172,050<br>
+                <strong>Estimated True Population: 45,350,000</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 8. UN SUSTAINABLE DEVELOPMENT GOALS (SDG) ── -->
+    <section class="view-section" id="view_sdg">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🌐 UN Sustainable Development Goals (SDG) Framework</h2>
+          <p class="section-desc">National tracking across all 17 Goals, official custodian agencies, and 2030 trajectory indicators.</p>
+        </div>
+        <span class="badge badge-green" style="font-size:13px;padding:6px 14px">National SDG Score: 78.4 / 100</span>
+      </div>
+
+      <div class="grid-3" id="sdg_goals_grid">
+        <!-- 17 SDG cards dynamically rendered -->
+      </div>
+    </section>
+
+    <!-- ── 9. SDMX 2.1 METADATA & REGISTRY ── -->
+    <section class="view-section" id="view_sdmx">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📋 SDMX 2.1 Statistical Data &amp; Metadata Exchange</h2>
+          <p class="section-desc">Data Structure Definitions (DSD), official Codelists, Dataflows, and standard REST API payloads.</p>
+        </div>
+        <button class="btn btn-primary" onclick="loadSDMXPayload()">Fetch Live SDMX-JSON</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Data Structure Definition (DSD_POVERTY)</h3>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Concept ID</th>
+                  <th>Role</th>
+                  <th>Standard Codelist</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>FREQ</td><td>Dimension (1)</td><td><code>CL_FREQ</code> (Annual, Quarterly, Monthly)</td></tr>
+                <tr><td>REF_AREA</td><td>Dimension (2)</td><td><code>CL_GEO_UGANDA</code> (ISO 3166-1/2)</td></tr>
+                <tr><td>SEX</td><td>Dimension (3)</td><td><code>CL_SEX</code> (Total, Male, Female)</td></tr>
+                <tr><td>AGE_GROUP</td><td>Dimension (4)</td><td><code>CL_AGE_GROUP</code> (5-year cohorts)</td></tr>
+                <tr><td>INDICATOR</td><td>Dimension (5)</td><td><code>CL_INDICATOR</code> (Poverty Headcount)</td></tr>
+                <tr><td>OBS_VALUE</td><td>Primary Measure</td><td>Float64</td></tr>
+                <tr><td>OBS_STATUS</td><td>Attribute</td><td><code>CL_OBS_STATUS</code> (Normal, Estimated, Prov)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">SDMX-JSON 1.0 Live Message</h3>
+          </div>
+          <pre class="code-block" id="sdmx_json_output">{
+  "header": {
+    "id": "DF_UNHS_POVERTY",
+    "prepared": "2026-03-31T08:00:00Z",
+    "sender": {"id": "UG_UBOS", "name": "Uganda Bureau of Statistics"}
+  },
+  "dataSets": [
+    {
+      "structureRef": "DSD_POVERTY",
+      "series": {
+        "A.UGA.T.TOTAL.POV_HEADCOUNT": {
+          "attributes": ["%", "A", 1],
+          "observations": {
+            "2015": [28.0],
+            "2020": [24.5],
+            "2026": [20.3]
+          }
+        }
+      }
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 10. OPEN DATA & DISSEMINATION PORTAL ── -->
+    <section class="view-section" id="view_dissemination">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🌍 Public Open Data &amp; Dissemination Portal</h2>
+          <p class="section-desc">Official statistical bulletins, analytical publications, and public-use anonymized microdata (PUMS).</p>
+        </div>
+        <span class="badge badge-blue">Open Government Data License (OGDL)</span>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">📚 Official Statistical Releases &amp; Microdata Catalog</h3>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Title &amp; Reference</th>
+                <th>Type</th>
+                <th>Domain</th>
+                <th>Access Level</th>
+                <th>Format</th>
+                <th>Downloads</th>
+                <th>Download Link</th>
+              </tr>
+            </thead>
+            <tbody id="publications_tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── MODAL: PES Undercount Calculator ── -->
+  <div class="modal-overlay" id="pes_modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 style="font-family:var(--font-title);font-size:18px;color:#fff">Chandra-Sekar-Deming PES Calculator</h3>
+        <button class="btn btn-outline btn-sm" onclick="closePESModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label class="form-label">Census Enumerated Population (N₁)</label>
+            <input type="number" class="form-control" id="pes_input_n1" value="42180000" />
+          </div>
+          <div>
+            <label class="form-label">Post-Enumeration Sample Weighted Count (N₂)</label>
+            <input type="number" class="form-control" id="pes_input_n2" value="185000" />
+          </div>
+          <div>
+            <label class="form-label">Matched Records in Both Systems (M)</label>
+            <input type="number" class="form-control" id="pes_input_m" value="172050" />
+          </div>
+          <div id="pes_calc_result_box" style="display:none;padding:14px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:var(--radius-sm)">
+            <!-- Result here -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closePESModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="executePESCalculation()">Calculate Undercount Rate</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let API_KEY = localStorage.getItem('statcollect_admin_key') || localStorage.getItem('sc_admin_key') || localStorage.getItem('statcollect_api_key') || '';
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      headers.set('X-Tenant-ID', localStorage.getItem('statgate_tenant_id') || 'default');
+      headers.set('X-Workspace-ID', localStorage.getItem('statgate_workspace_id') || localStorage.getItem('workspace_id') || 'default');
+      return nativeFetch(input, { ...init, headers });
+    };
+
+    // ── Tab Switching ──
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+
+      const activeBtn = document.getElementById('tab_' + tabId);
+      const activeSec = document.getElementById('view_' + tabId);
+      if (activeBtn) activeBtn.classList.add('active');
+      if (activeSec) activeSec.classList.add('active');
+
+      // Trigger lazy loads
+      if (tabId === 'designer') loadQuestionBank();
+      if (tabId === 'sampling') loadSampleFrameData();
+      if (tabId === 'workforce') loadWorkforceData();
+      if (tabId === 'supervisor') loadSupervisorDashboard();
+      if (tabId === 'tabulation') computeCrosstab();
+      if (tabId === 'processing') loadProcessingSchedules();
+      if (tabId === 'census') loadDemographicPyramid();
+      if (tabId === 'sdg') loadSDGGoals();
+      if (tabId === 'dissemination') loadPublications();
+    }
+
+    // ── 1. Survey Projects ──
+    async function loadProjects() {
+      try {
+        const res = await fetch('/admin/survey-projects', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.projects && data.projects.length) {
+            const tbody = document.getElementById('projects_table_body');
+            tbody.innerHTML = data.projects.map(p => `
+              <tr>
+                <td><strong>${escapeHtml(p.title)}</strong><br><span style="color:var(--text-dim);font-size:11px">${p.id}</span></td>
+                <td><span class="badge badge-purple">${escapeHtml(p.survey_type)}</span></td>
+                <td><span class="badge badge-blue">${escapeHtml(p.gsbpm_phase)}</span></td>
+                <td>${(p.target_sample_size || 0).toLocaleString()}</td>
+                <td>${p.start_date ? p.start_date.substring(0,10) : 'Jan 2026'} – ${p.end_date ? p.end_date.substring(0,10) : 'Dec 2026'}</td>
+                <td><span class="badge badge-green">${escapeHtml(p.status)}</span></td>
+                <td><button class="btn btn-outline btn-sm" onclick="advanceGSBPM('${p.id}')">Advance Phase</button></td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (e) {
+        console.warn('Projects fallback to defaults:', e);
+      }
+    }
+
+    async function advanceGSBPM(projectId) {
+      const nextPhase = prompt('Enter next GSBPM phase (specify_needs, design, build, collect, process, analyse, disseminate, archive):', 'collect');
+      if (!nextPhase) return;
+      try {
+        const res = await fetch('/admin/survey-projects/phase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({ id: projectId, phase: nextPhase, status: 'active' })
+        });
+        if (res.ok) {
+          alert('Survey advanced to GSBPM Phase: ' + nextPhase);
+          loadProjects();
+        }
+      } catch (e) {
+        alert('Phase update: ' + e.message);
+      }
+    }
+
+    // ── 2. Question Bank & Form Designer ──
+    let questionBankItems = [];
+
+    async function loadQuestionBank() {
+      try {
+        const res = await fetch('/admin/question-bank', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const data = await res.json();
+          questionBankItems = data.items || [];
+          renderQuestionBank(questionBankItems);
+        }
+      } catch (e) {
+        console.warn('Using seeded question bank:', e);
+      }
+    }
+
+    function renderQuestionBank(items) {
+      const container = document.getElementById('question_bank_list');
+      if (!items.length) {
+        container.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No questions match filter.</div>';
+        return;
+      }
+      container.innerHTML = items.map(q => `
+        <div style="background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="badge badge-blue">${escapeHtml(q.code)}</span>
+              <span style="font-size:11px;color:var(--text-dim)">${escapeHtml(q.question_type)}</span>
+            </div>
+            <div style="font-size:12px;font-weight:600;color:#fff;margin-top:4px">${escapeHtml(q.label)}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="addQuestionToCanvas('${q.id}')">+ Add</button>
+        </div>
+      `).join('');
+    }
+
+    function filterQuestionBank() {
+      const domain = document.getElementById('qb_domain_filter').value;
+      const q = document.getElementById('qb_search_input').value.toLowerCase();
+      let filtered = questionBankItems;
+      if (domain !== 'all') {
+        filtered = filtered.filter(i => i.domain === domain);
+      }
+      if (q) {
+        filtered = filtered.filter(i => i.label.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
+      }
+      renderQuestionBank(filtered);
+    }
+
+    let activeCanvasQuestions = [
+      { id: 'q1', code: 'AGE', label: 'Age in completed years', type: 'integer', required: true },
+      { id: 'q2', code: 'SEX', label: 'Sex of respondent', type: 'select_one', required: true, options: [{value:'M',label:'Male'},{value:'F',label:'Female'}] },
+      { id: 'q3', code: 'WATER_SOURCE', label: 'Main drinking water source', type: 'select_one', required: true, options: [{value:'piped',label:'Piped Water'},{value:'borehole',label:'Borehole'}] }
+    ];
+
+    function renderCanvas() {
+      const container = document.getElementById('designer_sections_container');
+      container.innerHTML = activeCanvasQuestions.map((q, idx) => `
+        <div style="background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span class="badge badge-purple">${q.code}</span>
+            <span style="font-size:13px;font-weight:600;margin-left:8px">${escapeHtml(q.label)}</span>
+            <span style="font-size:11px;color:var(--text-dim);margin-left:8px">(${q.type}, ${q.required ? 'Required' : 'Optional'})</span>
+          </div>
+          <button class="btn btn-outline btn-sm" style="color:#f87171" onclick="removeCanvasQuestion(${idx})">✕</button>
+        </div>
+      `).join('');
+    }
+    renderCanvas();
+
+    function addQuestionToCanvas(qId) {
+      const item = questionBankItems.find(i => i.id === qId);
+      if (!item) return;
+      activeCanvasQuestions.push({
+        id: 'q_' + Date.now(),
+        code: item.code,
+        label: item.label,
+        type: item.question_type,
+        required: true,
+        options: item.options || []
+      });
+      renderCanvas();
+    }
+
+    function removeCanvasQuestion(idx) {
+      activeCanvasQuestions.splice(idx, 1);
+      renderCanvas();
+    }
+
+    async function compileAndDownloadXForm() {
+      const title = document.getElementById('designer_form_title').value;
+      const ver = document.getElementById('designer_form_version').value;
+      const payload = {
+        form_id: 'survey_' + Date.now(),
+        title: title,
+        version: ver,
+        sections: [
+          {
+            id: 'core_module',
+            title: 'Core Survey Module',
+            questions: activeCanvasQuestions
+          }
+        ]
+      };
+
+      try {
+        const res = await fetch('/admin/questionnaires/xform', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const xml = await res.text();
+          document.getElementById('xform_xml_preview').textContent = xml;
+
+          // Download as .xml for collect-master (Android)
+          const blob = new Blob([xml], { type: 'application/xml' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'survey_xform_' + ver + '.xml';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      } catch (e) {
+        alert('XForm compilation failed: ' + e.message);
+      }
+    }
+
+    async function loadSampleXForm() {
+      try {
+        const res = await fetch('/admin/questionnaires/xform', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const xml = await res.text();
+          document.getElementById('xform_xml_preview').textContent = xml;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    // ── 3. Sampling Designer & PPS Math ──
+    async function loadSampleFrameData() {
+      runPPSClusterDesigner();
+    }
+
+    async function runPPSClusterDesigner() {
+      const clustersCount = parseInt(document.getElementById('samp_clusters_count').value) || 4;
+      const hhPerCluster = parseInt(document.getElementById('samp_hh_per_cluster').value) || 30;
+      const stratum = document.getElementById('samp_stratum').value;
+      const seed = parseInt(document.getElementById('samp_seed').value) || 20260901;
+
+      const payload = {
+        survey_title: 'UNHS 2026 Sample Allocation',
+        stratum: stratum,
+        number_of_clusters: clustersCount,
+        households_per_cluster: hhPerCluster,
+        seed: seed
+      };
+
+      try {
+        const res = await fetch('/admin/sampling/pps-cluster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          renderPPSResults(data);
+        }
+      } catch (e) {
+        console.warn('PPS fallback:', e);
+      }
+    }
+
+    function renderPPSResults(data) {
+      if (!data || !data.selected_clusters) return;
+      document.getElementById('samp_clusters_badge').textContent = data.clusters_selected_count + ' Clusters (Interval: ' + data.sampling_interval + ')';
+      const tbody = document.getElementById('pps_clusters_tbody');
+      tbody.innerHTML = data.selected_clusters.map(c => `
+        <tr>
+          <td><span class="badge badge-purple">${escapeHtml(c.ea_code)}</span></td>
+          <td><strong>${escapeHtml(c.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${escapeHtml(c.district)}</span></td>
+          <td><span class="badge badge-blue">${escapeHtml(c.urban_rural)}</span></td>
+          <td><strong>${c.measure_of_size.toLocaleString()}</strong></td>
+          <td><code>${c.probability_stage_1}</code></td>
+          <td><code>${c.probability_stage_2}</code></td>
+          <td><span class="badge badge-green">${c.base_design_weight}</span></td>
+          <td><span class="badge badge-amber">${c.non_response_adjusted_weight}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    // ── 4. Workforce & Assignments ──
+    async function loadWorkforceData() {
+      try {
+        const [supsRes, enumsRes, plansRes] = await Promise.all([
+          fetch('/admin/workforce/supervisors', { headers: { 'X-API-Key': API_KEY } }),
+          fetch('/admin/workforce/enumerators', { headers: { 'X-API-Key': API_KEY } }),
+          fetch('/admin/workforce/assignments', { headers: { 'X-API-Key': API_KEY } })
+        ]);
+
+        if (supsRes.ok) {
+          const sups = await supsRes.json();
+          document.getElementById('supervisors_tbody').innerHTML = (sups.supervisors || []).map(s => `
+            <tr>
+              <td><strong>${escapeHtml(s.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${s.code}</span></td>
+              <td><span class="badge badge-blue">${escapeHtml(s.assigned_region)}</span></td>
+              <td>${s.team_size} interviewers</td>
+              <td><span class="badge badge-green">Active</span></td>
+            </tr>
+          `).join('');
+        }
+
+        if (enumsRes.ok) {
+          const enums = await enumsRes.json();
+          document.getElementById('enumerators_tbody').innerHTML = (enums.enumerators || []).map(e => `
+            <tr>
+              <td><strong>${escapeHtml(e.name)}</strong><br><span style="color:var(--text-dim);font-size:11px">${e.code}</span></td>
+              <td>${escapeHtml(e.primary_region)}</td>
+              <td><code>${e.assigned_device_id || 'dev_tablet'}</code></td>
+              <td><strong>${e.total_submissions || 0}</strong></td>
+              <td><span class="badge badge-green">${escapeHtml(e.status)}</span></td>
+            </tr>
+          `).join('');
+        }
+
+        if (plansRes.ok) {
+          const plans = await plansRes.json();
+          document.getElementById('assignments_tbody').innerHTML = (plans.plans || []).map(a => `
+            <tr>
+              <td><strong>${escapeHtml(a.ea_code || 'EA')}</strong><br><span style="color:var(--text-dim);font-size:11px">${escapeHtml(a.district || '')}</span></td>
+              <td>${escapeHtml(a.survey_title || 'UNHS')}</td>
+              <td>${escapeHtml(a.enumerator_name || 'Assigned')}</td>
+              <td>${escapeHtml(a.supervisor_name || 'Supervisor')}</td>
+              <td style="min-width:140px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+                  <span>${a.completed_count} / ${a.target_quota}</span>
+                  <strong>${a.completion_rate || 0}%</strong>
+                </div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${Math.min(100, a.completion_rate || 0)}%"></div></div>
+              </td>
+              <td>${a.deadline ? a.deadline.substring(0,10) : '2026-03-31'}</td>
+              <td><span class="badge ${a.status==='completed'?'badge-green':'badge-amber'}">${escapeHtml(a.status)}</span></td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) {
+        console.warn('Workforce load note:', e);
+      }
+    }
+
+    // ── 5. Supervisor Field Monitoring ──
+    async function loadSupervisorDashboard() {
+      try {
+        const res = await fetch('/admin/supervisor/dashboard', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const k = await res.json();
+          document.getElementById('sup_active_teams').textContent = k.total_supervisors || 4;
+          document.getElementById('sup_cum_subs').textContent = k.cumulative_submissions || 121;
+          document.getElementById('sup_pending_revs').textContent = k.pending_reviews_count || 8;
+          document.getElementById('sup_flags_count').textContent = (k.geofence_breaches_count || 0) + (k.speed_anomalies_count || 0);
+        }
+      } catch (e) {
+        console.warn('Supervisor dashboard note:', e);
+      }
+    }
+
+    async function reviewSubmission(instanceId, decision) {
+      const reason = decision === 'rejected' || decision === 'flag_for_revisit' ? prompt('Enter reason for rejection or household revisit:', 'Incomplete roster check required') : '';
+      try {
+        const res = await fetch('/admin/supervisor/review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({
+            submission_instance_id: instanceId,
+            supervisor_id: 'supervisor_field_lead',
+            decision: decision,
+            revisit_reason: reason,
+            gps_verified: true,
+            notes: 'Field review logged'
+          })
+        });
+        if (res.ok) {
+          alert('Submission ' + instanceId + ' marked: ' + decision);
+          loadSupervisorDashboard();
+        }
+      } catch (e) {
+        alert('Review error: ' + e.message);
+      }
+    }
+
+    // ── 6. Official Tabulation ──
+    async function computeCrosstab() {
+      const rowVar = document.getElementById('tab_row_var').value;
+      const colVar = document.getElementById('tab_col_var').value;
+      const agg = document.getElementById('tab_agg_fn').value;
+      const isWeighted = document.getElementById('tab_weighted_toggle').value === 'true';
+
+      const payload = {
+        title: 'Table: ' + rowVar + ' by ' + colVar,
+        table_number: 'Table 1.1',
+        row_variable: rowVar,
+        col_variable: colVar,
+        aggregation: agg,
+        is_weighted: isWeighted,
+        weight_variable: 'weight'
+      };
+
+      try {
+        const res = await fetch('/admin/statistics/tabulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const tab = await res.json();
+          renderCrosstabTable(tab);
+        }
+      } catch (e) {
+        console.warn('Crosstab error:', e);
+      }
+    }
+
+    function renderCrosstabTable(tab) {
+      document.getElementById('tab_result_title').textContent = tab.title + ' (' + tab.aggregation + ')';
+      
+      // Get all columns
+      const colSet = new Set();
+      for (const r in tab.matrix_data) {
+        for (const c in tab.matrix_data[r]) {
+          colSet.add(c);
+        }
+      }
+      const cols = Array.from(colSet).sort();
+
+      let html = `<table class="data-table"><thead><tr><th>${escapeHtml(tab.row_var)}</th>`;
+      cols.forEach(c => { html += `<th>${escapeHtml(c)}</th>`; });
+      html += `<th>Total</th></tr></thead><tbody>`;
+
+      for (const r in tab.matrix_data) {
+        html += `<tr><td><strong>${escapeHtml(r)}</strong></td>`;
+        cols.forEach(c => {
+          const val = tab.matrix_data[r][c] || 0;
+          html += `<td>${val.toFixed(1)}${tab.aggregation==='PERCENTAGE'?'%':''}</td>`;
+        });
+        html += `<td><strong>${(tab.row_totals[r] || 0).toFixed(1)}${tab.aggregation==='PERCENTAGE'?'%':''}</strong></td></tr>`;
+      }
+
+      // Marginal Col Totals
+      html += `<tr style="background:rgba(15,23,42,0.9);font-weight:700"><td>Total</td>`;
+      cols.forEach(c => {
+        html += `<td>${(tab.col_totals[c] || 0).toFixed(1)}${tab.aggregation==='PERCENTAGE'?'%':''}</td>`;
+      });
+      html += `<td>${(tab.grand_total || 0).toFixed(1)}${tab.aggregation==='PERCENTAGE'?'%':''}</td></tr>`;
+      html += `</tbody></table>`;
+
+      document.getElementById('tab_matrix_container').innerHTML = html;
+
+      // Statistical Tests
+      if (tab.statistical_tests && tab.statistical_tests.length) {
+        const test = tab.statistical_tests[0];
+        document.getElementById('tab_stat_tests_card').innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span class="badge ${test.statistically_valid ? 'badge-green' : 'badge-amber'}">${escapeHtml(test.test_name)}</span>
+              <span style="font-size:13px;margin-left:10px">χ² Statistic: <strong>${test.statistic}</strong> (df = ${test.degrees_of_freedom})</span>
+            </div>
+            <div>
+              <span style="font-size:13px">p-value: <strong>${test.p_value}</strong> ${test.statistically_valid ? '<span style="color:#34d399">(Statistically Significant at α=0.05)</span>' : '<span style="color:var(--text-dim)">(Not Significant)</span>'}</span>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function exportCrosstab(format) {
+      const rowVar = document.getElementById('tab_row_var').value;
+      const colVar = document.getElementById('tab_col_var').value;
+      const agg = document.getElementById('tab_agg_fn').value;
+
+      const payload = {
+        title: 'Table Export: ' + rowVar + ' by ' + colVar,
+        row_variable: rowVar,
+        col_variable: colVar,
+        aggregation: agg,
+        is_weighted: true
+      };
+
+      const res = await fetch('/admin/statistics/tables/export?format=' + format, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'official_tabulation.' + format;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    // ── 7. Census Demographics & PES ──
+    async function loadDemographicPyramid() {
+      try {
+        const res = await fetch('/admin/census/demographics/pyramid', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const data = await res.json();
+          renderPyramid(data.cohorts || []);
+        }
+      } catch (e) {
+        console.warn('Pyramid load note:', e);
+      }
+    }
+
+    function renderPyramid(cohorts) {
+      const container = document.getElementById('pyramid_chart_container');
+      if (!cohorts.length) return;
+      container.innerHTML = cohorts.map(c => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px">
+          <div style="width:40px;text-align:right;color:var(--text-dim)">${c.age_group}</div>
+          <div style="flex:1;display:flex;justify-content:flex-end">
+            <div style="background:#3b82f6;height:12px;border-radius:3px;width:${c.male_pct * 12}%" title="Male: ${c.male.toLocaleString()} (${c.male_pct}%)"></div>
+          </div>
+          <div style="width:2px;height:14px;background:var(--border)"></div>
+          <div style="flex:1;display:flex;justify-content:flex-start">
+            <div style="background:#ec4899;height:12px;border-radius:3px;width:${c.female_pct * 12}%" title="Female: ${c.female.toLocaleString()} (${c.female_pct}%)"></div>
+          </div>
+          <div style="width:60px;font-size:10px;color:var(--text-dim);font-family:var(--font-mono)">SR: ${c.sex_ratio}</div>
+        </div>
+      `).join('');
+    }
+
+    function openPESCalculatorModal() {
+      document.getElementById('pes_modal').classList.add('open');
+    }
+    function closePESModal() {
+      document.getElementById('pes_modal').classList.remove('open');
+    }
+
+    async function executePESCalculation() {
+      const n1 = parseInt(document.getElementById('pes_input_n1').value);
+      const n2 = parseInt(document.getElementById('pes_input_n2').value);
+      const m = parseInt(document.getElementById('pes_input_m').value);
+
+      try {
+        const res = await fetch('/admin/census/pes/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({ census_round_id: 'census_2026', census_count: n1, pes_count: n2, matched_count: m, pes_sample_eas: 450 })
+        });
+        if (res.ok) {
+          const r = await res.json();
+          const box = document.getElementById('pes_calc_result_box');
+          box.style.display = 'block';
+          box.innerHTML = `
+            <h4 style="color:#34d399;font-size:14px;margin-bottom:6px">PES Dual-System Results</h4>
+            <div style="font-size:12px;line-height:1.6">
+              True Population (N̂): <strong>${r.estimated_true_population.toLocaleString()}</strong><br>
+              Census Coverage Rate: <strong>${r.coverage_rate}%</strong><br>
+              Net Undercount Rate: <strong style="color:#fbbf24">${r.net_undercount_rate}%</strong><br>
+              Gross Omission Rate: <strong>${r.gross_omission_rate}%</strong>
+            </div>
+          `;
+        }
+      } catch (e) {
+        alert('Calculation error: ' + e.message);
+      }
+    }
+
+    // ── 8. UN Sustainable Development Goals (SDG) ──
+    async function loadSDGGoals() {
+      try {
+        const res = await fetch('/admin/sdg/dashboard', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const d = await res.json();
+          renderSDGGrid(d.goal_summaries || []);
+        }
+      } catch (e) {
+        console.warn('SDG load error:', e);
+      }
+    }
+
+    function renderSDGGrid(goals) {
+      const container = document.getElementById('sdg_goals_grid');
+      container.innerHTML = goals.map(g => `
+        <div class="card" style="padding:16px;border-top:3px solid #3b82f6">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span class="badge badge-blue">Goal ${g.goal_number}</span>
+            <span class="badge ${g.progress_percentage>=70?'badge-green':'badge-amber'}">${g.progress_percentage}% on track</span>
+          </div>
+          <h4 style="font-size:15px;color:#fff;margin-bottom:8px">${escapeHtml(g.goal_title)}</h4>
+          <div style="font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between">
+            <span>On Track: <strong>${g.on_track_count}</strong></span>
+            <span>Target Met: <strong>${g.target_met_count}</strong></span>
+            <span>Indicators: <strong>${g.total_indicators}</strong></span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ── 9. SDMX 2.1 Metadata ──
+    async function loadSDMXPayload() {
+      try {
+        const res = await fetch('/admin/sdmx/data?dataflow=DF_UNHS_POVERTY', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('sdmx_json_output').textContent = JSON.stringify(data, null, 2);
+        }
+      } catch (e) {
+        console.warn('SDMX load:', e);
+      }
+    }
+
+    // ── 10. Open Data Publications ──
+    async function loadPublications() {
+      try {
+        const res = await fetch('/admin/dissemination/publications', { headers: { 'X-API-Key': API_KEY } });
+        if (res.ok) {
+          const d = await res.json();
+          document.getElementById('publications_tbody').innerHTML = (d.publications || []).map(p => `
+            <tr>
+              <td><strong>${escapeHtml(p.title)}</strong><br><span style="color:var(--text-dim);font-size:11px">${p.abstract ? p.abstract.substring(0,80) : ''}...</span></td>
+              <td><span class="badge badge-purple">${escapeHtml(p.publication_type)}</span></td>
+              <td>${escapeHtml(p.domain)}</td>
+              <td><span class="badge ${p.access_level==='public'?'badge-green':'badge-amber'}">${escapeHtml(p.access_level)}</span></td>
+              <td><code>${p.file_format}</code></td>
+              <td>${p.downloads_count || 142}</td>
+              <td><a href="${p.download_url || '#'}" class="btn btn-outline btn-sm">Download ⬇</a></td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) {
+        console.warn('Publications load note:', e);
+      }
+    }
+
+    function saveAdminKey() {
+      API_KEY = document.getElementById('admin_key_input').value.trim();
+      if (API_KEY) localStorage.setItem('statcollect_admin_key', API_KEY);
+      else localStorage.removeItem('statcollect_admin_key');
+      if (API_KEY) loadProcessingSchedules();
+      else setScheduleNotice('Enter an authorized StatCollect API/admin key to use protected workflows.', true);
+    }
+
+    function activeOfficialScope() {
+      return {
+        tenant: localStorage.getItem('statgate_tenant_id') || 'default',
+        workspace: localStorage.getItem('statgate_workspace_id') || localStorage.getItem('workspace_id') || 'default'
+      };
+    }
+
+    function setScheduleNotice(message, isError = false) {
+      const notice = document.getElementById('schedule_notice');
+      if (!notice) return;
+      notice.textContent = message;
+      notice.style.color = isError ? 'var(--amber)' : 'var(--text-muted)';
+    }
+
+    async function scheduleApi(path, options = {}) {
+      if (!API_KEY) throw new Error('Enter an authorized StatCollect API/admin key above.');
+      const headers = new Headers(options.headers || {});
+      headers.set('X-API-Key', API_KEY);
+      const response = await fetch(path, { ...options, headers });
+      const text = await response.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+      if (!response.ok) throw new Error(data.error || data.message || `Request failed (${response.status})`);
+      return data;
+    }
+
+    async function loadProcessingSchedules() {
+      const scope = activeOfficialScope();
+      const label = `${scope.tenant} / ${scope.workspace}`;
+      document.getElementById('schedule_scope_label').textContent = `Current tenant / workspace: ${label}`;
+      document.getElementById('active_scope_label').textContent = `${scope.tenant} / ${scope.workspace}`;
+      try {
+        const [scheduleData, handoffData, runData] = await Promise.all([
+          scheduleApi('/admin/statistics/processing/schedules'),
+          scheduleApi('/admin/statistics/datasets/handoffs?limit=500'),
+          scheduleApi('/admin/statistics/processing/schedule-runs?limit=50')
+        ]);
+        const schedules = scheduleData.schedules || [];
+        const published = new Map();
+        for (const handoff of handoffData.handoffs || []) {
+          if (handoff.status === 'published' && !published.has(handoff.dataset_id)) published.set(handoff.dataset_id, handoff);
+        }
+        const datasetSelect = document.getElementById('schedule_dataset');
+        const selectedDataset = datasetSelect.value;
+        datasetSelect.innerHTML = '<option value="">Select a published dataset</option>' + Array.from(published.values()).map(item =>
+          `<option value="${escapeHtml(item.dataset_id)}">${escapeHtml(item.dataset_id)} (${Number(item.record_count || 0).toLocaleString()} rows)</option>`
+        ).join('');
+        if (published.has(selectedDataset)) datasetSelect.value = selectedDataset;
+        document.getElementById('schedule_count').textContent = String(schedules.length);
+        document.getElementById('schedule_table_body').innerHTML = schedules.length ? schedules.map(schedule => `
+          <tr>
+            <td><strong>${escapeHtml(schedule.dataset_id)}</strong><br><span class="section-desc">${escapeHtml(schedule.workspace_id)}</span></td>
+            <td>${escapeHtml(schedule.frequency)}</td>
+            <td>${schedule.next_run_at ? `Next: ${escapeHtml(new Date(schedule.next_run_at).toLocaleString())}` : 'Manual only'}<br><span class="section-desc">Last: ${escapeHtml(schedule.last_status || 'never run')}${schedule.last_error ? ` · ${escapeHtml(schedule.last_error)}` : ''}</span></td>
+            <td><button class="btn btn-outline btn-sm" onclick="triggerProcessingSchedule('${escapeHtml(schedule.id)}')">Run now</button></td>
+          </tr>`).join('') : '<tr><td colspan="4">No schedules in this workspace yet.</td></tr>';
+        const runs = runData.runs || [];
+        document.getElementById('schedule_run_count').textContent = String(runs.length);
+        document.getElementById('schedule_runs_body').innerHTML = runs.length ? runs.map(run => `
+          <tr><td>${escapeHtml(new Date(run.started_at).toLocaleString())}</td><td>${escapeHtml(run.dataset_id)}</td><td><span class="badge ${run.status === 'succeeded' || run.status === 'no_change' ? 'badge-green' : run.status === 'failed' ? 'badge-red' : 'badge-amber'}">${escapeHtml(run.status)}</span></td><td>${escapeHtml(run.error_message || (run.http_status ? `HTTP ${run.http_status}` : ''))}</td></tr>`
+        ).join('') : '<tr><td colspan="4">No executions have been recorded.</td></tr>';
+        setScheduleNotice(`Loaded ${schedules.length} schedules and ${runs.length} recent executions for ${label}.`);
+      } catch (error) {
+        setScheduleNotice(error.message, true);
+      }
+    }
+
+    async function saveProcessingSchedule() {
+      const datasetId = document.getElementById('schedule_dataset').value;
+      if (!datasetId) return setScheduleNotice('Select a published dataset before creating a schedule.', true);
+      const payload = { dataset_id: datasetId, asset_id: `official-dataset-${datasetId}`, frequency: document.getElementById('schedule_frequency').value };
+      const firstRun = document.getElementById('schedule_first_run').value;
+      if (firstRun && payload.frequency !== 'on_demand') payload.next_run_at = new Date(firstRun).toISOString();
+      try {
+        await scheduleApi('/admin/statistics/processing/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        setScheduleNotice(`Schedule saved for ${datasetId}.`);
+        await loadProcessingSchedules();
+      } catch (error) {
+        setScheduleNotice(error.message, true);
+      }
+    }
+
+    async function triggerProcessingSchedule(scheduleId) {
+      try {
+        await scheduleApi('/admin/statistics/processing/schedules/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule_id: scheduleId }) });
+        setScheduleNotice('Run accepted. Refresh status shortly to see its recorded outcome.');
+        window.setTimeout(loadProcessingSchedules, 1200);
+      } catch (error) {
+        setScheduleNotice(error.message, true);
+      }
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── Init ──
+    document.getElementById('admin_key_input').value = API_KEY;
+    const initialScope = activeOfficialScope();
+    document.getElementById('active_scope_label').textContent = `${initialScope.tenant} / ${initialScope.workspace}`;
+    loadProjects();
+    loadQuestionBank();
+    loadSupervisorDashboard();
+  </script>
+</body>
+</html>

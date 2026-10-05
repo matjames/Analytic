@@ -216,12 +216,17 @@ func DeleteBusinessRule(id int64) error {
 
 // ─── Multi-Level Approval Pipeline DB Helpers ───
 
-func AdvanceApprovalStage(instanceID, stage, approverRole, notes string) error {
+func AdvanceApprovalStage(instanceID, stage, approverRole, notes string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
+	var owned int
+	if err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID).Scan(&owned); err != nil || owned == 0 {
+		return fmt.Errorf("submission not found in tenant/workspace scope")
+	}
 	_, err := dbPool.Exec(ctx, `INSERT INTO submission_validations (instance_id, validator, status, notes, validated_at, stage, approver_role, updated_at)
 		VALUES ($1,$2,'approved',$3,now(),$4,$5,now())`,
 		instanceID, approverRole, notes, stage, approverRole)
@@ -233,23 +238,28 @@ func AdvanceApprovalStage(instanceID, stage, approverRole, notes string) error {
 	if stage != "national" && stage != "final" {
 		nextStatus = "in_review"
 	}
-	_, _ = dbPool.Exec(ctx, `UPDATE submissions SET status=$2, updated_at=now() WHERE instance_id=$1`, instanceID, nextStatus)
+	_, _ = dbPool.Exec(ctx, `UPDATE submissions SET status=$2, updated_at=now() WHERE instance_id=$1 AND tenant_id=$3 AND workspace_id=$4`, instanceID, nextStatus, scope.TenantID, scope.WorkspaceID)
 	return nil
 }
 
-func RejectSubmissionAtStage(instanceID, stage, approverRole, reason string) error {
+func RejectSubmissionAtStage(instanceID, stage, approverRole, reason string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
+	var owned int
+	if err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID).Scan(&owned); err != nil || owned == 0 {
+		return fmt.Errorf("submission not found in tenant/workspace scope")
+	}
 	_, err := dbPool.Exec(ctx, `INSERT INTO submission_validations (instance_id, validator, status, notes, validated_at, stage, approver_role, updated_at)
 		VALUES ($1,$2,'rejected',$3,now(),$4,$5,now())`,
 		instanceID, approverRole, reason, stage, approverRole)
 	if err != nil {
 		return fmt.Errorf("reject at stage: %w", err)
 	}
-	_, _ = dbPool.Exec(ctx, `UPDATE submissions SET status='rejected', updated_at=now() WHERE instance_id=$1`, instanceID)
+	_, _ = dbPool.Exec(ctx, `UPDATE submissions SET status='rejected', updated_at=now() WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID)
 	return nil
 }
 
@@ -403,16 +413,17 @@ func GetSubmissionLineage(instanceID string) (map[string]interface{}, error) {
 
 // ─── Template Rollback DB Helper ───
 
-func RollbackTemplate(templateID, version, changedBy string) error {
+func RollbackTemplate(templateID, version, changedBy string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not connected")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 
 	// Find the target version schema
 	var schema []byte
-	err := dbPool.QueryRow(ctx, `SELECT schema FROM template_versions WHERE template_id=$1 AND version=$2 ORDER BY created_at DESC LIMIT 1`, templateID, version).Scan(&schema)
+	err := dbPool.QueryRow(ctx, `SELECT schema FROM template_versions WHERE template_id=$1 AND tenant_id=$2 AND workspace_id=$3 AND version=$4 ORDER BY created_at DESC LIMIT 1`, templateID, scope.TenantID, scope.WorkspaceID, version).Scan(&schema)
 	if err != nil {
 		return fmt.Errorf("version %s not found for template %s: %w", version, templateID, err)
 	}
@@ -420,21 +431,21 @@ func RollbackTemplate(templateID, version, changedBy string) error {
 	// Snapshot current state before rollback
 	var currentVersion string
 	var currentSchema []byte
-	_ = dbPool.QueryRow(ctx, `SELECT version, schema FROM templates WHERE id=$1`, templateID).Scan(&currentVersion, &currentSchema)
+	_ = dbPool.QueryRow(ctx, `SELECT version, schema FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, templateID, scope.TenantID, scope.WorkspaceID).Scan(&currentVersion, &currentSchema)
 	if currentVersion != "" && len(currentSchema) > 0 {
-		_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, version, schema, changed_by, change_note) VALUES ($1,$2,$3,$4,$5)`,
-			templateID, currentVersion+"-pre-rollback", currentSchema, changedBy, "Auto-snapshot before rollback to "+version)
+		_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, tenant_id, workspace_id, version, schema, changed_by, change_note) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+			templateID, scope.TenantID, scope.WorkspaceID, currentVersion+"-pre-rollback", currentSchema, changedBy, "Auto-snapshot before rollback to "+version)
 	}
 
 	// Apply the rollback
-	_, err = dbPool.Exec(ctx, `UPDATE templates SET schema=$2, version=$3, updated_at=now() WHERE id=$1`, templateID, schema, version)
+	_, err = dbPool.Exec(ctx, `UPDATE templates SET schema=$2, version=$3, updated_at=now() WHERE id=$1 AND tenant_id=$4 AND workspace_id=$5`, templateID, schema, version, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
 
 	// Record the rollback action in version history
-	_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, version, schema, changed_by, change_note) VALUES ($1,$2,$3,$4,$5)`,
-		templateID, version, schema, changedBy, "Rollback to version "+version)
+	_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, tenant_id, workspace_id, version, schema, changed_by, change_note) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		templateID, scope.TenantID, scope.WorkspaceID, version, schema, changedBy, "Rollback to version "+version)
 
 	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,10 @@ func registryAuthMiddleware() gin.HandlerFunc {
 		// Allow public health/ready/live/metrics probes without auth
 		path := c.Request.URL.Path
 		if path == "/health" || path == "/ready" || path == "/metrics" || path == "/live" {
+			c.Next()
+			return
+		}
+		if path == "/api/statcollect/ingest" && internalServiceRequest(c) {
 			c.Next()
 			return
 		}
@@ -81,6 +86,29 @@ func registryAuthMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func internalServiceRequest(c *gin.Context) bool {
+	configured := strings.TrimSpace(getEnv("STATGATE_INTERNAL_API_KEY", ""))
+	provided := strings.TrimSpace(c.GetHeader("X-Internal-Key"))
+	if configured == "" || provided == "" || !hmac.Equal([]byte(configured), []byte(provided)) {
+		return false
+	}
+	tenantID := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	c.Set("user_id", "statcollect-service")
+	c.Set("user_role", "service")
+	c.Set("tenant_id", tenantID)
+	if workspaceID := strings.TrimSpace(c.GetHeader("X-Workspace-ID")); workspaceID != "" {
+		if len(workspaceID) > 128 || strings.ContainsAny(workspaceID, " /\\\t\r\n") {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid_workspace_context"})
+			return true
+		}
+		c.Set("workspace_id", workspaceID)
+	}
+	return true
 }
 
 func workspaceIDContext(c *gin.Context) string {
@@ -149,7 +177,7 @@ func workspaceResearchChildIDMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		prefixes := []string{"/api/members/", "/api/proposals/", "/api/ethics/", "/api/grants/", "/api/literature/", "/api/datasets/", "/api/publications/", "/api/tasks/", "/api/risks/", "/api/issues/", "/api/documents/", "/api/surveys/", "/api/reports/", "/api/calendar/"}
+		prefixes := []string{"/api/members/", "/api/proposals/", "/api/ethics/", "/api/grants/", "/api/literature/", "/api/datasets/", "/api/publications/", "/api/tasks/", "/api/risks/", "/api/issues/", "/api/documents/", "/api/surveys/", "/api/reports/", "/api/calendar/", "/api/dois/", "/api/open-access/", "/api/ethics-committees/", "/api/ethics-committee-members/", "/api/submissions/", "/api/archives/", "/api/conferences/", "/api/conference-events/", "/api/conference-attendance/", "/api/knowledge-transfers/"}
 		matched := false
 		for _, prefix := range prefixes {
 			matched = matched || strings.HasPrefix(path, prefix)
@@ -159,7 +187,69 @@ func workspaceResearchChildIDMiddleware() gin.HandlerFunc {
 			return
 		}
 		childID := c.Param("id")
-		tables := []string{"research_members", "proposals", "ethics_applications", "grants", "literature", "datasets", "publications", "tasks", "risks", "issues", "documents", "surveys", "reports", "calendar_events", "chat_messages", "audit_logs"}
+		if strings.HasPrefix(path, "/api/ethics-committees/") {
+			var exists bool
+			if err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM rms.ethics_committees WHERE id=$1 AND workspace_id=$2)`, childID, workspaceID).Scan(&exists); err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+				return
+			}
+			if !exists {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "resource not found in workspace"})
+				return
+			}
+			c.Next()
+			return
+		}
+		if strings.HasPrefix(path, "/api/ethics-committee-members/") {
+			var exists bool
+			if err := DB.QueryRow(`SELECT EXISTS(
+				SELECT 1 FROM rms.ethics_committee_members m
+				JOIN rms.ethics_committees committee ON committee.id=m.committee_id
+				WHERE m.id=$1 AND committee.workspace_id=$2)`, childID, workspaceID).Scan(&exists); err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+				return
+			}
+			if !exists {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "resource not found in workspace"})
+				return
+			}
+			c.Next()
+			return
+		}
+		if strings.HasPrefix(path, "/api/conference-events/") {
+			var exists bool
+			if err := DB.QueryRow(`SELECT EXISTS(
+				SELECT 1 FROM rms.conference_events e
+				JOIN rms.research_projects project ON project.id=e.research_id
+				WHERE e.id=$1 AND project.workspace_id=$2)`, childID, workspaceID).Scan(&exists); err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+				return
+			}
+			if !exists {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "resource not found in workspace"})
+				return
+			}
+			c.Next()
+			return
+		}
+		if strings.HasPrefix(path, "/api/conference-attendance/") {
+			var exists bool
+			if err := DB.QueryRow(`SELECT EXISTS(
+				SELECT 1 FROM rms.conference_attendance a
+				JOIN rms.conference_events e ON e.id=a.event_id
+				JOIN rms.research_projects project ON project.id=e.research_id
+				WHERE a.id=$1 AND project.workspace_id=$2)`, childID, workspaceID).Scan(&exists); err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "workspace scope unavailable"})
+				return
+			}
+			if !exists {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "resource not found in workspace"})
+				return
+			}
+			c.Next()
+			return
+		}
+		tables := []string{"research_members", "proposals", "ethics_applications", "grants", "literature", "datasets", "publications", "tasks", "risks", "issues", "documents", "surveys", "reports", "calendar_events", "chat_messages", "audit_logs", "doi_records", "open_access_repo", "journal_submissions", "research_archives", "conference_submissions", "knowledge_transfers"}
 		for _, table := range tables {
 			var exists bool
 			query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM rms.%s child JOIN rms.research_projects project ON project.id=child.research_id WHERE child.id=$1 AND project.workspace_id=$2)`, table)

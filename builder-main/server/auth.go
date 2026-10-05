@@ -29,6 +29,9 @@ var (
 	keycloakAdminSecret string // KEYCLOAK_ADMIN_SECRET: client secret (server-side only)
 	KeycloakAdminRole   string // KEYCLOAK_ADMIN_ROLE: role required to access user management
 	authMode            string // AUTH_MODE: "off" or "on"
+	registryJWTSecret   string // STATGATE_REGISTRY_JWT_SECRET: shared Registry HS256 secret
+	registryJWTIssuer   string
+	registryJWTAudience string
 )
 
 // JWKS cache - stores Keycloak public keys for JWT verification
@@ -91,6 +94,9 @@ func InitAuth() {
 		KeycloakAdminRole = "admin_manage"
 	}
 	authMode = strings.ToLower(os.Getenv("AUTH_MODE"))
+	registryJWTSecret = strings.TrimSpace(os.Getenv("STATGATE_REGISTRY_JWT_SECRET"))
+	registryJWTIssuer = envOrDefault("STATGATE_JWT_ISSUER", "statgate-registry")
+	registryJWTAudience = envOrDefault("STATGATE_JWT_AUDIENCE", "statgate")
 
 	// Default to "off" if not specified (no auth required for local development)
 	if authMode == "" {
@@ -104,8 +110,8 @@ func InitAuth() {
 	}
 
 	// Check if Keycloak is configured when auth is enabled
-	if authMode != "off" && (keycloakURL == "" || keycloakRealm == "") {
-		logWarn("AUTH_MODE=%s but KEYCLOAK_URL or KEYCLOAK_REALM not set. Disabling auth.", authMode)
+	if authMode != "off" && registryJWTSecret == "" && (keycloakURL == "" || keycloakRealm == "") {
+		logWarn("AUTH_MODE=%s but Registry JWT or Keycloak is not configured. Disabling auth.", authMode)
 		authMode = "off"
 	}
 
@@ -113,15 +119,17 @@ func InitAuth() {
 	if authMode == "off" {
 		logInfo("Auth: DISABLED (AUTH_MODE=off)")
 	} else {
-		logInfo("Auth: mode=%s, keycloak=%s, realm=%s, client=%s",
-			authMode, keycloakURL, keycloakRealm, keycloakClientID)
+		logInfo("Auth: mode=%s, registry=%t, keycloak=%s, realm=%s, client=%s",
+			authMode, registryJWTSecret != "", keycloakURL, keycloakRealm, keycloakClientID)
 
 		// Pre-fetch JWKS to catch configuration errors early
-		if _, err := refreshJWKS(); err != nil {
-			logError("Auth: Failed to fetch JWKS from Keycloak: %v", err)
-			logWarn("Auth: Will retry on first request. Verify KEYCLOAK_URL and KEYCLOAK_REALM are correct.")
-		} else {
-			logInfo("Auth: Successfully loaded JWKS from Keycloak")
+		if registryJWTSecret == "" {
+			if _, err := refreshJWKS(); err != nil {
+				logError("Auth: Failed to fetch JWKS from Keycloak: %v", err)
+				logWarn("Auth: Will retry on first request. Verify KEYCLOAK_URL and KEYCLOAK_REALM are correct.")
+			} else {
+				logInfo("Auth: Successfully loaded JWKS from Keycloak")
+			}
 		}
 	}
 }
@@ -350,6 +358,38 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 
 // validateJWT validates a JWT token and extracts claims
 func validateJWT(tokenString string) (*UserClaims, error) {
+	if registryJWTSecret != "" {
+		parsed, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if token.Method != jwt.SigningMethodHS256 {
+				return nil, fmt.Errorf("unexpected Registry signing method: %v", token.Header["alg"])
+			}
+			return []byte(registryJWTSecret), nil
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(registryJWTIssuer), jwt.WithAudience(registryJWTAudience))
+		if err == nil && parsed.Valid {
+			claims, ok := parsed.Claims.(jwt.MapClaims)
+			if !ok {
+				return nil, fmt.Errorf("invalid Registry claims format")
+			}
+			userID := getClaimString(claims, "userId")
+			if userID == "" {
+				userID = getClaimString(claims, "user_id")
+			}
+			if userID == "" {
+				userID = getClaimString(claims, "sub")
+			}
+			role := getClaimString(claims, "role")
+			return &UserClaims{
+				Subject:     userID,
+				Username:    getClaimString(claims, "username"),
+				Email:       getClaimString(claims, "email"),
+				Name:        getClaimString(claims, "name"),
+				RealmRoles:  []string{role},
+				ClientRoles: map[string][]string{},
+				ExpiresAt:   claimExpiry(claims),
+			}, nil
+		}
+	}
+
 	// Parse token without verification first to get the key ID
 	parser := jwt.NewParser()
 	token, _, err := parser.ParseUnverified(tokenString, jwt.MapClaims{})
@@ -573,6 +613,20 @@ func getClaimBool(claims jwt.MapClaims, key string) bool {
 		return v
 	}
 	return false
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func claimExpiry(claims jwt.MapClaims) time.Time {
+	if exp, ok := claims["exp"].(float64); ok {
+		return time.Unix(int64(exp), 0)
+	}
+	return time.Time{}
 }
 
 // AuthConfigResponse is the response body for GET /api/auth/config

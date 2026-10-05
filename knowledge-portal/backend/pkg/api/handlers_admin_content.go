@@ -14,7 +14,7 @@ import (
 // ─── Content management (P17 CMS) ──────────────────────────────────────────
 
 func ListContentHandler(w http.ResponseWriter, r *http.Request) {
-	items, err := store.ListContentItems(r.Context(), actorTenant(r), r.URL.Query().Get("kind"), r.URL.Query().Get("status"), r.URL.Query().Get("q"))
+	items, err := store.ListContentItemsScoped(r.Context(), actorTenant(r), actorWorkspace(r), r.URL.Query().Get("kind"), r.URL.Query().Get("status"), r.URL.Query().Get("q"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -33,6 +33,7 @@ func CreateContentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.TenantID = actorTenant(r)
+	c.WorkspaceID = actorWorkspace(r)
 	c.UpdatedBy = actorID(r)
 	if c.Status == "" {
 		c.Status = "draft"
@@ -46,7 +47,7 @@ func CreateContentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetContentHandler(w http.ResponseWriter, r *http.Request) {
-	item, err := store.GetContentItem(r.Context(), mux.Vars(r)["id"])
+	item, err := store.GetContentItemScoped(r.Context(), actorTenant(r), actorWorkspace(r), mux.Vars(r)["id"])
 	if err != nil {
 		writeError(w, http.StatusNotFound, "content not found")
 		return
@@ -55,7 +56,7 @@ func GetContentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateContentHandler(w http.ResponseWriter, r *http.Request) {
-	c, err := store.GetContentItem(r.Context(), mux.Vars(r)["id"])
+	c, err := store.GetContentItemScoped(r.Context(), actorTenant(r), actorWorkspace(r), mux.Vars(r)["id"])
 	if err != nil {
 		writeError(w, http.StatusNotFound, "content not found")
 		return
@@ -79,7 +80,7 @@ func UpdateContentHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteContentHandler(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	if err := store.DeleteContentItem(r.Context(), id); err != nil {
+	if err := store.DeleteContentItemScoped(r.Context(), actorTenant(r), actorWorkspace(r), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -89,7 +90,7 @@ func DeleteContentHandler(w http.ResponseWriter, r *http.Request) {
 
 func PublishContentHandler(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	c, err := store.GetContentItem(r.Context(), id)
+	c, err := store.GetContentItemScoped(r.Context(), actorTenant(r), actorWorkspace(r), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "content not found")
 		return

@@ -22,8 +22,11 @@ import DonorsTab from './components/DonorsTab';
 import PortfolioDashboard from './components/PortfolioDashboard';
 import ProjectHealthAssistant from './components/ProjectHealthAssistant';
 import ProjectLocationMap from './components/ProjectLocationMap';
+import FieldActivityMap from './components/FieldActivityMap';
 import ProgressSummary from './components/ProgressSummary';
 import CriticalPathPanel from './components/CriticalPathPanel';
+import ResourcePlanner from './components/ResourcePlanner';
+import WBSPanel from './components/WBSPanel';
 
 // API Base URL - configured for the StatGate ecosystem
 const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
@@ -447,7 +450,10 @@ export default function App() {
                   <ProjectHealthAssistant project={workspaceData.project} apiBase={API_BASE} />
                   <ProgressSummary project={workspaceData.project} apiBase={API_BASE} />
                   <CriticalPathPanel project={workspaceData.project} apiBase={API_BASE} />
+                  <ResourcePlanner project={workspaceData.project} apiBase={API_BASE} />
+                  <WBSPanel project={workspaceData.project} apiBase={API_BASE} />
                   <ProjectLocationMap project={workspaceData.project} apiBase={SPATIAL_API_BASE} />
+                  <FieldActivityMap projectId={selectedProjectId} activities={workspaceData.activities} apiBase={API_BASE} />
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
                     {/* Main column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -485,7 +491,7 @@ export default function App() {
                       </div>
 
                       {/* Work planning summary */}
-                      <GanttChart tasks={workspaceData.tasks} />
+                      <GanttChart tasks={workspaceData.tasks} projectId={selectedProjectId} />
                     </div>
 
                     {/* Sidebar components */}
@@ -562,7 +568,7 @@ export default function App() {
                       onTaskUpdate={() => loadWorkspace(selectedProjectId)} 
                       projectId={selectedProjectId}
                     />
-                    <GanttChart tasks={workspaceData.tasks} />
+                    <GanttChart tasks={workspaceData.tasks} projectId={selectedProjectId} />
                   </div>
                 )}
 

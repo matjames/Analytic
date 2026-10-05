@@ -192,6 +192,9 @@ func Run() {
 	// missing values, outlier detection, cross-tabulation, frequency analysis
 	SetupIntelligenceRoutes()
 
+	// Phase 6 — Official Statistics, Surveys & Census Management Engine
+	SetupOfficialStatisticsRoutes()
+
 	// Phase X — Start SSE event broker for live analytics stream
 	StartSSEBroker()
 
@@ -234,7 +237,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID, X-Tenant-ID, X-Workspace-ID")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -248,7 +251,7 @@ func corsHandler(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Admin-Key, X-StatGate-Internal-Key, X-Instance-ID, X-Tenant-ID, X-Workspace-ID")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -270,7 +273,7 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// CORS headers for cross-origin field agent access
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Instance-ID")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Instance-ID, X-Tenant-ID, X-Workspace-ID")
 
 	// API key check (StatGate internal key or configured API key)
 	if !checkAPIKey(r) && !checkInternalKey(r) {
@@ -280,13 +283,18 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	scope, err := officialStatisticsScope(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	// measure duration
 	timer := prometheus.NewTimer(submissionDuration)
 	defer timer.ObserveDuration()
 
 	// limit memory for parsing
-	err := r.ParseMultipartForm(200 << 20) // 200MB
+	err = r.ParseMultipartForm(200 << 20) // 200MB
 	if err != nil {
 		submissionsFailed.Inc()
 		http.Error(w, "failed to parse multipart form: "+err.Error(), http.StatusBadRequest)
@@ -306,7 +314,7 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// idempotency: if submission already exists, return 200
-	if exists, err := SubmissionExists(instanceID); err == nil && exists {
+	if exists, err := SubmissionExists(instanceID, scope); err == nil && exists {
 		submissionsDuplicate.Inc()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("already received"))
@@ -420,7 +428,7 @@ func submissionHandler(w http.ResponseWriter, r *http.Request) {
 		dbMeta[k] = v
 	}
 
-	if err := SaveSubmissionFullToDB(instanceID, formID, dbMeta, string(xmlData), submittedBy, gpsLat, gpsLng, gpsRaw, qaFlags); err != nil {
+	if err := SaveSubmissionFullToDB(instanceID, formID, dbMeta, string(xmlData), submittedBy, gpsLat, gpsLng, gpsRaw, qaFlags, scope); err != nil {
 		submissionsFailed.Inc()
 		log.Printf("failed to save submission to db: %v", err)
 		http.Error(w, "failed to save submission", http.StatusInternalServerError)
@@ -545,7 +553,6 @@ func instanceIDFromXML(s string) string {
 // ODK Collect sets the id attribute on the root data element:
 //
 //	<data id="my_form_id" version="2026010101">
-//
 func formIDFromXML(b []byte) string {
 	// Fast path: look for id="..." or id='...' on the root element
 	type xmlRoot struct {
@@ -753,8 +760,8 @@ func checkAdminKey(r *http.Request) bool {
 
 // admin list submissions
 func adminListHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	// parse limit
@@ -777,9 +784,9 @@ func adminListHandler(w http.ResponseWriter, r *http.Request) {
 	var subs []SubmissionSummary
 	var err error
 	if formID != "" {
-		subs, err = GetSubmissionsByFormID(formID, perPage)
+		subs, err = GetSubmissionsByFormID(formID, perPage, scope)
 	} else {
-		subs, err = ListSubmissions(perPage, offset)
+		subs, err = ListSubmissions(perPage, offset, scope)
 	}
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
@@ -793,8 +800,8 @@ func adminListHandler(w http.ResponseWriter, r *http.Request) {
 
 // admin get submission by instance_id
 func adminGetHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	id := r.URL.Query().Get("instance_id")
@@ -802,7 +809,7 @@ func adminGetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance_id required", http.StatusBadRequest)
 		return
 	}
-	s, xmlDoc, err := GetSubmission(id)
+	s, xmlDoc, err := GetSubmission(id, scope)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -913,8 +920,8 @@ func adminAttachmentHandler(w http.ResponseWriter, r *http.Request) {
 // adminDeleteSubmissionHandler deletes a submission by instance_id.
 // POST /admin/submission/delete?instance_id=...
 func adminDeleteSubmissionHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	instanceID := r.URL.Query().Get("instance_id")
@@ -922,7 +929,7 @@ func adminDeleteSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance_id required", http.StatusBadRequest)
 		return
 	}
-	if err := DeleteSubmission(instanceID); err != nil {
+	if err := DeleteSubmission(instanceID, scope); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1018,8 +1025,8 @@ func adminRotateKeysHandler(w http.ResponseWriter, r *http.Request) {
 // adminValidateHandler approves/rejects a submission (workflow).
 // POST /admin/submission/validate?instance_id=...&status=approved|rejected
 func adminValidateHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -1040,14 +1047,14 @@ func adminValidateHandler(w http.ResponseWriter, r *http.Request) {
 	if ident := checkRegistryToken(r); ident != nil && ident.UserID != "" {
 		validator = ident.UserID
 	}
-	if err := CreateValidation(instanceID, validator, status, notes); err != nil {
+	if err := CreateValidation(instanceID, validator, status, notes, scope); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// ── Full enterprise cascade on quick-review ──
 	// Derive form_id from the submission record for the cascade payload
 	formIDForCascade := ""
-	if sub, _, err2 := GetSubmission(instanceID); err2 == nil && sub != nil {
+	if sub, _, err2 := GetSubmission(instanceID, scope); err2 == nil && sub != nil {
 		formIDForCascade = sub.FormID
 	}
 	tenantIDForCascade := "default"
@@ -1122,8 +1129,8 @@ func adminObjectLinksHandler(w http.ResponseWriter, r *http.Request) {
 // adminDiscussionHandler returns the StatChat discussion link for a submission.
 // GET /admin/submission/discussion?instance_id=...&name=...&create=true
 func adminDiscussionHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	instanceID := r.URL.Query().Get("instance_id")
@@ -1150,7 +1157,7 @@ func adminDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	formID := ""
-	if s, _, err := GetSubmission(instanceID); err == nil && s != nil {
+	if s, _, err := GetSubmission(instanceID, scope); err == nil && s != nil {
 		formID = s.FormID
 	}
 	name := fmt.Sprintf("Submission %s (%s)", instanceID, formID)
@@ -1173,11 +1180,20 @@ func adminDiscussionHandler(w http.ResponseWriter, r *http.Request) {
 
 // templatesHandler handles GET /templates (list) and POST /templates (create).
 func templatesHandler(w http.ResponseWriter, r *http.Request) {
+	var scope OfficialStatisticsScope
+	var ok bool
+	if r.Method == http.MethodGet {
+		scope, ok = requireOfficialStatisticsReadScope(w, r)
+	} else {
+		scope, ok = requireOfficialStatisticsScope(w, r)
+	}
+	if !ok {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		// Any valid API key can list active templates
 		status := r.URL.Query().Get("status")
-		templates, err := ListTemplates(status)
+		templates, err := ListTemplates(status, scope)
 		if err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -1187,11 +1203,6 @@ func templatesHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 
 	case http.MethodPost:
-		// Creating templates requires admin key
-		if !checkAdminKey(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		var t Template
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&t); err != nil {
@@ -1214,8 +1225,9 @@ func templatesHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid schema: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		t.TenantID = cfg.TenantID
-		if err := SaveTemplate(t); err != nil {
+		t.TenantID = scope.TenantID
+		t.WorkspaceID = scope.WorkspaceID
+		if err := SaveTemplate(t, scope); err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1236,6 +1248,16 @@ func templatesHandler(w http.ResponseWriter, r *http.Request) {
 // templateDetailHandler handles GET /templates/{id}, PUT /templates/{id},
 // DELETE /templates/{id}, and PATCH /templates/{id}/status.
 func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
+	var scope OfficialStatisticsScope
+	var ok bool
+	if r.Method == http.MethodGet {
+		scope, ok = requireOfficialStatisticsReadScope(w, r)
+	} else {
+		scope, ok = requireOfficialStatisticsScope(w, r)
+	}
+	if !ok {
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/templates/")
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 || parts[0] == "" {
@@ -1246,7 +1268,7 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		t, err := GetTemplate(id)
+		t, err := GetTemplate(id, scope)
 		if err != nil {
 			http.Error(w, "template not found", http.StatusNotFound)
 			return
@@ -1256,10 +1278,6 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 
 	case http.MethodPut:
-		if !checkAdminKey(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		var t Template
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&t); err != nil {
@@ -1277,8 +1295,9 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if t.Version == "" {
 			t.Version = "1.0"
 		}
-		t.TenantID = cfg.TenantID
-		if err := SaveTemplate(t); err != nil {
+		t.TenantID = scope.TenantID
+		t.WorkspaceID = scope.WorkspaceID
+		if err := SaveTemplate(t, scope); err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1291,11 +1310,7 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 
 	case http.MethodDelete:
-		if !checkAdminKey(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		if err := DeleteTemplate(id); err != nil {
+		if err := DeleteTemplate(id, scope); err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1303,10 +1318,6 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 
 	case http.MethodPatch:
-		if !checkAdminKey(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		// Check if this is a status update: /templates/{id}/status
 		if len(parts) >= 2 && parts[1] == "status" {
 			var body struct {
@@ -1321,7 +1332,7 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "status is required", http.StatusBadRequest)
 				return
 			}
-			if err := UpdateTemplateStatus(id, body.Status); err != nil {
+			if err := UpdateTemplateStatus(id, body.Status, scope); err != nil {
 				http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -1340,8 +1351,8 @@ func templateDetailHandler(w http.ResponseWriter, r *http.Request) {
 // templateVersionsHandler lists version history for a template.
 // GET /templates/versions?template_id=...
 func templateVersionsHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -1353,7 +1364,7 @@ func templateVersionsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "template_id required", http.StatusBadRequest)
 		return
 	}
-	versions, err := ListTemplateVersions(templateID)
+	versions, err := ListTemplateVersions(templateID, scope)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1367,8 +1378,8 @@ func templateVersionsHandler(w http.ResponseWriter, r *http.Request) {
 // POST /templates/share {template_id, new_id, target_tenant_id}
 // DELETE /templates/share {template_id}
 func templateShareHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	switch r.Method {
@@ -1387,7 +1398,7 @@ func templateShareHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "template_id is required", http.StatusBadRequest)
 			return
 		}
-		if err := ShareTemplate(body.TemplateID, body.NewID, body.TargetTenantID); err != nil {
+		if err := ShareTemplate(body.TemplateID, body.NewID, body.TargetTenantID, scope); err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1408,7 +1419,7 @@ func templateShareHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "template_id is required", http.StatusBadRequest)
 			return
 		}
-		if err := UnshareTemplate(body.TemplateID); err != nil {
+		if err := UnshareTemplate(body.TemplateID, scope); err != nil {
 			http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1467,8 +1478,8 @@ func fullHealthHandler(w http.ResponseWriter, r *http.Request) {
 
 // templateCloneHandler handles POST /templates/clone {source_id, new_id, name}
 func templateCloneHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -1487,7 +1498,7 @@ func templateCloneHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Name == "" {
 		req.Name = req.NewID
 	}
-	tmpl, err := CloneTemplate(req.SourceID, req.NewID, req.Name)
+	tmpl, err := CloneTemplate(req.SourceID, req.NewID, req.Name, scope)
 	if err != nil {
 		http.Error(w, "clone failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1500,8 +1511,8 @@ func templateCloneHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminExportHandler handles GET /admin/submissions/export?form_id=...&format=csv|json|geojson
 func adminExportHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	formID := r.URL.Query().Get("form_id")
@@ -1509,7 +1520,7 @@ func adminExportHandler(w http.ResponseWriter, r *http.Request) {
 	if format == "" {
 		format = "json"
 	}
-	subs, err := GetSubmissionsByFormID(formID, 1000)
+	subs, err := GetSubmissionsByFormID(formID, 1000, scope)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1531,7 +1542,7 @@ func adminExportHandler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range subs {
 			// Attempt to extract GPS from the submission XML stored in meta or DB
 			var geometry interface{}
-			if xmlStr, _, err2 := GetSubmission(s.InstanceID); err2 == nil && xmlStr != nil {
+			if xmlStr, _, err2 := GetSubmission(s.InstanceID, scope); err2 == nil && xmlStr != nil {
 				if lat, lng, ok := extractGPSFromXML(xmlStr.Meta); ok {
 					geometry = map[string]interface{}{
 						"type":        "Point",
@@ -1567,12 +1578,12 @@ func adminExportHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminQAHandler handles GET /admin/submissions/qa?form_id=...
 func adminQAHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	formID := r.URL.Query().Get("form_id")
-	flags, err := ScanSubmissionsQA(formID)
+	flags, err := ScanSubmissionsQA(formID, scope)
 	if err != nil {
 		http.Error(w, "qa scan error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1648,8 +1659,8 @@ func templateLibraryHandler(w http.ResponseWriter, r *http.Request) {
 //
 //	plus form fields: id, name, description.
 func templateImportHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -1709,8 +1720,9 @@ func templateImportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "import error: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	tmpl.TenantID = cfg.TenantID
-	if err := SaveTemplate(*tmpl); err != nil {
+	tmpl.TenantID = scope.TenantID
+	tmpl.WorkspaceID = scope.WorkspaceID
+	if err := SaveTemplate(*tmpl, scope); err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1725,6 +1737,10 @@ func templateImportHandler(w http.ResponseWriter, r *http.Request) {
 
 // templateExportHandler handles GET /templates/export?id=...&format=json|xlsform|odkxml
 func templateExportHandler(w http.ResponseWriter, r *http.Request) {
+	scope, ok := requireOfficialStatisticsReadScope(w, r)
+	if !ok {
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1739,7 +1755,7 @@ func templateExportHandler(w http.ResponseWriter, r *http.Request) {
 		format = "json"
 	}
 
-	t, err := GetTemplate(templateID)
+	t, err := GetTemplate(templateID, scope)
 	if err != nil {
 		http.Error(w, "template not found", http.StatusNotFound)
 		return
@@ -2229,8 +2245,8 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminAIAnalyzeHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -2246,7 +2262,7 @@ func adminAIAnalyzeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, err := GetTemplate(req.TemplateID)
+	t, err := GetTemplate(req.TemplateID, scope)
 	if err != nil {
 		http.Error(w, "template not found", http.StatusNotFound)
 		return
@@ -2309,8 +2325,8 @@ func adminAIAnalyzeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminAIOutliersHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -2326,7 +2342,7 @@ func adminAIOutliersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs, err := GetSubmissionsByFormID(req.FormID, 500)
+	subs, err := GetSubmissionsByFormID(req.FormID, 500, scope)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

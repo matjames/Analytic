@@ -17,6 +17,10 @@ let canPublish = true;
  * @returns {Promise<string|null>} Token or null if not authenticated
  */
 async function getAuthToken() {
+    const registryToken = window.localStorage.getItem('registry_jwt');
+    if (registryToken) {
+        return registryToken;
+    }
     if (!keycloak || !keycloak.authenticated) {
         return null;
     }
@@ -85,6 +89,26 @@ history.replaceState = function() {
  */
 export async function initAuth() {
     try {
+        const url = new URL(window.location.href);
+        const handedToken = url.searchParams.get('statgate_token') || url.searchParams.get('registry_token');
+        if (handedToken) {
+            window.localStorage.setItem('registry_jwt', handedToken);
+            url.searchParams.delete('statgate_token');
+            url.searchParams.delete('registry_token');
+            window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+        }
+
+        const registryToken = handedToken || window.localStorage.getItem('registry_jwt');
+        if (registryToken) {
+            window.getAuthToken = () => Promise.resolve(registryToken);
+            if (typeof apiCache !== 'undefined' && apiCache.setAuthProvider) {
+                apiCache.setAuthProvider(() => Promise.resolve(registryToken));
+            }
+            await fetchCurrentUser().catch((error) => console.warn('[Auth] Current user unavailable:', error));
+            handleRegistryAuthenticatedUser();
+            return true;
+        }
+
         // Fetch auth config from backend
         const authConfig = await getAuthConfig();
         console.log('[Auth] Backend config:', authConfig);
@@ -141,6 +165,19 @@ export async function initAuth() {
         console.error('[Auth] Initialization failed:', error);
         throw error;
     }
+}
+
+function handleRegistryAuthenticatedUser() {
+    fetchAndApplyMenuPermissions();
+    const logoutButtons = [document.getElementById('logoutBtn'), document.getElementById('menu-sign-out')];
+    logoutButtons.forEach((button) => {
+        if (!button) return;
+        button.style.display = '';
+        button.addEventListener('click', () => {
+            window.localStorage.removeItem('registry_jwt');
+            window.location.href = window.location.pathname;
+        });
+    });
 }
 
 function handleAuthenticatedUser() {

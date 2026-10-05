@@ -8,6 +8,7 @@ import (
 	"knowledgeportal/pkg/store"
 
 	"github.com/matjames/statgate-lib/auth"
+	"github.com/matjames/statgate-lib/tenant"
 )
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
@@ -36,6 +37,26 @@ func actorID(r *http.Request) string {
 		return u.UserID
 	}
 	return ""
+}
+
+func actorRole(r *http.Request) string {
+	if role, ok := r.Context().Value(auth.ContextKeyRole).(string); ok {
+		return strings.TrimSpace(role)
+	}
+	return ""
+}
+
+func actorWorkspace(r *http.Request) string {
+	return tenant.WorkspaceIDFromRequest(r)
+}
+
+func canModerate(r *http.Request) bool {
+	switch strings.ToLower(actorRole(r)) {
+	case "editor", "manager", "tenant_admin", "governance_officer", "admin", "superadmin", "platform_admin":
+		return true
+	default:
+		return false
+	}
 }
 
 // publicTenant resolves the tenant for public endpoints from a query param.

@@ -14,10 +14,10 @@ import (
 // The schema is a JSON structure that defines sections, fields, validation,
 // and conditional logic — fully dynamic, no hardcoded forms.
 type Template struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Version     string          `json:"version"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Description   string          `json:"description"`
+	Version       string          `json:"version"`
 	Category      string          `json:"category,omitempty"`
 	Rating        int16           `json:"rating"`
 	DownloadCount int             `json:"download_count"`
@@ -26,6 +26,7 @@ type Template struct {
 	Status        string          `json:"status"`
 	CreatedBy     string          `json:"created_by,omitempty"`
 	TenantID      string          `json:"tenant_id"`
+	WorkspaceID   string          `json:"workspace_id"`
 	IsShared      bool            `json:"is_shared"`
 	ParentID      string          `json:"parent_id,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
@@ -43,6 +44,7 @@ type TemplateSummary struct {
 	DownloadCount int       `json:"download_count"`
 	Status        string    `json:"status"`
 	TenantID      string    `json:"tenant_id"`
+	WorkspaceID   string    `json:"workspace_id"`
 	IsShared      bool      `json:"is_shared"`
 	ParentID      string    `json:"parent_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -51,13 +53,15 @@ type TemplateSummary struct {
 
 // TemplateVersion represents a historical version of a template.
 type TemplateVersion struct {
-	ID         int64           `json:"id"`
-	TemplateID string          `json:"template_id"`
-	Version    string          `json:"version"`
-	Schema     json.RawMessage `json:"schema"`
-	ChangedBy  string          `json:"changed_by,omitempty"`
-	ChangeNote string          `json:"change_note,omitempty"`
-	CreatedAt  time.Time       `json:"created_at"`
+	ID          int64           `json:"id"`
+	TemplateID  string          `json:"template_id"`
+	TenantID    string          `json:"tenant_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	Version     string          `json:"version"`
+	Schema      json.RawMessage `json:"schema"`
+	ChangedBy   string          `json:"changed_by,omitempty"`
+	ChangeNote  string          `json:"change_note,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 // TemplateLibraryEntry is an entry in the built-in template library catalog.
@@ -72,16 +76,18 @@ type TemplateLibraryEntry struct {
 }
 
 // SaveTemplate creates or updates a template in the database.
-func SaveTemplate(t Template) error {
+func SaveTemplate(t Template, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	tenantID := t.TenantID
-	if tenantID == "" {
-		tenantID = "default"
-	}
+	scope := officialScopeOrDefault(scopes)
+	t.TenantID = scope.TenantID
+	t.WorkspaceID = scope.WorkspaceID
+	var previousVersion string
+	var previousSchema []byte
+	existing := dbPool.QueryRow(ctx, `SELECT version, schema FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, t.ID, scope.TenantID, scope.WorkspaceID).Scan(&previousVersion, &previousSchema) == nil
 
 	// Auto-inject MSH configuration block if enabled
 	injectedSchema := t.Schema
@@ -98,8 +104,8 @@ func SaveTemplate(t Template) error {
 	}
 
 	tagsJSON, _ := json.Marshal(t.Tags)
-	_, err := dbPool.Exec(ctx, `INSERT INTO templates (id, name, description, version, schema, status, created_by, tenant_id, category, rating, download_count, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+	result, err := dbPool.Exec(ctx, `INSERT INTO templates (id, name, description, version, schema, status, created_by, tenant_id, workspace_id, category, rating, download_count, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
 		ON CONFLICT (id) DO UPDATE SET
 			name=EXCLUDED.name,
 			description=EXCLUDED.description,
@@ -110,28 +116,41 @@ func SaveTemplate(t Template) error {
 			category=EXCLUDED.category,
 			rating=EXCLUDED.rating,
 			download_count=EXCLUDED.download_count,
-			updated_at=now()`,
-		t.ID, t.Name, t.Description, t.Version, injectedSchema, t.Status, t.CreatedBy, tenantID, t.Category, t.Rating, t.DownloadCount)
+			updated_at=now()
+		WHERE templates.tenant_id = EXCLUDED.tenant_id
+		  AND templates.workspace_id = EXCLUDED.workspace_id`,
+		t.ID, t.Name, t.Description, t.Version, injectedSchema, t.Status, t.CreatedBy, t.TenantID, t.WorkspaceID, t.Category, t.Rating, t.DownloadCount)
 	if err != nil {
 		return fmt.Errorf("save template: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("template %q belongs to another tenant or workspace", t.ID)
+	}
+	if !existing {
+		_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, tenant_id, workspace_id, version, schema, changed_by, change_note)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)`, t.ID, t.TenantID, t.WorkspaceID, t.Version, injectedSchema, t.CreatedBy, "Initial version")
+	} else if previousVersion != t.Version || string(previousSchema) != string(injectedSchema) {
+		_, _ = dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, tenant_id, workspace_id, version, schema, changed_by, change_note)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)`, t.ID, t.TenantID, t.WorkspaceID, t.Version, injectedSchema, t.CreatedBy, "Saved version")
 	}
 	_ = tagsJSON // stored in schema metadata; column extension optional
 	return nil
 }
 
 // GetTemplate retrieves a template by ID.
-func GetTemplate(id string) (*Template, error) {
+func GetTemplate(id string, scopes ...OfficialStatisticsScope) (*Template, error) {
 	if dbPool == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 	var t Template
 	var schema []byte
 	var createdBy string
-	err := dbPool.QueryRow(ctx, `SELECT id, name, COALESCE(description,''), version, schema, status, COALESCE(created_by,''), tenant_id, COALESCE(category,'General'), rating, download_count, created_at, updated_at
-		FROM templates WHERE id=$1`, id).Scan(
-		&t.ID, &t.Name, &t.Description, &t.Version, &schema, &t.Status, &createdBy, &t.TenantID, &t.Category, &t.Rating, &t.DownloadCount, &t.CreatedAt, &t.UpdatedAt)
+	err := dbPool.QueryRow(ctx, `SELECT id, name, COALESCE(description,''), version, schema, status, COALESCE(created_by,''), tenant_id, workspace_id, COALESCE(category,'General'), rating, download_count, created_at, updated_at
+		FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, id, scope.TenantID, scope.WorkspaceID).Scan(
+		&t.ID, &t.Name, &t.Description, &t.Version, &schema, &t.Status, &createdBy, &t.TenantID, &t.WorkspaceID, &t.Category, &t.Rating, &t.DownloadCount, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -141,16 +160,17 @@ func GetTemplate(id string) (*Template, error) {
 }
 
 // ListTemplates returns all templates, optionally filtered by status.
-func ListTemplates(status string) ([]TemplateSummary, error) {
+func ListTemplates(status string, scopes ...OfficialStatisticsScope) ([]TemplateSummary, error) {
 	if dbPool == nil {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	query := `SELECT id, name, COALESCE(description,''), version, status, tenant_id, COALESCE(category,'General'), rating, download_count, created_at, updated_at FROM templates`
-	var args []interface{}
+	scope := officialScopeOrDefault(scopes)
+	query := `SELECT id, name, COALESCE(description,''), version, status, tenant_id, workspace_id, COALESCE(category,'General'), rating, download_count, created_at, updated_at FROM templates WHERE tenant_id=$1 AND workspace_id=$2`
+	args := []interface{}{scope.TenantID, scope.WorkspaceID}
 	if status != "" {
-		query += ` WHERE status=$1`
+		query += ` AND status=$3`
 		args = append(args, status)
 	}
 	query += ` ORDER BY name`
@@ -162,7 +182,7 @@ func ListTemplates(status string) ([]TemplateSummary, error) {
 	var out []TemplateSummary
 	for rows.Next() {
 		var t TemplateSummary
-		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Version, &t.Status, &t.TenantID, &t.Category, &t.Rating, &t.DownloadCount, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Version, &t.Status, &t.TenantID, &t.WorkspaceID, &t.Category, &t.Rating, &t.DownloadCount, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -171,13 +191,14 @@ func ListTemplates(status string) ([]TemplateSummary, error) {
 }
 
 // DeleteTemplate removes a template by ID.
-func DeleteTemplate(id string) error {
+func DeleteTemplate(id string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `DELETE FROM templates WHERE id=$1`, id)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `DELETE FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, id, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("delete template: %w", err)
 	}
@@ -185,13 +206,14 @@ func DeleteTemplate(id string) error {
 }
 
 // UpdateTemplateStatus changes a template's status (active/draft/archived).
-func UpdateTemplateStatus(id, status string) error {
+func UpdateTemplateStatus(id, status string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `UPDATE templates SET status=$2, updated_at=now() WHERE id=$1`, id, status)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `UPDATE templates SET status=$2, updated_at=now() WHERE id=$1 AND tenant_id=$3 AND workspace_id=$4`, id, status, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("update template status: %w", err)
 	}
@@ -1417,8 +1439,8 @@ func mapTypeToXSD(typ string) string {
 // ── Template Database Operations ──────────────────────────────
 
 // GetTemplateSchema returns the parsed schema for a template.
-func GetTemplateSchema(id string) (map[string]interface{}, error) {
-	t, err := GetTemplate(id)
+func GetTemplateSchema(id string, scopes ...OfficialStatisticsScope) (map[string]interface{}, error) {
+	t, err := GetTemplate(id, scopes...)
 	if err != nil {
 		return nil, err
 	}
@@ -1430,14 +1452,15 @@ func GetTemplateSchema(id string) (map[string]interface{}, error) {
 }
 
 // TemplateExists checks if a template ID exists.
-func TemplateExists(id string) (bool, error) {
+func TemplateExists(id string, scopes ...OfficialStatisticsScope) (bool, error) {
 	if dbPool == nil {
 		return false, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 	var cnt int
-	err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM templates WHERE id=$1`, id).Scan(&cnt)
+	err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, id, scope.TenantID, scope.WorkspaceID).Scan(&cnt)
 	if err != nil {
 		return false, err
 	}
@@ -1450,15 +1473,16 @@ func GetPool() *pgxpool.Pool {
 }
 
 // SaveTemplateVersion saves a new version snapshot to template_versions.
-func SaveTemplateVersion(templateID, version, changeNote, changedBy string, schema []byte) error {
+func SaveTemplateVersion(templateID, version, changeNote, changedBy string, schema []byte, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, version, schema, changed_by, change_note)
-		VALUES ($1,$2,$3,$4,$5)`,
-		templateID, version, schema, changedBy, changeNote)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `INSERT INTO template_versions (template_id, tenant_id, workspace_id, version, schema, changed_by, change_note)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		templateID, scope.TenantID, scope.WorkspaceID, version, schema, changedBy, changeNote)
 	if err != nil {
 		return fmt.Errorf("save template version: %w", err)
 	}
@@ -1466,14 +1490,15 @@ func SaveTemplateVersion(templateID, version, changeNote, changedBy string, sche
 }
 
 // ListTemplateVersions returns version history for a template.
-func ListTemplateVersions(templateID string) ([]TemplateVersion, error) {
+func ListTemplateVersions(templateID string, scopes ...OfficialStatisticsScope) ([]TemplateVersion, error) {
 	if dbPool == nil {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rows, err := dbPool.Query(ctx, `SELECT id, template_id, version, schema, COALESCE(changed_by,''), COALESCE(change_note,''), created_at
-		FROM template_versions WHERE template_id=$1 ORDER BY created_at DESC`, templateID)
+	scope := officialScopeOrDefault(scopes)
+	rows, err := dbPool.Query(ctx, `SELECT id, template_id, tenant_id, workspace_id, version, schema, COALESCE(changed_by,''), COALESCE(change_note,''), created_at
+		FROM template_versions WHERE template_id=$1 AND tenant_id=$2 AND workspace_id=$3 ORDER BY created_at DESC`, templateID, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1481,7 +1506,7 @@ func ListTemplateVersions(templateID string) ([]TemplateVersion, error) {
 	var out []TemplateVersion
 	for rows.Next() {
 		var v TemplateVersion
-		if err := rows.Scan(&v.ID, &v.TemplateID, &v.Version, &v.Schema, &v.ChangedBy, &v.ChangeNote, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.TemplateID, &v.TenantID, &v.WorkspaceID, &v.Version, &v.Schema, &v.ChangedBy, &v.ChangeNote, &v.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -1490,28 +1515,29 @@ func ListTemplateVersions(templateID string) ([]TemplateVersion, error) {
 }
 
 // ShareTemplate marks a template as shared and creates a copy in target tenant.
-func ShareTemplate(templateID, newID, targetTenantID string) error {
+func ShareTemplate(templateID, newID, targetTenantID string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `UPDATE templates SET is_shared=true, parent_id=$2 WHERE id=$1`,
-		templateID, templateID)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `UPDATE templates SET is_shared=true, parent_id=$2 WHERE id=$1 AND tenant_id=$3 AND workspace_id=$4`,
+		templateID, templateID, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("share template: %w", err)
 	}
 	if newID != "" && targetTenantID != "" {
 		var schema []byte
 		var name, desc, version string
-		err := dbPool.QueryRow(ctx, `SELECT name, description, version, schema FROM templates WHERE id=$1`, templateID).Scan(
+		err := dbPool.QueryRow(ctx, `SELECT name, description, version, schema FROM templates WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, templateID, scope.TenantID, scope.WorkspaceID).Scan(
 			&name, &desc, &version, &schema)
 		if err != nil {
 			return err
 		}
-		_, err = dbPool.Exec(ctx, `INSERT INTO templates (id, name, description, version, schema, status, tenant_id, is_shared, parent_id)
-			VALUES ($1,$2,$3,$4,$5,'active',$6,true,$7)`,
-			newID, name, desc, version, schema, targetTenantID, templateID)
+		_, err = dbPool.Exec(ctx, `INSERT INTO templates (id, name, description, version, schema, status, tenant_id, workspace_id, is_shared, parent_id)
+			VALUES ($1,$2,$3,$4,$5,'active',$6,$7,true,$8)`,
+			newID, name, desc, version, schema, targetTenantID, scope.WorkspaceID, templateID)
 		if err != nil {
 			return fmt.Errorf("create shared copy: %w", err)
 		}
@@ -1520,13 +1546,14 @@ func ShareTemplate(templateID, newID, targetTenantID string) error {
 }
 
 // UnshareTemplate removes shared status.
-func UnshareTemplate(templateID string) error {
+func UnshareTemplate(templateID string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `UPDATE templates SET is_shared=false WHERE id=$1`, templateID)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `UPDATE templates SET is_shared=false WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, templateID, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("unshare template: %w", err)
 	}
@@ -1534,8 +1561,9 @@ func UnshareTemplate(templateID string) error {
 }
 
 // CloneTemplate duplicates an existing template with a new ID and name.
-func CloneTemplate(sourceID, newID, newName string) (*Template, error) {
-	tmpl, err := GetTemplate(sourceID)
+func CloneTemplate(sourceID, newID, newName string, scopes ...OfficialStatisticsScope) (*Template, error) {
+	scope := officialScopeOrDefault(scopes)
+	tmpl, err := GetTemplate(sourceID, scope)
 	if err != nil {
 		return nil, fmt.Errorf("source template not found: %w", err)
 	}
@@ -1547,9 +1575,10 @@ func CloneTemplate(sourceID, newID, newName string) (*Template, error) {
 		Schema:      tmpl.Schema,
 		Status:      "draft",
 		CreatedBy:   "system",
-		TenantID:    tmpl.TenantID,
+		TenantID:    scope.TenantID,
+		WorkspaceID: scope.WorkspaceID,
 	}
-	if err := SaveTemplate(newTmpl); err != nil {
+	if err := SaveTemplate(newTmpl, scope); err != nil {
 		return nil, fmt.Errorf("save cloned template: %w", err)
 	}
 	return &newTmpl, nil

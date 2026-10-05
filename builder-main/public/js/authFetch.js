@@ -10,6 +10,10 @@ import { keycloak } from './auth.js';
  * @returns {Promise<string|null>} Bearer token or null if not authenticated
  */
 export async function getAuthToken() {
+    const registryToken = window.localStorage.getItem('registry_jwt');
+    if (registryToken) {
+        return registryToken;
+    }
     if (!keycloak || !keycloak.authenticated) {
         return null;
     }
@@ -71,7 +75,9 @@ export async function authFetchJSON(url, options = {}) {
     if (!response.ok) {
         if (response.status === 401) {
             console.warn('[Auth] Unauthorized - redirecting to login');
-            keycloak.login();
+            if (keycloak && keycloak.login) {
+                keycloak.login();
+            }
             throw new Error('Authentication required');
         }
         if (response.status === 403) {

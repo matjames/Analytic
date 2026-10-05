@@ -1,17 +1,18 @@
 # StatGate Phase → Service → Status Matrix
 
-**As of:** 29 August 2026
+**As of:** 5 October 2026
 **Purpose:** Map every roadmap phase to the implementing service(s), its deployment status in `docker-compose.yml`, and its reality-based status (per `CURRENT_STATE_AND_WAY_FORWARD.md`).
 
 **Status model:** **OP** = Operational · **IMP** = Implemented (integration/production proof incomplete) · **IP** = In progress · **SPEC** = Specified only · **DEF** = Deferred
 
-## Deployment Stack Inventory (42 services)
+## Deployment Stack Inventory (Compose services)
 
 | Service | Build source | Role |
 |---|---|---|
 | postgres, redis | images | Core datastores |
 | statgate-launcher | ./appluancher | App Launcher (Next.js entry) |
 | statgate-core | ./backend | Analytics Core backend |
+| statcollect | ./StatCollect | Statistical collection and production backend (Phases 6/11) |
 | statgate-analytics | ./frontend | Analytics UI (Next.js) |
 | statgate-registry-api | ./stage_register/go-backend | Registry (identity/tenancy) |
 | statgate-registry-ui | ./stage_register/frontend | Registry UI |
@@ -47,12 +48,12 @@
 | 3 | Communication & Collaboration | statchat-backend/frontend/turn, helpdesk | ✅ | IMP (114/126 route audit; browser E2E + production TURN outstanding) |
 | 4 | Project & Portfolio Management | statgate-pms-api/ui | ✅ | IMP (workspace scoping certified; LogFrame/ToC/donor workflows remaining) |
 | 5 | Research Ecosystem | statgate-rms-api/ui | ✅ | IMP (workspace scoping certified; DOI/citations/IRB remaining) |
-| 6 | Official Statistics & Census | statgate-core (Analytics) | ✅ | IP (questionnaire/sampling/enumeration/tabulation remaining) |
+| 6 | Official Statistics & Census | statgate-core (Analytics), StatCollect | ✅ | IP (broad backend slice operational; scheduled refresh implementation awaits live certification, automatic transformation reruns, full lineage graph, and role-aware production/dissemination UX) |
 | 7 | Data Management & Governance | statdata, superset | ✅ | IP (classification/retention/OCR/metadata automation remaining) |
 | 8 | BI & Analytics | statgate-core, statgate-analytics | ✅ | IP (forecasting, ad-hoc query, NLQ, scheduled reports remaining) |
 | 9 | AI & Intelligent Automation | mlflow, ai-autonomy | ✅ | IP (LLM gateway, embeddings, governed RAG = Stage 5) |
 | 10 | GIS & Spatial Analytics | statgate-spatial-api/ui (StatSpatial) | ✅ (added 2026-08-29) | IP (PostGIS/spatial analysis/vector tiles remaining) |
-| 11 | Field Ops & Mobile Collection | **StatCollect — NOT in Compose**, statiot | ❌ | IP (supervisor ops, GPS streaming remaining) |
+| 11 | Field Ops & Mobile Collection | StatCollect, statiot | ✅ | IP (StatCollect is deployed; collect-master identity/branding/assignment integration and GPS streaming remain) |
 | 12 | M&E & Results Management | statgate-pms-api | ✅ | IP (evaluation workflows remaining) |
 | 13 | Governance, Risk & Compliance | statgate-governance-api/ui | ✅ | IP (whistleblower/COI/board packs remaining) |
 | 14 | Finance, Grants, Procurement | — | ❌ | SPEC (Phase 45 target) |
@@ -130,4 +131,4 @@ The normal StatCitizen image-build gate is now closed: the image builds with the
 
 PMS LogFrame, Theory of Change, and Donor workflows are certified for authenticated workspace use. Legacy schema compatibility, persistence, nested reads, workspace filtering, unauthorized access, and foreign-workspace mutation denial are verified; PMS API and UI are healthy on ports `8091` and `3010`.
 
-PMS portfolio/programme aggregation is also certified through `GET /api/portfolio-dashboard`: workspace-scoped KPIs, stage distribution, group rollups, project rows, and portfolio/programme filters are live in the global UI. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint is certified for governed risk, schedule, milestone, and budget forecasting advisory with invalid-action and foreign-workspace denial checks. Workspace-scoped `GET /api/projects/:id/progress-summary` is certified for delivery metrics and recommendations; StatSpatial project-location save/readback is certified with workspace isolation and coordinate validation.
+PMS portfolio/programme aggregation is also certified through `GET /api/portfolio-dashboard`: workspace-scoped KPIs, stage distribution, group rollups, project rows, and portfolio/programme filters are live in the global UI. The PMS-mediated `POST /api/projects/:id/health-assistant` endpoint is certified for governed risk, schedule, milestone, and budget forecasting advisory with invalid-action and foreign-workspace denial checks. Workspace-scoped `GET /api/projects/:id/progress-summary`, `GET /api/projects/:id/critical-path`, and `GET /api/projects/:id/wbs` are certified for delivery metrics, recommendations, dependency-aware scheduling, and hierarchical planning; resource allocation CRUD is certified with capacity/date validation and workspace isolation; StatSpatial project-location save/readback is certified with workspace isolation and coordinate validation.

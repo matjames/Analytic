@@ -40,8 +40,8 @@ func adminLineageHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminApproveHandler advances a submission through the multi-level approval pipeline
 func adminApproveHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -62,7 +62,7 @@ func adminApproveHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance_id and stage are required", http.StatusBadRequest)
 		return
 	}
-	if err := AdvanceApprovalStage(req.InstanceID, req.Stage, req.ApproverRole, req.Notes); err != nil {
+	if err := AdvanceApprovalStage(req.InstanceID, req.Stage, req.ApproverRole, req.Notes, scope); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -95,8 +95,8 @@ func adminApproveHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminRejectHandler rejects a submission at a given approval stage
 func adminRejectHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -117,7 +117,7 @@ func adminRejectHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance_id is required", http.StatusBadRequest)
 		return
 	}
-	if err := RejectSubmissionAtStage(req.InstanceID, req.Stage, req.ApproverRole, req.Reason); err != nil {
+	if err := RejectSubmissionAtStage(req.InstanceID, req.Stage, req.ApproverRole, req.Reason, scope); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -158,8 +158,8 @@ func adminPipelineHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminAISummaryHandler generates an automated AI dataset intelligence summary
 func adminAISummaryHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -171,7 +171,7 @@ func adminAISummaryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "form_id is required", http.StatusBadRequest)
 		return
 	}
-	subs, err := GetSubmissionsByFormID(formID, 1000)
+	subs, err := GetSubmissionsByFormID(formID, 1000, scope)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -261,21 +261,21 @@ func adminAITranslateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Survey-domain translation vocabulary — patterns matched to common survey terms
 	dict := map[string]map[string]string{
-		"name":        {"sw": "Jina", "fr": "Nom", "ar": "الاسم", "pt": "Nome", "am": "ስም", "ha": "Suna", "yo": "Orúkọ", "ig": "Aha", "rw": "Izina", "lg": "Erinnya"},
-		"age":         {"sw": "Umri", "fr": "Âge", "ar": "العمر", "pt": "Idade", "am": "ዕድሜ", "ha": "Shekaru", "yo": "Ọjọ́ orí", "ig": "Afọ", "rw": "Imyaka", "lg": "Emyaka"},
-		"gender":      {"sw": "Jinsia", "fr": "Genre", "ar": "الجنس", "pt": "Género", "am": "ጾታ", "ha": "Jinsi", "yo": "Ìbálòpọ̀", "ig": "Mmekọahụ", "rw": "Igitsina", "lg": "Engeli"},
-		"household":   {"sw": "Kaya", "fr": "Ménage", "ar": "الأسرة", "pt": "Domicílio", "am": "ቤተሰብ", "ha": "Gida", "yo": "Ilé", "ig": "Ụlọ", "rw": "Umuryango", "lg": "Eka"},
-		"health":      {"sw": "Afya", "fr": "Santé", "ar": "الصحة", "pt": "Saúde", "am": "ጤና", "ha": "Lafiya", "yo": "Ìlera", "ig": "Ahụ ike", "rw": "Ubuzima", "lg": "Amagezi"},
-		"water":       {"sw": "Maji", "fr": "Eau", "ar": "الماء", "pt": "Água", "am": "ውሃ", "ha": "Ruwa", "yo": "Omi", "ig": "Mmiri", "rw": "Amazi", "lg": "Amazzi"},
-		"education":   {"sw": "Elimu", "fr": "Éducation", "ar": "التعليم", "pt": "Educação", "am": "ትምህርት", "ha": "Ilimi", "yo": "Ẹ̀kọ́", "ig": "Ọmụmụ", "rw": "Uburezi", "lg": "Emyoyo"},
-		"income":      {"sw": "Mapato", "fr": "Revenu", "ar": "الدخل", "pt": "Renda", "am": "ገቢ", "ha": "Samun", "yo": "Owo", "ig": "Ọrụ ego", "rw": "Umusaruro", "lg": "Ennyingye"},
-		"community":   {"sw": "Jamii", "fr": "Communauté", "ar": "المجتمع", "pt": "Comunidade", "am": "ማህበረሰብ", "ha": "Al'umma", "yo": "Àgbègbè", "ig": "Obodo", "rw": "Umudugudu", "lg": "Ekitundu"},
-		"date":        {"sw": "Tarehe", "fr": "Date", "ar": "التاريخ", "pt": "Data", "am": "ቀን", "ha": "Kwanan wata", "yo": "Ọjọ", "ig": "Ọ́nọdụ", "rw": "Itariki", "lg": "Olunaku"},
-		"village":     {"sw": "Kijiji", "fr": "Village", "ar": "القرية", "pt": "Aldeia", "am": "መንደር", "ha": "Ƙauye", "yo": "Abúlé", "ig": "Obodo", "rw": "Umudugudu", "lg": "Kyalo"},
-		"school":      {"sw": "Shule", "fr": "École", "ar": "المدرسة", "pt": "Escola", "am": "ትምህርት ቤት", "ha": "Makaranta", "yo": "Ilé-ìwé", "ig": "Ụlọ akwụkwọ", "rw": "Ishuri", "lg": "Ssomero"},
-		"hospital":    {"sw": "Hospitali", "fr": "Hôpital", "ar": "المستشفى", "pt": "Hospital", "am": "ሆስፒታል", "ha": "Asibiti", "yo": "Ilé-ìwòsàn", "ig": "Ụlọ ọgwụ", "rw": "Ibitaro", "lg": "Eddwaliro"},
-		"mother":      {"sw": "Mama", "fr": "Mère", "ar": "الأم", "pt": "Mãe", "am": "እናት", "ha": "Uwa", "yo": "Ìyá", "ig": "Nnne", "rw": "Mama", "lg": "Maama"},
-		"child":       {"sw": "Mtoto", "fr": "Enfant", "ar": "طفل", "pt": "Criança", "am": "ልጅ", "ha": "Yaro", "yo": "Ọmọ", "ig": "Nwa", "rw": "Umwana", "lg": "Omwana"},
+		"name":      {"sw": "Jina", "fr": "Nom", "ar": "الاسم", "pt": "Nome", "am": "ስም", "ha": "Suna", "yo": "Orúkọ", "ig": "Aha", "rw": "Izina", "lg": "Erinnya"},
+		"age":       {"sw": "Umri", "fr": "Âge", "ar": "العمر", "pt": "Idade", "am": "ዕድሜ", "ha": "Shekaru", "yo": "Ọjọ́ orí", "ig": "Afọ", "rw": "Imyaka", "lg": "Emyaka"},
+		"gender":    {"sw": "Jinsia", "fr": "Genre", "ar": "الجنس", "pt": "Género", "am": "ጾታ", "ha": "Jinsi", "yo": "Ìbálòpọ̀", "ig": "Mmekọahụ", "rw": "Igitsina", "lg": "Engeli"},
+		"household": {"sw": "Kaya", "fr": "Ménage", "ar": "الأسرة", "pt": "Domicílio", "am": "ቤተሰብ", "ha": "Gida", "yo": "Ilé", "ig": "Ụlọ", "rw": "Umuryango", "lg": "Eka"},
+		"health":    {"sw": "Afya", "fr": "Santé", "ar": "الصحة", "pt": "Saúde", "am": "ጤና", "ha": "Lafiya", "yo": "Ìlera", "ig": "Ahụ ike", "rw": "Ubuzima", "lg": "Amagezi"},
+		"water":     {"sw": "Maji", "fr": "Eau", "ar": "الماء", "pt": "Água", "am": "ውሃ", "ha": "Ruwa", "yo": "Omi", "ig": "Mmiri", "rw": "Amazi", "lg": "Amazzi"},
+		"education": {"sw": "Elimu", "fr": "Éducation", "ar": "التعليم", "pt": "Educação", "am": "ትምህርት", "ha": "Ilimi", "yo": "Ẹ̀kọ́", "ig": "Ọmụmụ", "rw": "Uburezi", "lg": "Emyoyo"},
+		"income":    {"sw": "Mapato", "fr": "Revenu", "ar": "الدخل", "pt": "Renda", "am": "ገቢ", "ha": "Samun", "yo": "Owo", "ig": "Ọrụ ego", "rw": "Umusaruro", "lg": "Ennyingye"},
+		"community": {"sw": "Jamii", "fr": "Communauté", "ar": "المجتمع", "pt": "Comunidade", "am": "ማህበረሰብ", "ha": "Al'umma", "yo": "Àgbègbè", "ig": "Obodo", "rw": "Umudugudu", "lg": "Ekitundu"},
+		"date":      {"sw": "Tarehe", "fr": "Date", "ar": "التاريخ", "pt": "Data", "am": "ቀን", "ha": "Kwanan wata", "yo": "Ọjọ", "ig": "Ọ́nọdụ", "rw": "Itariki", "lg": "Olunaku"},
+		"village":   {"sw": "Kijiji", "fr": "Village", "ar": "القرية", "pt": "Aldeia", "am": "መንደር", "ha": "Ƙauye", "yo": "Abúlé", "ig": "Obodo", "rw": "Umudugudu", "lg": "Kyalo"},
+		"school":    {"sw": "Shule", "fr": "École", "ar": "المدرسة", "pt": "Escola", "am": "ትምህርት ቤት", "ha": "Makaranta", "yo": "Ilé-ìwé", "ig": "Ụlọ akwụkwọ", "rw": "Ishuri", "lg": "Ssomero"},
+		"hospital":  {"sw": "Hospitali", "fr": "Hôpital", "ar": "المستشفى", "pt": "Hospital", "am": "ሆስፒታል", "ha": "Asibiti", "yo": "Ilé-ìwòsàn", "ig": "Ụlọ ọgwụ", "rw": "Ibitaro", "lg": "Eddwaliro"},
+		"mother":    {"sw": "Mama", "fr": "Mère", "ar": "الأم", "pt": "Mãe", "am": "እናት", "ha": "Uwa", "yo": "Ìyá", "ig": "Nnne", "rw": "Mama", "lg": "Maama"},
+		"child":     {"sw": "Mtoto", "fr": "Enfant", "ar": "طفل", "pt": "Criança", "am": "ልጅ", "ha": "Yaro", "yo": "Ọmọ", "ig": "Nwa", "rw": "Umwana", "lg": "Omwana"},
 	}
 	textLower := strings.ToLower(req.Text)
 	translations := map[string]string{}
@@ -300,8 +300,8 @@ func adminAITranslateHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminAIQualityHandler performs deep per-field quality analysis on a dataset
 func adminAIQualityHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -315,7 +315,7 @@ func adminAIQualityHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "form_id is required", http.StatusBadRequest)
 		return
 	}
-	subs, err := GetSubmissionsByFormID(req.FormID, 500)
+	subs, err := GetSubmissionsByFormID(req.FormID, 500, scope)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -529,8 +529,8 @@ func adminRulesHandler(w http.ResponseWriter, r *http.Request) {
 
 // templateRollbackHandler restores a survey template to a previous version
 func templateRollbackHandler(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminKey(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	scope, ok := requireOfficialStatisticsScope(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -553,7 +553,7 @@ func templateRollbackHandler(w http.ResponseWriter, r *http.Request) {
 	if req.ChangedBy == "" {
 		req.ChangedBy = "admin"
 	}
-	if err := RollbackTemplate(req.TemplateID, req.Version, req.ChangedBy); err != nil {
+	if err := RollbackTemplate(req.TemplateID, req.Version, req.ChangedBy, scope); err != nil {
 		http.Error(w, "rollback failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

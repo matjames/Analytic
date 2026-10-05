@@ -1,7 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
-export default function GanttChart({ tasks }) {
-  if (!tasks || tasks.length === 0) {
+const API_BASE = import.meta.env.VITE_PMS_API_URL || 'http://localhost:8091';
+
+export default function GanttChart({ tasks = [], projectId }) {
+  const [serverTimeline, setServerTimeline] = useState(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetch(`${API_BASE}/api/projects/${projectId}/gantt`)
+      .then(response => response.ok ? response.json() : null)
+      .then(data => setServerTimeline(data))
+      .catch(() => setServerTimeline(null));
+  }, [projectId]);
+
+  const timelineItems = serverTimeline?.items?.length ? serverTimeline.items : tasks;
+  if (!timelineItems || timelineItems.length === 0) {
     return (
       <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
         No tasks or milestones available to plot schedule.
@@ -15,7 +28,7 @@ export default function GanttChart({ tasks }) {
     let end = new Date();
     end.setMonth(end.getMonth() + 2); // Default 2 months out
 
-    const dates = tasks
+    const dates = timelineItems
       .map(t => [new Date(t.startDate), new Date(t.endDate)])
       .flat()
       .filter(d => !isNaN(d.getTime()));
@@ -30,8 +43,12 @@ export default function GanttChart({ tasks }) {
     return { start, end };
   };
 
-  const { start: minDate, end: maxDate } = getTimelineBounds();
-  const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) || 30;
+  const serverStart = serverTimeline?.bounds?.start;
+  const serverEnd = serverTimeline?.bounds?.end;
+  const { start: minDate, end: maxDate } = serverStart && serverEnd
+    ? { start: new Date(serverStart), end: new Date(serverEnd) }
+    : getTimelineBounds();
+  const totalDays = serverTimeline?.bounds?.spanDays || Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) || 30;
 
   const getPositionPercentage = (dateStr) => {
     const date = new Date(dateStr);
@@ -64,7 +81,7 @@ export default function GanttChart({ tasks }) {
 
         {/* Gantt Rows */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {tasks.map((task) => {
+          {timelineItems.map((task) => {
             const startPct = getPositionPercentage(task.startDate);
             const endPct = getPositionPercentage(task.endDate);
             const widthPct = Math.max(2, endPct - startPct);
@@ -74,7 +91,7 @@ export default function GanttChart({ tasks }) {
                 <div style={{ display: 'flex', flexDirection: 'column', paddingRight: '12px' }}>
                   <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ color: 'var(--accent-primary)', fontSize: '11px', fontFamily: 'monospace' }}>{task.wbsCode}</span>
-                    {task.title}
+                    {task.title} {task.type && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({task.type})</span>}
                   </div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Assignee: {task.assignedTo || 'Unassigned'}</span>
                 </div>

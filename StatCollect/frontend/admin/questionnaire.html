@@ -246,6 +246,13 @@
 
   <script>
     let apiKey = localStorage.getItem('sc_admin_key') || '';
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      headers.set('X-Tenant-ID', localStorage.getItem('statgate_tenant_id') || 'default');
+      headers.set('X-Workspace-ID', localStorage.getItem('statgate_workspace_id') || localStorage.getItem('workspace_id') || 'default');
+      return nativeFetch(input, { ...init, headers });
+    };
     let currentTemplate = null;
     let previewMode = 'mobile';
     let responses = {};

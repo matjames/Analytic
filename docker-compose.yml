@@ -98,6 +98,7 @@ services:
       - BIND_ADDRESS=0.0.0.0
       - CORS_ALLOWED_ORIGIN=http://localhost:5000
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
+      - STATCOLLECT_INTERNAL_URL=http://statcollect:8080
       - FLASK_BACKEND_URL=http://statgate-analytics:5000
       - KAGGLE_DB_HOST=postgres
       - KAGGLE_DB_PORT=${KAGGLE_DB_PORT:-5432}
@@ -105,7 +106,21 @@ services:
       - KAGGLE_DB_USER=${KAGGLE_DB_USER:-Kaggle}
       - KAGGLE_DB_PASSWORD=${KAGGLE_DB_PASSWORD:?KAGGLE_DB_PASSWORD must be set}
       - KAGGLE_DB_SSLMODE=${KAGGLE_DB_SSLMODE:-disable}
+      # Dataset data plane: the core reads rows pipelines stored in StatData
+      # (statdata.dataset_records) so tabulation is bound to real data.
+      - STATDATA_DB_HOST=postgres
+      - STATDATA_DB_PORT=${KAGGLE_DB_PORT:-5432}
+      - STATDATA_DB_NAME=statdata
+      - STATDATA_DB_USER=StatDataEngine
+      - STATDATA_DB_PASSWORD=${STATDATA_DB_PASSWORD:?STATDATA_DB_PASSWORD must be set}
+      - STATDATA_DB_SCHEMA=statdata
     restart: unless-stopped
+    # The core fails closed when PostgreSQL or its schema is unavailable
+    # (the in-memory demo lakehouse was removed), so it must not start
+    # before the database is accepting connections.
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -459,6 +474,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - STATCHAT_API_URL=http://statchat-backend:4000
+      - KNOWLEDGE_API_URL=http://knowledge-portal:8099
       - STATCHAT_UI_URL=http://statchat-frontend:80
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
@@ -466,10 +482,17 @@ services:
       - STATGATE_REGISTRY_API_URL=http://statgate-registry-api:9090/api
       - REGISTRY_API_URL=http://statgate-registry-api:9090/api
       - HELPDESK_API_URL=http://statgate-helpdesk-api:5000
+      - RMS_LLM_API_URL=${RMS_LLM_API_URL:-}
+      - RMS_LLM_API_KEY=${RMS_LLM_API_KEY:-}
+      - RMS_LLM_MODEL=${RMS_LLM_MODEL:-research-assistant}
+      - RMS_LLM_MAX_TOKENS=${RMS_LLM_MAX_TOKENS:-1200}
+      - RMS_ANALYTICS_CORE_URL=${RMS_ANALYTICS_CORE_URL:-http://statgate-core:8080}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      statgate-core:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -1390,7 +1413,10 @@ services:
   # PHASE 11/43 — StatCollect (Field Ops & Digital Data Collection) — brought into the stack
   statcollect:
     build:
-      context: ./StatCollect
+      context: .
+      dockerfile: StatCollect/Dockerfile
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /data/migrations; for migration in /opt/statcollect-migrations/*.sql; do target=/data/migrations/$$(basename \"$$migration\"); if [ ! -f \"$$target\" ]; then cp \"$$migration\" \"$$target\"; fi; done; exec /usr/local/bin/statcollect"]
     ports:
       - "8081:8080"
     volumes:
@@ -1410,6 +1436,9 @@ services:
       - STATGATE_REGISTRY_JWT_SECRET=${STATGATE_REGISTRY_JWT_SECRET:?STATGATE_REGISTRY_JWT_SECRET must be set}
       - STATGATE_INTERNAL_API_KEY=${STATGATE_INTERNAL_API_KEY:?STATGATE_INTERNAL_API_KEY must be set}
       - STATGATE_TENANT_ID=${STATGATE_TENANT_ID:-default}
+      - STATGATE_RESEARCH_URL=http://statgate-rms-api:8080
+      - STATGATE_STATISTICS_URL=http://statgate-core:8080
+      - STATGATE_WORKSPACE_ID=${STATGATE_WORKSPACE_ID:-}
       - STATCOLLECT_ENABLE_EVENTS=true
       - STATCOLLECT_ENABLE_STATCHAT=true
       - REDIS_ADDR=redis:6379
@@ -1419,6 +1448,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      statgate-rms-api:
         condition: service_healthy
     restart: unless-stopped
     networks:

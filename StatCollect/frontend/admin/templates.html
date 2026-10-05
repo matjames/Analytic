@@ -329,6 +329,7 @@
     </div>
     <div class="header-nav">
       <a href="index.html">📊 Dashboard</a>
+      <a href="official-statistics.html">🏛️ Official Statistics</a>
       <a href="templates.html" style="background:rgba(255,255,255,0.22);color:#fff;font-weight:700">📐 Form Builder</a>
       <a href="operations.html">⚙️ Operations</a>
       <a href="survey-dashboard.html">📈 Survey Intel</a>
@@ -899,6 +900,13 @@
      STATE
   ═══════════════════════════════════════════════ */
   let apiKey = localStorage.getItem('statcollect_api_key') || '';
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    headers.set('X-Tenant-ID', localStorage.getItem('statgate_tenant_id') || 'default');
+    headers.set('X-Workspace-ID', localStorage.getItem('statgate_workspace_id') || localStorage.getItem('workspace_id') || 'default');
+    return nativeFetch(input, { ...init, headers });
+  };
   let currentFormId = null;
   let selectedFieldId = null;
 

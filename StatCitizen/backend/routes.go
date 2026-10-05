@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -79,10 +80,10 @@ func registerRoutes(r *gin.Engine, cfg *Config) {
 	v1 := r.Group("/api/statcitizen/v1")
 	{
 		// Citizen Session & Identity (Rate Limited, No PII Required)
-		v1.POST("/session", rateLimitMiddleware(cfg), func(c *gin.Context) {
+		v1.POST("/session", rateLimitMiddleware(cfg), captchaMiddleware(cfg), func(c *gin.Context) {
 			handleCreateSession(c, cfg)
 		})
-		v1.POST("/register", rateLimitMiddleware(cfg), func(c *gin.Context) {
+		v1.POST("/register", rateLimitMiddleware(cfg), captchaMiddleware(cfg), func(c *gin.Context) {
 			handleRegisterCitizen(c, cfg)
 		})
 		v1.POST("/verify/phone", rateLimitMiddleware(cfg), func(c *gin.Context) {
@@ -90,6 +91,9 @@ func registerRoutes(r *gin.Engine, cfg *Config) {
 		})
 		v1.POST("/verify/email", rateLimitMiddleware(cfg), func(c *gin.Context) {
 			handleVerifyContact(c, cfg, "email")
+		})
+		v1.POST("/verify/request-otp", rateLimitMiddleware(cfg), captchaMiddleware(cfg), func(c *gin.Context) {
+			handleRequestContactOTP(c, cfg)
 		})
 		v1.POST("/consent", rateLimitMiddleware(cfg), func(c *gin.Context) {
 			handleRecordConsent(c, cfg)
@@ -99,7 +103,7 @@ func registerRoutes(r *gin.Engine, cfg *Config) {
 		v1.GET("/feedback/categories", func(c *gin.Context) {
 			handleListFeedbackCategories(c, cfg)
 		})
-		v1.POST("/feedback", rateLimitMiddleware(cfg), func(c *gin.Context) {
+		v1.POST("/feedback", rateLimitMiddleware(cfg), captchaMiddleware(cfg), func(c *gin.Context) {
 			handleSubmitFeedback(c, cfg)
 		})
 		v1.GET("/feedback", citizenAuthMiddleware(cfg), func(c *gin.Context) {
@@ -110,7 +114,7 @@ func registerRoutes(r *gin.Engine, cfg *Config) {
 		v1.GET("/reports/categories", func(c *gin.Context) {
 			handleListReportCategories(c, cfg)
 		})
-		v1.POST("/reports", rateLimitMiddleware(cfg), func(c *gin.Context) {
+		v1.POST("/reports", rateLimitMiddleware(cfg), captchaMiddleware(cfg), func(c *gin.Context) {
 			handleSubmitReport(c, cfg)
 		})
 		v1.GET("/reports/:id", func(c *gin.Context) {
@@ -217,9 +221,59 @@ func registerRoutes(r *gin.Engine, cfg *Config) {
 
 // ─── Additional Route Handlers ────────────────────────────────────────────────
 
+func handleRequestContactOTP(c *gin.Context, cfg *Config) {
+	var req struct {
+		ContactType string `json:"contact_type" binding:"required"`
+		Contact     string `json:"contact"`
+		SessionID   string `json:"session_id"`
+		CitizenID   string `json:"citizen_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid_request", Message: err.Error()})
+		return
+	}
+
+	contactType := strings.ToLower(strings.TrimSpace(req.ContactType))
+	if contactType != "phone" && contactType != "email" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid_contact_type", Message: "contact_type must be 'phone' or 'email'"})
+		return
+	}
+
+	targetKey := ""
+	if req.CitizenID != "" {
+		targetKey = "cit:" + req.CitizenID
+	} else if req.SessionID != "" {
+		targetKey = "sess:" + req.SessionID
+	} else if req.Contact != "" {
+		targetKey = contactType + ":" + strings.ToLower(strings.TrimSpace(req.Contact))
+	} else {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "missing_target", Message: "Must provide contact, citizen_id, or session_id"})
+		return
+	}
+
+	code, err := defaultOTPManager.GenerateOTP(targetKey, contactType, req.Contact)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "otp_generation_failed", Message: err.Error()})
+		return
+	}
+
+	res := gin.H{
+		"status":             "otp_sent",
+		"contact_type":       contactType,
+		"target":             targetKey,
+		"expires_in_seconds": 300,
+		"message":            fmt.Sprintf("A 6-digit verification code has been dispatched for %s.", contactType),
+	}
+	if cfg.Env != "production" {
+		res["dev_otp"] = code
+	}
+	c.JSON(http.StatusOK, res)
+}
+
 func handleVerifyContact(c *gin.Context, cfg *Config, contactType string) {
 	var req struct {
 		Code      string `json:"code" binding:"required"`
+		Contact   string `json:"contact"`
 		SessionID string `json:"session_id"`
 		CitizenID string `json:"citizen_id"`
 	}
@@ -228,10 +282,28 @@ func handleVerifyContact(c *gin.Context, cfg *Config, contactType string) {
 		return
 	}
 
-	// Verification check (in production, validates SMS/Email OTP token)
-	verified := req.Code != "" && len(req.Code) >= 4
+	var targetKeys []string
+	if req.CitizenID != "" {
+		targetKeys = append(targetKeys, "cit:"+req.CitizenID)
+	}
+	if req.SessionID != "" {
+		targetKeys = append(targetKeys, "sess:"+req.SessionID)
+	}
+	if req.Contact != "" {
+		targetKeys = append(targetKeys, contactType+":"+strings.ToLower(strings.TrimSpace(req.Contact)))
+	}
 
-	if verified && req.CitizenID != "" && dbPool != nil {
+	isDevOrTest := (cfg.Env != "production")
+	verified, reason := defaultOTPManager.VerifyOTP(targetKeys, req.Code, isDevOrTest)
+	if !verified {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "invalid_otp",
+			Message: fmt.Sprintf("Verification failed: %s", reason),
+		})
+		return
+	}
+
+	if req.CitizenID != "" && dbPool != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		if contactType == "phone" {
@@ -242,7 +314,7 @@ func handleVerifyContact(c *gin.Context, cfg *Config, contactType string) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"verified":     verified,
+		"verified":     true,
 		"contact_type": contactType,
 		"message":      fmt.Sprintf("%s successfully verified.", contactType),
 	})
@@ -671,7 +743,10 @@ func handleGetAdminAnalytics(c *gin.Context, cfg *Config) {
 		"system":           "statcitizen",
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"reports_by_state": map[string]int{},
-		"ratings_avg":      4.2,
+		"ratings_avg":      0.0,
+		"total_feedback":   0,
+		"total_reports":    0,
+		"total_ratings":    0,
 	}
 
 	if dbPool != nil {
@@ -682,15 +757,36 @@ func handleGetAdminAnalytics(c *gin.Context, cfg *Config) {
 		if err == nil {
 			defer rows.Close()
 			m := map[string]int{}
+			totRpt := 0
 			for rows.Next() {
 				var st string
 				var cnt int
 				if err := rows.Scan(&st, &cnt); err == nil {
 					m[st] = cnt
+					totRpt += cnt
 				}
 			}
 			stats["reports_by_state"] = m
+			stats["total_reports"] = totRpt
 		}
+
+		var avgRating float64
+		var ratingCount int
+		rErr := dbPool.QueryRowContext(ctx,
+			`SELECT COALESCE(ROUND(AVG(overall_score)::numeric, 2), 0.0), COUNT(*) FROM service_ratings WHERE tenant_id=$1`,
+			tenantID,
+		).Scan(&avgRating, &ratingCount)
+		if rErr == nil {
+			stats["ratings_avg"] = avgRating
+			stats["total_ratings"] = ratingCount
+		}
+
+		var feedbackCount int
+		_ = dbPool.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM feedback_records WHERE tenant_id=$1`,
+			tenantID,
+		).Scan(&feedbackCount)
+		stats["total_feedback"] = feedbackCount
 	}
 
 	c.JSON(http.StatusOK, stats)

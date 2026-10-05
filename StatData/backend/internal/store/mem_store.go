@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -42,6 +43,7 @@ type MemStore struct {
 	savedSearches map[string]*models.SavedSearch
 	auditLogs     []*models.AuditLog
 	objectLinks   []*models.ObjectLink
+	datasetRecords map[string][]map[string]interface{} // datasetID -> stored records (real data plane)
 }
 
 // NewMemStore instantiates MemStore and seeds default baseline records
@@ -72,6 +74,7 @@ func NewMemStore() *MemStore {
 		savedSearches: make(map[string]*models.SavedSearch),
 		auditLogs:     make([]*models.AuditLog, 0),
 		objectLinks:   make([]*models.ObjectLink, 0),
+		datasetRecords: make(map[string][]map[string]interface{}),
 	}
 	m.seedDefaultData()
 	return m
@@ -1645,4 +1648,53 @@ func cosineSimilarity(a, b []float32) float64 {
 		return 0.0
 	}
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+// ─── Data Plane: Dataset Records ────────────────────────────────────────────
+
+func (m *MemStore) AppendDatasetRecords(ctx context.Context, datasetID, tenantID string, records []map[string]interface{}) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var bytesWritten int64
+	for _, rec := range records {
+		payload, err := json.Marshal(rec)
+		if err != nil {
+			return bytesWritten, fmt.Errorf("failed to serialize record: %w", err)
+		}
+		stored := map[string]interface{}{}
+		if err := json.Unmarshal(payload, &stored); err != nil {
+			return bytesWritten, err
+		}
+		m.datasetRecords[datasetID] = append(m.datasetRecords[datasetID], stored)
+		bytesWritten += int64(len(payload))
+	}
+	return bytesWritten, nil
+}
+
+func (m *MemStore) ListDatasetRecords(ctx context.Context, datasetID string, limit int) ([]map[string]interface{}, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	all := m.datasetRecords[datasetID]
+	if limit <= 0 || limit >= len(all) {
+		out := make([]map[string]interface{}, len(all))
+		copy(out, all)
+		return out, nil
+	}
+	out := make([]map[string]interface{}, limit)
+	copy(out, all[len(all)-limit:])
+	return out, nil
+}
+
+func (m *MemStore) CountDatasetRecords(ctx context.Context, datasetID string) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return int64(len(m.datasetRecords[datasetID])), nil
+}
+
+func (m *MemStore) DeleteDatasetRecords(ctx context.Context, datasetID string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	deleted := int64(len(m.datasetRecords[datasetID]))
+	delete(m.datasetRecords, datasetID)
+	return deleted, nil
 }

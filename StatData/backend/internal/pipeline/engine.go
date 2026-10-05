@@ -26,7 +26,20 @@ func NewPipelineEngine(s store.Store, qe *QualityEngine, lt *LineageTracker) *Pi
 	}
 }
 
-// TriggerPipeline executes a pipeline DAG asynchronously or synchronously
+// Stage types supported by the execution engine
+const (
+	StageTypeExtract   = "EXTRACT"
+	StageTypeTransform = "TRANSFORM"
+	StageTypeLoad      = "LOAD"
+	StageTypeValidate  = "VALIDATE"
+	StageTypeEnrich    = "ENRICH"
+	StageTypeAnonymize = "ANONYMIZE"
+)
+
+// TriggerPipeline executes a pipeline DAG for real. Stages read from and
+// write to the platform data plane, transformations run per record, and any
+// stage failure fails the run honestly — there are no simulated counters or
+// guaranteed-success statuses.
 func (pe *PipelineEngine) TriggerPipeline(ctx context.Context, pipelineID, triggerType, triggeredBy, tenantID string) (*models.PipelineRun, error) {
 	p, err := pe.store.GetPipelineByID(ctx, pipelineID)
 	if err != nil {
@@ -53,53 +66,112 @@ func (pe *PipelineEngine) TriggerPipeline(ctx context.Context, pipelineID, trigg
 		return nil, fmt.Errorf("failed to initialize pipeline run: %w", err)
 	}
 
-	// Execute DAG Stages
-	var totalRead int64 = 10000
-	var totalWritten int64 = 9985
-	var totalRejected int64 = 15
+	var (
+		records       []map[string]interface{}
+		totalRead     int64
+		totalWritten  int64
+		totalRejected int64
+		runFailed     bool
+		stageRuns     = make([]models.StageRun, 0, len(p.Stages))
+	)
 
-	stageRuns := make([]models.StageRun, 0, len(p.Stages))
 	for _, stage := range p.Stages {
 		stageStart := time.Now()
-		// Simulate processing based on stage type
 		stgRun := models.StageRun{
-			StageID:          stage.ID,
-			StageName:        stage.Name,
-			Status:           models.RunStatusSuccess,
-			RecordsProcessed: totalRead,
-			OutputSummary: map[string]interface{}{
-				"status": "COMPLETED",
-				"type":   stage.StageType,
-			},
+			StageID:   stage.ID,
+			StageName: stage.Name,
+			Status:    models.RunStatusRunning,
 		}
 
-		if stage.StageType == "VALIDATE" && p.TargetDatasetID != "" {
-			// Trigger quality validation
-			_, _ = pe.quality.EvaluateDataset(ctx, p.TargetDatasetID, runID, tenantID, nil)
+		out, summary, stageErr := pe.executeStage(ctx, stage, p, records, runID, tenantID)
+		stgRun.DurationMs = time.Since(stageStart).Milliseconds()
+
+		if stageErr != nil {
+			stgRun.Status = models.RunStatusFailed
+			stgRun.ErrorMessage = stageErr.Error()
+			stgRun.OutputSummary = summary
+			stageRuns = append(stageRuns, stgRun)
+			runFailed = true
+			run.ErrorMessage = fmt.Sprintf("stage '%s' (%s) failed: %v", stage.Name, stage.StageType, stageErr)
+			break
 		}
 
-		stgRun.DurationMs = time.Since(stageStart).Milliseconds() + 45
+		switch stage.StageType {
+		case StageTypeExtract:
+			records = out
+			totalRead = int64(len(out))
+		case StageTypeTransform, StageTypeEnrich, StageTypeAnonymize:
+			if rejected := int64(len(records)) - int64(len(out)); rejected > 0 {
+				totalRejected += rejected
+			}
+			records = out
+		case StageTypeLoad:
+			totalWritten = int64(len(out))
+		case StageTypeValidate:
+			// validation evaluates the in-flight records; it does not alter them
+		}
+
+		stgRun.Status = models.RunStatusSuccess
+		stgRun.RecordsProcessed = int64(len(out))
+		stgRun.OutputSummary = summary
 		stageRuns = append(stageRuns, stgRun)
 	}
 
 	finished := time.Now().UTC()
-	run.Status = models.RunStatusSuccess
 	run.FinishedAt = &finished
 	run.DurationMs = finished.Sub(start).Milliseconds()
 	run.RecordsRead = totalRead
 	run.RecordsWritten = totalWritten
 	run.RecordsRejected = totalRejected
 	run.StageRuns = stageRuns
+
+	if runFailed {
+		run.Status = models.RunStatusFailed
+	} else {
+		run.Status = models.RunStatusSuccess
+	}
+
+	seconds := float64(run.DurationMs) / 1000.0
+	if seconds <= 0 {
+		seconds = 0.001
+	}
 	run.Metrics = map[string]interface{}{
-		"throughput_records_sec": 1450.0,
+		"throughput_records_sec": float64(totalRead) / seconds,
 		"stages_completed":       len(stageRuns),
 		"cpu_time_ms":            run.DurationMs,
 	}
 
-	_ = pe.store.UpdatePipelineRun(ctx, run)
+	if err := pe.store.UpdatePipelineRun(ctx, run); err != nil {
+		return run, fmt.Errorf("failed to persist pipeline run state: %w", err)
+	}
 	_ = pe.lineage.RecordPipelineExecutionLineage(ctx, p, runID)
 
 	return run, nil
+}
+
+// executeStage dispatches one DAG stage against the in-flight record set and
+// returns the (possibly transformed) records, an output summary, and an error.
+func (pe *PipelineEngine) executeStage(ctx context.Context, stage models.PipelineStage, p *models.DataPipeline, records []map[string]interface{}, runID, tenantID string) ([]map[string]interface{}, map[string]interface{}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	switch stage.StageType {
+	case StageTypeExtract:
+		return pe.runExtract(ctx, stage, p)
+	case StageTypeTransform:
+		return pe.runTransform(ctx, stage, records)
+	case StageTypeEnrich:
+		return pe.runEnrich(ctx, stage, records)
+	case StageTypeAnonymize:
+		return pe.runAnonymize(ctx, stage, records)
+	case StageTypeValidate:
+		return pe.runValidate(ctx, stage, p, records, runID, tenantID)
+	case StageTypeLoad:
+		return pe.runLoad(ctx, stage, p, records)
+	default:
+		return nil, nil, fmt.Errorf("unsupported stage type %q", stage.StageType)
+	}
 }
 
 // ProcessCDCEvent ingests change data capture event and applies updates

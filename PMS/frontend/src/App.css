@@ -91,6 +91,15 @@ body {
   font-size: 14px;
 }
 
+.form-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 42, 42, 0.35);
+  border-radius: 6px;
+  color: var(--accent-danger);
+  background: rgba(180, 42, 42, 0.08);
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .portfolio-dashboard-columns {
     grid-template-columns: 1fr !important;

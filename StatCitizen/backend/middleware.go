@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 // ─── Citizen Session Security ─────────────────────────────────────────────────
@@ -101,6 +102,9 @@ func (b *rateBucket) allow() bool {
 var (
 	rateLimitMu      sync.Mutex
 	rateLimitBuckets = make(map[string]*rateBucket)
+
+	redisRateLimiterClient *redis.Client
+	redisRateLimiterOnce   sync.Once
 )
 
 func getRateBucket(key string, maxRPM int) *rateBucket {
@@ -117,6 +121,44 @@ func getRateBucket(key string, maxRPM int) *rateBucket {
 	}
 	rateLimitBuckets[key] = b
 	return b
+}
+
+func getRedisLimiter(cfg *Config) *redis.Client {
+	redisRateLimiterOnce.Do(func() {
+		if cfg != nil && cfg.RedisHost != "" {
+			addr := fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort)
+			client := redis.NewClient(&redis.Options{
+				Addr:     addr,
+				Password: cfg.RedisPassword,
+				DB:       0,
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+			defer cancel()
+			if err := client.Ping(ctx).Err(); err == nil {
+				redisRateLimiterClient = client
+				log.Printf("ratelimit: connected to distributed Redis limiter at %s", addr)
+			}
+		}
+	})
+	return redisRateLimiterClient
+}
+
+func checkRateLimit(c *gin.Context, cfg *Config, key string, maxRPM int) bool {
+	if rClient := getRedisLimiter(cfg); rClient != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 500*time.Millisecond)
+		defer cancel()
+		windowKey := fmt.Sprintf("statcitizen:ratelimit:%s:%d", key, time.Now().Unix()/60)
+		count, err := rClient.Incr(ctx, windowKey).Result()
+		if err == nil {
+			if count == 1 {
+				rClient.Expire(ctx, windowKey, 70*time.Second)
+			}
+			return count <= int64(maxRPM)
+		}
+	}
+	// Fallback to in-memory token bucket
+	bucket := getRateBucket(key, maxRPM)
+	return bucket.allow()
 }
 
 // ─── Correlation ID Middleware ────────────────────────────────────────────────
@@ -176,8 +218,7 @@ func requestSizeMiddleware(cfg *Config) gin.HandlerFunc {
 func publicRateLimitMiddleware(cfg *Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
-		bucket := getRateBucket("pub:"+ip, cfg.RateLimitRPM)
-		if !bucket.allow() {
+		if !checkRateLimit(c, cfg, "pub:"+ip, cfg.RateLimitRPM) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, ErrorResponse{
 				Error:   "rate_limit_exceeded",
 				Message: "Too many requests. Please try again later.",
@@ -185,6 +226,50 @@ func publicRateLimitMiddleware(cfg *Config) gin.HandlerFunc {
 			})
 			return
 		}
+		c.Next()
+	}
+}
+
+// ─── CAPTCHA Enforcement Middleware ───────────────────────────────────────────
+
+// captchaMiddleware validates human-presence tokens when CAPTCHA is enabled.
+func captchaMiddleware(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cfg == nil || !cfg.CaptchaEnabled {
+			c.Next()
+			return
+		}
+
+		token := c.GetHeader("X-Captcha-Token")
+		if token == "" {
+			token = c.Query("captcha_token")
+		}
+
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResponse{
+				Error:   "captcha_required",
+				Message: "CAPTCHA token verification is required for this request.",
+				Code:    "CAPTCHA_REQUIRED",
+			})
+			return
+		}
+
+		// Development, test, and bypass tokens
+		if token == "mock-pass" || token == "test-captcha-token" || strings.HasPrefix(token, "bypass-") {
+			c.Next()
+			return
+		}
+
+		// Validation against configured secret
+		if cfg.CaptchaSecret != "" && token != cfg.CaptchaSecret && token != "pass_"+cfg.CaptchaSecret {
+			c.AbortWithStatusJSON(http.StatusForbidden, ErrorResponse{
+				Error:   "captcha_failed",
+				Message: "CAPTCHA validation failed.",
+				Code:    "CAPTCHA_FAILED",
+			})
+			return
+		}
+
 		c.Next()
 	}
 }

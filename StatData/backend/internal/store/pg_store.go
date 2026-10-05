@@ -89,6 +89,14 @@ func (p *PGStore) ensureSchema() {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS statdata.dataset_records (
+			id BIGSERIAL PRIMARY KEY,
+			dataset_id VARCHAR(64) NOT NULL,
+			record JSONB NOT NULL,
+			tenant_id VARCHAR(64) NOT NULL DEFAULT 'default',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_dataset_records_dataset ON statdata.dataset_records (dataset_id, id)`,
 		`ALTER TABLE statdata.datasets ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.pipelines ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
 		`ALTER TABLE statdata.data_sources ADD COLUMN IF NOT EXISTS workspace_id VARCHAR(128)`,
@@ -2553,4 +2561,84 @@ func (p *PGStore) GetObjectLinks(ctx context.Context, sourceType, sourceID, tena
 		res = append(res, &l)
 	}
 	return res, nil
+}
+
+// ─── Data Plane: Dataset Records ────────────────────────────────────────────
+
+// AppendDatasetRecords stores real rows for a dataset inside the platform
+// data plane. Each record is persisted as JSONB inside a single transaction;
+// bytesWritten reports the serialized payload size so dataset sizes reflect
+// actual stored bytes.
+func (p *PGStore) AppendDatasetRecords(ctx context.Context, datasetID, tenantID string, records []map[string]interface{}) (int64, error) {
+	if len(records) == 0 {
+		return 0, nil
+	}
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO statdata.dataset_records (dataset_id, record, tenant_id) VALUES ($1, $2, $3)`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	var bytesWritten int64
+	for _, rec := range records {
+		payload, err := json.Marshal(rec)
+		if err != nil {
+			return 0, fmt.Errorf("failed to serialize record: %w", err)
+		}
+		if _, err := stmt.ExecContext(ctx, datasetID, payload, tenantID); err != nil {
+			return 0, err
+		}
+		bytesWritten += int64(len(payload))
+	}
+	return bytesWritten, tx.Commit()
+}
+
+// ListDatasetRecords reads stored rows for a dataset, oldest first.
+// A limit of 0 means no limit.
+func (p *PGStore) ListDatasetRecords(ctx context.Context, datasetID string, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 1000000
+	}
+	rows, err := p.db.QueryContext(ctx, `SELECT record FROM statdata.dataset_records WHERE dataset_id = $1 ORDER BY id LIMIT $2`, datasetID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		var rec map[string]interface{}
+		if err := json.Unmarshal(payload, &rec); err != nil {
+			return nil, fmt.Errorf("failed to deserialize record: %w", err)
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// CountDatasetRecords returns the real stored row count for a dataset.
+func (p *PGStore) CountDatasetRecords(ctx context.Context, datasetID string) (int64, error) {
+	var count int64
+	err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM statdata.dataset_records WHERE dataset_id = $1`, datasetID).Scan(&count)
+	return count, err
+}
+
+// DeleteDatasetRecords removes all stored rows for a dataset (used by
+// REPLACE-mode loads and record resets) and reports how many rows existed.
+func (p *PGStore) DeleteDatasetRecords(ctx context.Context, datasetID string) (int64, error) {
+	res, err := p.db.ExecContext(ctx, `DELETE FROM statdata.dataset_records WHERE dataset_id = $1`, datasetID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

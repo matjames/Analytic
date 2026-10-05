@@ -66,8 +66,8 @@ func CloseDB() {
 
 // SaveSubmissionToDB persists a submission with tenant and status metadata.
 // Kept for backward compatibility with callers that don't have GPS/QA data.
-func SaveSubmissionToDB(instanceID, formID string, meta map[string]interface{}, xml string) error {
-	return SaveSubmissionFullToDB(instanceID, formID, meta, xml, "", 0, 0, "", nil)
+func SaveSubmissionToDB(instanceID, formID string, meta map[string]interface{}, xml string, scopes ...OfficialStatisticsScope) error {
+	return SaveSubmissionFullToDB(instanceID, formID, meta, xml, "", 0, 0, "", nil, scopes...)
 }
 
 // SaveSubmissionFullToDB is the canonical save function. It persists GPS
@@ -81,16 +81,14 @@ func SaveSubmissionFullToDB(
 	gpsLat, gpsLng float64,
 	gpsRaw string,
 	qaFlags []map[string]string,
+	scopes ...OfficialStatisticsScope,
 ) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	tenantID := "default"
-	if cfg != nil && cfg.TenantID != "" {
-		tenantID = cfg.TenantID
-	}
+	scope := officialScopeOrDefault(scopes)
 	// Marshal QA flags to JSON
 	qaJSON, _ := json.Marshal(qaFlags)
 	if qaJSON == nil {
@@ -102,11 +100,11 @@ func SaveSubmissionFullToDB(
 		latPtr = &gpsLat
 		lngPtr = &gpsLng
 	}
-	_, err := dbPool.Exec(ctx, `
+	result, err := dbPool.Exec(ctx, `
 		INSERT INTO submissions
-		  (instance_id, form_id, received_at, meta, xml, tenant_id, status,
+		  (instance_id, form_id, received_at, meta, xml, tenant_id, workspace_id, status,
 		   submitted_by, gps_lat, gps_lng, gps_raw, qa_flags)
-		VALUES ($1,$2,$3,$4,$5,$6,'received',$7,$8,$9,$10,$11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,'received',$8,$9,$10,$11,$12)
 		ON CONFLICT (instance_id) DO UPDATE SET
 		  form_id        = EXCLUDED.form_id,
 		  received_at    = EXCLUDED.received_at,
@@ -116,11 +114,16 @@ func SaveSubmissionFullToDB(
 		  gps_lng        = COALESCE(EXCLUDED.gps_lng, submissions.gps_lng),
 		  gps_raw        = COALESCE(EXCLUDED.gps_raw, submissions.gps_raw),
 		  qa_flags       = EXCLUDED.qa_flags,
-		  updated_at     = now()`,
-		instanceID, formID, time.Now(), meta, xmlDoc, tenantID,
+		  updated_at     = now()
+		WHERE submissions.tenant_id = EXCLUDED.tenant_id
+		  AND submissions.workspace_id = EXCLUDED.workspace_id`,
+		instanceID, formID, time.Now(), meta, xmlDoc, scope.TenantID, scope.WorkspaceID,
 		submittedBy, latPtr, lngPtr, gpsRaw, qaJSON)
 	if err != nil {
 		return fmt.Errorf("insert submission: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("submission %q belongs to another tenant or workspace", instanceID)
 	}
 	return nil
 }
@@ -201,24 +204,26 @@ func ListAttachments(instanceID string) ([]map[string]interface{}, error) {
 }
 
 // DeleteSubmission deletes a submission and its associated cascade records.
-func DeleteSubmission(instanceID string) error {
+func DeleteSubmission(instanceID string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := dbPool.Exec(ctx, `DELETE FROM submissions WHERE instance_id=$1`, instanceID)
+	scope := officialScopeOrDefault(scopes)
+	_, err := dbPool.Exec(ctx, `DELETE FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID)
 	return err
 }
 
-func SubmissionExists(instanceID string) (bool, error) {
+func SubmissionExists(instanceID string, scopes ...OfficialStatisticsScope) (bool, error) {
 	if dbPool == nil {
 		return false, fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 	var cnt int
-	err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM submissions WHERE instance_id=$1`, instanceID).Scan(&cnt)
+	err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID).Scan(&cnt)
 	if err != nil {
 		return false, err
 	}
@@ -231,6 +236,7 @@ type SubmissionSummary struct {
 	ReceivedAt  time.Time              `json:"received_at"`
 	Meta        map[string]interface{} `json:"meta"`
 	TenantID    string                 `json:"tenant_id"`
+	WorkspaceID string                 `json:"workspace_id"`
 	Status      string                 `json:"status"`
 	SubmittedBy string                 `json:"submitted_by,omitempty"`
 	GPSLat      *float64               `json:"gps_lat,omitempty"`
@@ -239,19 +245,20 @@ type SubmissionSummary struct {
 	QAFlags     []map[string]string    `json:"qa_flags,omitempty"`
 }
 
-func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
+func ListSubmissions(limit, offset int, scopes ...OfficialStatisticsScope) ([]SubmissionSummary, error) {
 	if dbPool == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 	rows, err := dbPool.Query(ctx, `
-		SELECT instance_id, form_id, received_at, meta, tenant_id, status,
+		SELECT instance_id, form_id, received_at, meta, tenant_id, workspace_id, status,
 		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
 		       COALESCE(qa_flags::text, '[]')
-		FROM submissions
+		FROM submissions WHERE tenant_id=$3 AND workspace_id=$4
 		ORDER BY received_at DESC
-		LIMIT $1 OFFSET $2`, limit, offset)
+		LIMIT $1 OFFSET $2`, limit, offset, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +269,7 @@ func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
 		var metaData map[string]interface{}
 		var qaFlagsJSON string
 		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData,
-			&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
+			&s.TenantID, &s.WorkspaceID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
 			return nil, err
 		}
 		s.Meta = metaData
@@ -274,23 +281,24 @@ func ListSubmissions(limit, offset int) ([]SubmissionSummary, error) {
 	return out, nil
 }
 
-func GetSubmission(instanceID string) (*SubmissionSummary, string, error) {
+func GetSubmission(instanceID string, scopes ...OfficialStatisticsScope) (*SubmissionSummary, string, error) {
 	if dbPool == nil {
 		return nil, "", fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
 	var s SubmissionSummary
 	var xmlDoc string
 	var metaData map[string]interface{}
 	var qaFlagsJSON string
 	err := dbPool.QueryRow(ctx, `
-		SELECT instance_id, form_id, received_at, meta, xml, tenant_id, status,
+		SELECT instance_id, form_id, received_at, meta, xml, tenant_id, workspace_id, status,
 		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
 		       COALESCE(qa_flags::text, '[]')
-		FROM submissions WHERE instance_id=$1`, instanceID).Scan(
+		FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID).Scan(
 		&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData, &xmlDoc,
-		&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON)
+		&s.TenantID, &s.WorkspaceID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON)
 	if err != nil {
 		return nil, "", err
 	}
@@ -471,12 +479,17 @@ func GetStatChatLink(objectType, objectID string) (string, error) {
 // ── Submission Validation Workflow ──
 
 // CreateValidation creates a validation record for a submission.
-func CreateValidation(instanceID, validator, status, notes string) error {
+func CreateValidation(instanceID, validator, status, notes string, scopes ...OfficialStatisticsScope) error {
 	if dbPool == nil {
 		return fmt.Errorf("database not initialized")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	scope := officialScopeOrDefault(scopes)
+	var owned int
+	if err := dbPool.QueryRow(ctx, `SELECT COUNT(1) FROM submissions WHERE instance_id=$1 AND tenant_id=$2 AND workspace_id=$3`, instanceID, scope.TenantID, scope.WorkspaceID).Scan(&owned); err != nil || owned == 0 {
+		return fmt.Errorf("submission not found in tenant/workspace scope")
+	}
 	_, err := dbPool.Exec(ctx, `INSERT INTO submission_validations (instance_id, validator, status, notes, validated_at)
 		VALUES ($1,$2,$3,$4, now())`,
 		instanceID, validator, status, notes)
@@ -484,8 +497,8 @@ func CreateValidation(instanceID, validator, status, notes string) error {
 		return fmt.Errorf("create validation: %w", err)
 	}
 	// update submission status
-	_, err = dbPool.Exec(ctx, `UPDATE submissions SET status=$2, updated_at=now() WHERE instance_id=$1`,
-		instanceID, status)
+	_, err = dbPool.Exec(ctx, `UPDATE submissions SET status=$2, updated_at=now() WHERE instance_id=$1 AND tenant_id=$3 AND workspace_id=$4`,
+		instanceID, status, scope.TenantID, scope.WorkspaceID)
 	if err != nil {
 		return fmt.Errorf("update submission status: %w", err)
 	}
@@ -524,7 +537,7 @@ func ListValidations(instanceID string) ([]map[string]interface{}, error) {
 }
 
 // GetSubmissionsByFormID returns all submissions for a given form/template ID.
-func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, error) {
+func GetSubmissionsByFormID(formID string, limit int, scopes ...OfficialStatisticsScope) ([]SubmissionSummary, error) {
 	if dbPool == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
@@ -533,13 +546,14 @@ func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, erro
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	query := `SELECT instance_id, form_id, received_at, meta, tenant_id, status,
+	scope := officialScopeOrDefault(scopes)
+	query := `SELECT instance_id, form_id, received_at, meta, tenant_id, workspace_id, status,
 		       COALESCE(submitted_by,''), gps_lat, gps_lng, COALESCE(gps_raw,''),
 		       COALESCE(qa_flags::text, '[]')
-		FROM submissions`
-	var args []interface{}
+		FROM submissions WHERE tenant_id=$1 AND workspace_id=$2`
+	args := []interface{}{scope.TenantID, scope.WorkspaceID}
 	if formID != "" {
-		query += ` WHERE form_id=$1`
+		query += ` AND form_id=$3`
 		args = append(args, formID)
 	}
 	query += ` ORDER BY received_at DESC LIMIT $` + fmt.Sprint(len(args)+1)
@@ -556,7 +570,7 @@ func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, erro
 		var metaData map[string]interface{}
 		var qaFlagsJSON string
 		if err := rows.Scan(&s.InstanceID, &s.FormID, &s.ReceivedAt, &metaData,
-			&s.TenantID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
+			&s.TenantID, &s.WorkspaceID, &s.Status, &s.SubmittedBy, &s.GPSLat, &s.GPSLng, &s.GPSRaw, &qaFlagsJSON); err != nil {
 			return nil, err
 		}
 		s.Meta = metaData
@@ -572,8 +586,8 @@ func GetSubmissionsByFormID(formID string, limit int) ([]SubmissionSummary, erro
 // - MISSING_GPS: submission has no GPS coordinates recorded
 // - MISSING_FIELD_VIDEO: no video attachment was uploaded
 // - POSSIBLE_DUPLICATE: identical payload signature to another submission
-func ScanSubmissionsQA(formID string) ([]map[string]interface{}, error) {
-	subs, err := GetSubmissionsByFormID(formID, 500)
+func ScanSubmissionsQA(formID string, scopes ...OfficialStatisticsScope) ([]map[string]interface{}, error) {
+	subs, err := GetSubmissionsByFormID(formID, 500, scopes...)
 	if err != nil {
 		return nil, err
 	}

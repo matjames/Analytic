@@ -80,6 +80,20 @@ type Activity struct {
 	CreatedTime time.Time `json:"createdTime"`
 }
 
+type FieldActivityLocation struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"projectId"`
+	WorkspaceID string    `json:"workspaceId,omitempty"`
+	ActivityID  string    `json:"activityId,omitempty"`
+	Label       string    `json:"label"`
+	Worker      string    `json:"worker"`
+	Status      string    `json:"status"`
+	Latitude    float64   `json:"latitude"`
+	Longitude   float64   `json:"longitude"`
+	RecordedAt  string    `json:"recordedAt"`
+	CreatedTime time.Time `json:"createdTime"`
+}
+
 type Deliverable struct {
 	ID          string    `json:"id"`
 	ProjectID   string    `json:"projectId"`
@@ -143,6 +157,18 @@ type ProjectMember struct {
 	Since      string `json:"since,omitempty"`
 }
 
+type ResourceAllocation struct {
+	ID                string    `json:"id"`
+	ProjectID         string    `json:"projectId"`
+	ResourceName      string    `json:"resourceName"`
+	Role              string    `json:"role"`
+	AllocationPercent float64   `json:"allocationPercent"`
+	StartDate         string    `json:"startDate"`
+	EndDate           string    `json:"endDate"`
+	Notes             string    `json:"notes,omitempty"`
+	CreatedTime       time.Time `json:"createdTime"`
+}
+
 type Task struct {
 	ID            string   `json:"id"`
 	ProjectID     string   `json:"projectId"`
@@ -186,6 +212,23 @@ type FundingSource struct {
 	EndDate     string    `json:"endDate"`
 	Status      string    `json:"status"`
 	CreatedTime time.Time `json:"createdTime"`
+}
+
+type Grant struct {
+	ID           string    `json:"id"`
+	ProjectID    string    `json:"projectId"`
+	WorkspaceID  string    `json:"workspaceId,omitempty"`
+	DonorID      string    `json:"donorId,omitempty"`
+	GrantNumber  string    `json:"grantNumber"`
+	Title        string    `json:"title"`
+	Purpose      string    `json:"purpose"`
+	Amount       float64   `json:"amount"`
+	Currency     string    `json:"currency"`
+	StartDate    string    `json:"startDate"`
+	EndDate      string    `json:"endDate"`
+	ReportingDue string    `json:"reportingDue"`
+	Status       string    `json:"status"`
+	CreatedTime  time.Time `json:"createdTime"`
 }
 
 type CostCentre struct {

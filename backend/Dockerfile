@@ -3,8 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Ensure modules are consistent with source and go.sum
-RUN go mod tidy
+# Keep production builds offline-capable; go.mod/go.sum are the source of truth.
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/statgate-core ./cmd/server
 
 FROM alpine:3.20

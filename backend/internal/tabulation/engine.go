@@ -3,6 +3,7 @@ package tabulation
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -21,9 +22,61 @@ const (
 	AggPercentage AggregationType = "PERCENTAGE"
 )
 
+// LoadRecordsFromStatData reads persisted dataset rows from the StatData
+// records table on a shared PostgreSQL server. This is the durable binding
+// between the desimulated StatData pipeline engine and core analytics:
+// tabulations read what pipelines actually stored, never request payloads.
+func LoadRecordsFromStatData(ctx context.Context, db *sql.DB, datasetID, schema string, limit int) ([]map[string]interface{}, error) {
+	if db == nil {
+		return nil, fmt.Errorf("tabulation: statdata handle is required")
+	}
+	if datasetID == "" {
+		return nil, fmt.Errorf("tabulation: datasetID is required")
+	}
+	if schema == "" {
+		schema = "statdata"
+	}
+	table := schema + ".dataset_records"
+	if limit <= 0 {
+		limit = 100000
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT record FROM `+table+` WHERE dataset_id = $1 ORDER BY id LIMIT $2`,
+		datasetID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("tabulation: failed to read dataset %s: %w", datasetID, err)
+	}
+	defer rows.Close()
+
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("tabulation: row scan failed: %w", err)
+		}
+		var rec map[string]interface{}
+		if err := json.Unmarshal(payload, &rec); err != nil {
+			return nil, fmt.Errorf("tabulation: row decode failed: %w", err)
+		}
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("tabulation: dataset %s has no stored rows", datasetID)
+	}
+	return out, nil
+}
+
 // TabulationRequest represents a dynamic tabulation or crosstab query.
+// DatasetID optionally binds the tabulation to rows persisted in the
+// StatData records table instead of the request-embedded DataRecords.
+// When set, the request payload's DataRecords are ignored.
 type TabulationRequest struct {
 	Title           string                 `json:"title"`
+	DatasetID       string                 `json:"dataset_id,omitempty"`
 	RowVariable     string                 `json:"row_variable"`
 	ColVariable     string                 `json:"col_variable,omitempty"`
 	MeasureVariable string                 `json:"measure_variable,omitempty"`

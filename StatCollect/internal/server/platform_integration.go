@@ -25,6 +25,8 @@ type PlatformPublishEvent struct {
 	SourceType   string                 `json:"source_type"`
 	SourceID     string                 `json:"source_id"`
 	TenantID     string                 `json:"tenant_id"`
+	WorkspaceID  string                 `json:"workspace_id,omitempty"`
+	ResearchID   string                 `json:"research_id,omitempty"`
 	Payload      map[string]interface{} `json:"payload"`
 	PublishedAt  time.Time              `json:"published_at"`
 }
@@ -66,32 +68,32 @@ type WorkflowTask struct {
 
 // GISSyncRecord represents a record in the GIS synchronization queue.
 type GISSyncRecord struct {
-	ID                  int64                  `json:"id"`
+	ID                   int64                  `json:"id"`
 	SubmissionInstanceID string                 `json:"submission_instance_id"`
-	FormID              string                 `json:"form_id"`
-	GISLayerID          string                 `json:"gis_layer_id,omitempty"`
-	Latitude            float64                `json:"latitude"`
-	Longitude           float64                `json:"longitude"`
-	Accuracy            float32                `json:"accuracy"`
-	FeatureProperties   map[string]interface{} `json:"feature_properties"`
-	SyncStatus          string                 `json:"sync_status"`
-	SyncAttempt         int                    `json:"sync_attempt"`
-	SyncedAt            *time.Time             `json:"synced_at,omitempty"`
-	ErrorMessage        string                 `json:"error_message,omitempty"`
-	CreatedAt           time.Time              `json:"created_at"`
+	FormID               string                 `json:"form_id"`
+	GISLayerID           string                 `json:"gis_layer_id,omitempty"`
+	Latitude             float64                `json:"latitude"`
+	Longitude            float64                `json:"longitude"`
+	Accuracy             float32                `json:"accuracy"`
+	FeatureProperties    map[string]interface{} `json:"feature_properties"`
+	SyncStatus           string                 `json:"sync_status"`
+	SyncAttempt          int                    `json:"sync_attempt"`
+	SyncedAt             *time.Time             `json:"synced_at,omitempty"`
+	ErrorMessage         string                 `json:"error_message,omitempty"`
+	CreatedAt            time.Time              `json:"created_at"`
 }
 
 // StatsExport represents a submission's export status to the Statistics module.
 type StatsExport struct {
-	ID                  int64      `json:"id"`
-	SubmissionInstanceID string    `json:"submission_instance_id"`
-	FormID              string     `json:"form_id"`
-	DatasetID           string     `json:"dataset_id,omitempty"`
-	ExportStatus        string     `json:"export_status"`
-	ExportAttempt       int        `json:"export_attempt"`
-	ExportedAt          *time.Time `json:"exported_at,omitempty"`
-	ErrorMessage        string     `json:"error_message,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
+	ID                   int64      `json:"id"`
+	SubmissionInstanceID string     `json:"submission_instance_id"`
+	FormID               string     `json:"form_id"`
+	DatasetID            string     `json:"dataset_id,omitempty"`
+	ExportStatus         string     `json:"export_status"`
+	ExportAttempt        int        `json:"export_attempt"`
+	ExportedAt           *time.Time `json:"exported_at,omitempty"`
+	ErrorMessage         string     `json:"error_message,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,18 +113,35 @@ func PublishSubmissionEvent(eventType, instanceID, formID, tenantID string, meta
 		}
 	}
 
+	researchID := platformMetaValue(meta, "research_id", "researchId", "_msh_research_id")
+	workspaceID := ""
+	if cfg != nil {
+		workspaceID = cfg.WorkspaceID
+	}
+	if value := platformMetaValue(meta, "workspace_id", "workspaceId", "_msh_workspace_id"); value != "" {
+		workspaceID = value
+	}
+	payload := map[string]interface{}{
+		"instance_id": instanceID,
+		"form_id":     formID,
+		"meta":        meta,
+	}
+	if researchID != "" {
+		payload["research_id"] = researchID
+	}
+	if workspaceID != "" {
+		payload["workspace_id"] = workspaceID
+	}
 	evt := PlatformPublishEvent{
 		EventType:    eventType,
 		SourceModule: "statcollect",
 		SourceType:   "submission",
 		SourceID:     instanceID,
 		TenantID:     tenantID,
-		Payload: map[string]interface{}{
-			"instance_id": instanceID,
-			"form_id":     formID,
-			"meta":        meta,
-		},
-		PublishedAt: time.Now(),
+		WorkspaceID:  workspaceID,
+		ResearchID:   researchID,
+		Payload:      payload,
+		PublishedAt:  time.Now(),
 	}
 
 	// Fire integrations in background to not block the submission handler
@@ -184,6 +203,12 @@ func publishToModule(evt PlatformPublishEvent, targetModule, targetType, moduleU
 			if cfg != nil && cfg.InternalKey != "" {
 				req.Header.Set("X-Internal-Key", cfg.InternalKey)
 			}
+			if evt.TenantID != "" {
+				req.Header.Set("X-Tenant-ID", evt.TenantID)
+			}
+			if evt.WorkspaceID != "" {
+				req.Header.Set("X-Workspace-ID", evt.WorkspaceID)
+			}
 			if resp, err := http.DefaultClient.Do(req); err == nil {
 				status = resp.StatusCode
 				success = resp.StatusCode < 300
@@ -205,6 +230,15 @@ func publishToModule(evt PlatformPublishEvent, targetModule, targetType, moduleU
 	if !success && moduleURL != "" && moduleURL != "-" {
 		log.Printf("platform_integration: failed to publish %s to %s: %s", evt.EventType, targetModule, errMsg)
 	}
+}
+
+func platformMetaValue(meta map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := meta[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // logPlatformPublish records a cross-module publish attempt to the audit log.
